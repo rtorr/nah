@@ -1,0 +1,15 @@
+schema = "nah.host.profile.v1"
+
+[nak]
+binding_mode = "canonical"
+
+[environment]
+NAH_PROFILE = "default"
+
+[capabilities]
+"filesystem.read" = "sandbox.readonly"
+"filesystem.write" = "sandbox.readwrite"
+"network.connect" = "network.outbound"
+
+[trust]
+default_state = "verified"

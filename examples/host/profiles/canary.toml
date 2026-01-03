@@ -1,0 +1,17 @@
+schema = "nah.host.profile.v1"
+
+[nak]
+binding_mode = "canonical"
+
+[environment]
+NAH_PROFILE = "canary"
+NAH_ENV = "canary"
+CANARY_ENABLED = "1"
+
+[capabilities]
+"filesystem.read" = "sandbox.readonly"
+"filesystem.write" = "sandbox.readwrite"
+"network.connect" = "network.outbound"
+
+[trust]
+default_state = "verified"

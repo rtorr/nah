@@ -1,0 +1,31 @@
+# NAK Pack Manifest Template
+#
+# Variables in @VAR@ format are substituted by CMake's configure_file().
+# See CMakeLists.txt for variable definitions.
+
+schema = "nah.nak.pack.v1"
+
+[nak]
+id = "@NAK_ID@"
+version = "@NAK_VERSION@"
+
+[paths]
+# All Conan dependencies + SDK library merged into lib/
+lib_dirs = ["lib"]
+resource_root = "resources"
+
+[loader]
+exec_path = "bin/engine-loader"
+args_template = [
+    "--app-entry", "{NAH_APP_ENTRY}",
+    "--app-root", "{NAH_APP_ROOT}",
+    "--app-id", "{NAH_APP_ID}",
+    "--engine-root", "{NAH_NAK_ROOT}"
+]
+
+[execution]
+cwd = "{NAH_APP_ROOT}"
+
+[environment]
+GAMEENGINE_VERSION = "@NAK_VERSION@"
+GAMEENGINE_LOG_LEVEL = "info"

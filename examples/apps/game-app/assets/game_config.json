@@ -1,0 +1,22 @@
+{
+    "game": {
+        "title": "My Awesome Game",
+        "version": "1.0.0",
+        "developer": "Example Studios"
+    },
+    "graphics": {
+        "resolution": [1920, 1080],
+        "fullscreen": false,
+        "vsync": true
+    },
+    "audio": {
+        "master_volume": 0.8,
+        "music_volume": 0.6,
+        "sfx_volume": 1.0
+    },
+    "network": {
+        "server": "api.example.com",
+        "port": 443,
+        "timeout_ms": 5000
+    }
+}

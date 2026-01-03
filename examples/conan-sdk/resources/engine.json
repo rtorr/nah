@@ -1,0 +1,15 @@
+{
+    "name": "GameEngine",
+    "version": "1.0.0",
+    "capabilities": {
+        "networking": true,
+        "compression": true,
+        "crypto": true,
+        "logging": true
+    },
+    "defaults": {
+        "log_level": "info",
+        "network_timeout_ms": 30000,
+        "asset_cache_mb": 256
+    }
+}

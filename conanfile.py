@@ -35,6 +35,7 @@ class NahConan(ConanFile):
 
     exports_sources = (
         "CMakeLists.txt",
+        "VERSION",
         "cmake/*",
         "include/*",
         "src/*",
@@ -70,6 +71,13 @@ class NahConan(ConanFile):
         tc.variables["NAH_ENABLE_TESTS"] = False
         tc.variables["NAH_ENABLE_TOOLS"] = False
         tc.variables["NAH_INSTALL"] = False
+        # Pass shared option to CMake
+        tc.variables["NAH_BUILD_SHARED"] = bool(self.options.shared)
+        # Ensure fPIC is set for shared libraries on non-Windows
+        if self.settings.os != "Windows":
+            tc.variables["CMAKE_POSITION_INDEPENDENT_CODE"] = bool(
+                self.options.get_safe("fPIC", True) or self.options.shared
+            )
         tc.generate()
 
     def build(self):
@@ -103,6 +111,8 @@ class NahConan(ConanFile):
             src=os.path.join(self.build_folder, "_deps", "cpp-semver-src", "include"),
             dst=os.path.join(self.package_folder, "include"),
         )
+
+        # Copy static libraries
         copy(
             self,
             "*.a",
@@ -117,65 +127,72 @@ class NahConan(ConanFile):
             dst=os.path.join(self.package_folder, "lib"),
             keep_path=False,
         )
-        copy(
-            self,
-            "*.so*",
-            src=self.build_folder,
-            dst=os.path.join(self.package_folder, "lib"),
-            keep_path=False,
-        )
-        copy(
-            self,
-            "*.dylib",
-            src=self.build_folder,
-            dst=os.path.join(self.package_folder, "lib"),
-            keep_path=False,
-        )
-        copy(
-            self,
-            "*.dll",
-            src=self.build_folder,
-            dst=os.path.join(self.package_folder, "bin"),
-            keep_path=False,
-        )
+
+        # Copy shared libraries
+        if self.options.shared:
+            # Linux .so files (including versioned symlinks)
+            copy(
+                self,
+                "*.so*",
+                src=self.build_folder,
+                dst=os.path.join(self.package_folder, "lib"),
+                keep_path=False,
+            )
+            # macOS .dylib files
+            copy(
+                self,
+                "*.dylib",
+                src=self.build_folder,
+                dst=os.path.join(self.package_folder, "lib"),
+                keep_path=False,
+            )
+            # Windows .dll files go in bin
+            copy(
+                self,
+                "*.dll",
+                src=self.build_folder,
+                dst=os.path.join(self.package_folder, "bin"),
+                keep_path=False,
+            )
 
     def package_info(self):
-        # Main component that most users will want
-        self.cpp_info.components["nahhost"].libs = ["nahhost"]
-        self.cpp_info.components["nahhost"].requires = [
-            "nah_contract",
-            "nah_config",
-            "nah_platform",
-            "nah_packaging",
-        ]
+        if self.options.shared:
+            # Single shared library with everything
+            self.cpp_info.libs = ["nahhost"]
+            self.cpp_info.defines = ["NAH_SHARED"]
+        else:
+            # Static libraries - order matters for linker
+            self.cpp_info.components["nahhost"].libs = ["nahhost"]
+            self.cpp_info.components["nahhost"].requires = [
+                "nah_contract",
+                "nah_config",
+                "nah_platform",
+                "nah_packaging",
+            ]
 
-        # Contract composition
-        self.cpp_info.components["nah_contract"].libs = ["nah_contract"]
-        self.cpp_info.components["nah_contract"].requires = [
-            "nah_manifest",
-            "nah_config",
-            "nah_platform",
-            "nlohmann_json::nlohmann_json",
-            "tomlplusplus::tomlplusplus",
-        ]
+            self.cpp_info.components["nah_contract"].libs = ["nah_contract"]
+            self.cpp_info.components["nah_contract"].requires = [
+                "nah_manifest",
+                "nah_config",
+                "nah_platform",
+                "nlohmann_json::nlohmann_json",
+                "tomlplusplus::tomlplusplus",
+            ]
 
-        # Manifest encode/decode
-        self.cpp_info.components["nah_manifest"].libs = ["nah_manifest"]
-        # cpp-semver is header-only, bundled via FetchContent
+            self.cpp_info.components["nah_manifest"].libs = ["nah_manifest"]
 
-        # TOML config loading
-        self.cpp_info.components["nah_config"].libs = ["nah_config"]
-        self.cpp_info.components["nah_config"].requires = ["tomlplusplus::tomlplusplus"]
+            self.cpp_info.components["nah_config"].libs = ["nah_config"]
+            self.cpp_info.components["nah_config"].requires = [
+                "tomlplusplus::tomlplusplus"
+            ]
 
-        # Platform abstraction
-        self.cpp_info.components["nah_platform"].libs = ["nah_platform"]
+            self.cpp_info.components["nah_platform"].libs = ["nah_platform"]
 
-        # Packaging (NAP/NAK)
-        self.cpp_info.components["nah_packaging"].libs = ["nah_packaging"]
-        self.cpp_info.components["nah_packaging"].requires = [
-            "nah_manifest",
-            "nah_config",
-            "nah_platform",
-            "nah_contract",
-            "zlib::zlib",
-        ]
+            self.cpp_info.components["nah_packaging"].libs = ["nah_packaging"]
+            self.cpp_info.components["nah_packaging"].requires = [
+                "nah_manifest",
+                "nah_config",
+                "nah_platform",
+                "nah_contract",
+                "zlib::zlib",
+            ]

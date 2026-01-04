@@ -5,7 +5,7 @@
 
 NAH is a launch contract system for native applications. It computes how to run an application - binary path, library paths, environment variables - from declarations provided by the app, the SDK, and the host.
 
-NAH is not a package manager. It does not download packages, resolve transitive dependencies, or manage repositories. Apps and SDKs are delivered to the host through whatever mechanism you already use. NAH's job starts after they arrive: given what's installed, compute the exact parameters needed to launch correctly.
+NAH includes tooling to install apps and SDKs from local files or remote URLs (with integrity verification). However, contract composition - determining how to launch an app - operates entirely on local state. There is no network access at launch time, no dependency solving, no version negotiation. Given what's installed, NAH computes the exact parameters needed to launch.
 
 ## The Problem
 

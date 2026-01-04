@@ -1989,10 +1989,10 @@ int main(int argc, char** argv) {
     // Initialize color output
     color::init();
     
-    CLI::App app{"nah - Native Application Host CLI v1.0\n\n"
+    CLI::App app{"nah - Native Application Host CLI v" NAH_VERSION "\n\n"
                  "Manage native applications, NAKs, profiles, and launch contracts."};
     app.require_subcommand(0, 1);
-    app.set_version_flag("-V,--version", "1.0.0");
+    app.set_version_flag("-V,--version", NAH_VERSION);
     app.footer("\nRun 'nah <command> --help' for more information on a command.\n"
                "Documentation: https://github.com/rtorr/nah");
     

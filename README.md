@@ -13,7 +13,7 @@ Apps need SDKs. Hosts run apps. But these are often built by different teams or 
 │                 │   │                 │   │                 │
 │ "I need SDK 2.x"│ + │ "I have 2.1.0"  │ + │ "Here's policy" │
 └────────┬────────┘   └────────┬────────┘   └────────┬────────┘
-         └──────────────┬──────────────────────────────┘
+         └──────────────┬────────────────────────────┘
                         ▼
               ┌─────────────────────┐
               │   Launch Contract   │

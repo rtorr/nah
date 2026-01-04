@@ -1,28 +1,18 @@
 # Getting Started: Host Integrator
 
-Deploy NAH in a production environment.
+You run apps and SDKs from different vendors. This guide covers setting up a NAH root and deploying packages.
 
-## Prerequisites
+See [Core Concepts](concepts.md) for terminology.
 
-- NAH CLI installed (`nah` command available)
-- NAK packs (`.nak`) for your SDKs
-- App packages (`.nap`) to deploy
-
-## 1. Create NAH Root
+## 1. Initialize a NAH Root
 
 ```bash
-nah profile init /nah
-```
-
-Or use a custom location:
-
-```bash
-nah profile init /opt/mycompany/nah
+nah profile init /opt/myplatform
 ```
 
 This creates:
 ```
-/nah/
+/opt/myplatform/
 ├── host/
 │   ├── profiles/
 │   │   └── default.toml
@@ -34,151 +24,107 @@ This creates:
     └── naks/
 ```
 
-## 2. Configure Host Profile
+## 2. Configure the Host Profile
 
-Edit `/nah/host/profiles/default.toml`:
+Edit `host/profiles/default.toml`:
 
 ```toml
 schema = "nah.host.profile.v1"
 
 [nak]
 binding_mode = "canonical"
-# allow_versions = ["1.*", "2.*"]
+# allow_versions = ["2.*"]
 # deny_versions = ["*-beta*"]
 
 [environment]
-NAH_HOST_VERSION = "1.0"
-NAH_ENVIRONMENT = "production"
+DEPLOYMENT_ENV = "production"
 
 [warnings]
-# Make these errors in production
 nak_not_found = "error"
-trust_state_unknown = "error"
-
-[capabilities]
-# Map app capabilities to host enforcement
-"filesystem.read" = "sandbox.readonly"
-"filesystem.write" = "sandbox.readwrite"
-"network.connect" = "network.outbound"
+nak_version_unsupported = "error"
 ```
+
+### Binding Modes
+
+| Mode | Behavior |
+|------|----------|
+| `canonical` | Select highest version satisfying the app's requirement |
+| `mapped` | Use explicit version mappings in `nak.map` |
+
+### Warning Actions
+
+| Action | Behavior |
+|--------|----------|
+| `warn` | Log and continue |
+| `ignore` | Suppress |
+| `error` | Fail |
 
 ## 3. Install NAKs
 
 ```bash
-nah --root /nah nak install mysdk-1.0.0.nak
+nah --root /opt/myplatform nak install vendor-sdk-2.1.0.nak
+nah --root /opt/myplatform nak list
 ```
 
-Verify:
-
+Multiple versions can coexist:
 ```bash
-nah --root /nah nak list
+nah --root /opt/myplatform nak install vendor-sdk-1.0.0.nak
+nah --root /opt/myplatform nak install vendor-sdk-2.1.0.nak
 ```
 
 ## 4. Install Apps
 
 ```bash
-nah --root /nah app install myapp-1.0.0.nap
+nah --root /opt/myplatform app install myapp-1.0.0.nap
+nah --root /opt/myplatform app list
 ```
 
-Verify:
+At install time, NAH selects a compatible NAK and pins it.
+
+## 5. Verify
 
 ```bash
-nah --root /nah app list
+nah --root /opt/myplatform doctor com.example.myapp
 ```
 
-## 5. Validate
+Clean output means the app is ready.
 
-Run diagnostics:
+## 6. View the Launch Contract
 
 ```bash
-nah --root /nah doctor com.yourcompany.myapp
+nah --root /opt/myplatform contract show com.example.myapp
 ```
 
-A clean output means the app is ready to launch.
-
-## 6. Generate Launch Contract
-
-```bash
-nah --root /nah contract show com.yourcompany.myapp
-```
-
-This outputs:
-- Binary path to execute
-- Command line arguments
+Output shows:
+- Binary path
 - Library paths
 - Environment variables
 - Working directory
 
-### JSON Output
-
-For programmatic use:
-
+For scripting:
 ```bash
-nah --root /nah contract show com.yourcompany.myapp --json
+nah --root /opt/myplatform --json contract show com.example.myapp
 ```
 
-## 7. Launch the App
+## 7. Multiple Profiles
 
-Use the contract to launch:
-
-```bash
-# Get the binary and set up environment
-eval $(nah --root /nah contract show myapp --json | jq -r '
-  "export " + (.environment | to_entries | map(.key + "=\"" + .value + "\"") | join(" ")) + 
-  "; " + .execution.binary + " " + (.execution.arguments | join(" "))
-')
-```
-
-Or integrate with your process manager (systemd, Docker, etc.).
-
-## Multiple Profiles
-
-Create additional profiles for different environments:
+Create profiles for different environments:
 
 ```bash
-cp /nah/host/profiles/default.toml /nah/host/profiles/staging.toml
-# Edit staging.toml
+cp host/profiles/default.toml host/profiles/staging.toml
 ```
 
-Switch profiles:
-
+Switch the active profile:
 ```bash
-nah --root /nah profile set staging
+nah --root /opt/myplatform profile set staging
 ```
 
-Or use a specific profile:
-
+Or use a specific profile for one command:
 ```bash
-nah --root /nah --profile staging contract show myapp
+nah --root /opt/myplatform --profile staging contract show com.example.myapp
 ```
-
-## Host Profile Reference
-
-### Binding Modes
-
-| Mode | Description |
-|------|-------------|
-| `canonical` | Select highest version satisfying requirement |
-| `mapped` | Use explicit version mapping |
-
-### Warning Actions
-
-| Action | Description |
-|--------|-------------|
-| `warn` | Log warning, continue |
-| `ignore` | Suppress warning |
-| `error` | Fail with error |
-
-### Key Warnings
-
-| Warning | Description |
-|---------|-------------|
-| `nak_not_found` | No NAK matches requirement |
-| `nak_version_unsupported` | NAK version denied by policy |
-| `trust_state_unknown` | App trust not evaluated |
-| `capability_missing` | Capability not mapped |
 
 ## Next Steps
 
-- See `examples/host/` for profile examples
-- Read SPEC.md for the full profile format
+- [CLI Reference](cli.md) for all commands
+- [SPEC.md](../SPEC.md) for the full profile format

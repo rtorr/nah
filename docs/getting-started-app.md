@@ -1,13 +1,10 @@
 # Getting Started: App Developer
 
-Build an application that runs on NAH.
+You're building an app that depends on an SDK. This guide covers embedding a manifest and packaging your app.
 
-## Prerequisites
+See [Core Concepts](concepts.md) for terminology.
 
-- NAH CLI installed (`nah` command available)
-- A NAK (SDK/framework) to target
-
-## 1. Create App Skeleton
+## 1. Create an App Skeleton
 
 ```bash
 nah app init myapp
@@ -17,99 +14,88 @@ cd myapp
 This creates:
 ```
 myapp/
-├── main.cpp      # Application with embedded manifest
-├── bin/          # Compiled binary goes here
-├── lib/          # App libraries
-└── share/        # App assets
+├── main.cpp
+├── bin/
+├── lib/
+└── share/
 ```
 
-## 2. Edit the Manifest
+## 2. Embed a Manifest
 
-Open `main.cpp` and update the manifest:
+In your C++ source:
 
 ```cpp
+#include <nah/manifest.h>
+
 NAH_APP_MANIFEST(
-    nah::manifest()
-        .id("com.yourcompany.myapp")    // Your app ID
-        .version("1.0.0")                // Your version
-        .nak_id("com.example.sdk")       // NAK you depend on
-        .nak_version_req(">=1.0.0 <2.0.0")  // Version requirement
-        .entrypoint("bin/myapp")         // Path to binary
-        .lib_dir("lib")
-        .asset_dir("share")
-        .build()
-);
+    NAH_FIELD_ID("com.yourcompany.myapp")
+    NAH_FIELD_VERSION("1.0.0")
+    NAH_FIELD_NAK_ID("com.example.sdk")
+    NAH_FIELD_NAK_VERSION_REQ(">=2.0.0 <3.0.0")
+    NAH_FIELD_ENTRYPOINT("bin/myapp")
+    NAH_FIELD_LIB_DIR("lib")
+)
+
+int main(int argc, char* argv[]) {
+    // Your app code
+    return 0;
+}
 ```
+
+### Manifest Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier (reverse domain notation) |
+| `version` | Your app's SemVer version |
+| `nak_id` | NAK your app depends on |
+| `nak_version_req` | Version requirement (SemVer range) |
+| `entrypoint` | Path to binary relative to app root |
 
 ### Version Requirements
 
-NAH uses [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) range syntax:
+| Syntax | Meaning |
+|--------|---------|
+| `1.2.3` | Exactly 1.2.3 |
+| `>=1.2.0` | 1.2.0 or higher |
+| `>=1.0.0 <2.0.0` | 1.x (space = AND) |
+| `>=1.0.0 \|\| >=3.0.0` | 1.x or 3.0+ (pipe = OR) |
 
-| Format | Example | Meaning |
-|--------|---------|---------|
-| Exact | `1.2.0` | Exactly version 1.2.0 |
-| Greater/Equal | `>=1.2.0` | Version 1.2.0 or higher |
-| Range | `>=1.2.0 <2.0.0` | Version 1.2.0 up to (not including) 2.0.0 |
-| OR | `>=1.0.0 <2.0.0 \|\| >=3.0.0` | 1.x versions or 3.0.0+ |
-
-Comparators: `=`, `<`, `<=`, `>`, `>=`. Space-separated comparators are AND'd.
-
-## 3. Build Your App
-
-Build with your toolchain:
+## 3. Build
 
 ```bash
-mkdir build && cd build
-cmake ..
-make
+cmake -B build
+cmake --build build
+# Ensure binary is at bin/myapp
 ```
 
-Ensure the binary is at `bin/myapp` (matching your entrypoint).
-
-## 4. Package as NAP
+## 4. Package
 
 ```bash
 nah app pack . -o myapp-1.0.0.nap
 ```
 
-This creates a NAP (Native App Package) archive.
-
-## 5. Test Installation
+## 5. Test
 
 Install into a NAH root:
 
 ```bash
 nah --root /path/to/nah app install myapp-1.0.0.nap
-```
-
-## 6. Verify
-
-```bash
 nah --root /path/to/nah doctor com.yourcompany.myapp
-```
-
-A clean output means your app is correctly configured.
-
-## 7. View Launch Contract
-
-```bash
 nah --root /path/to/nah contract show com.yourcompany.myapp
 ```
 
-This shows how your app will be launched: binary path, library paths, environment variables.
-
 ## Alternative: Standalone Manifest
 
-Instead of embedding the manifest in code, you can use a separate `manifest.toml`:
+Instead of embedding, use a separate `manifest.toml`:
 
 ```toml
 id = "com.yourcompany.myapp"
 version = "1.0.0"
 nak_id = "com.example.sdk"
-nak_version_req = ">=1.0.0 <2.0.0"
+nak_version_req = ">=2.0.0 <3.0.0"
 entrypoint = "bin/myapp"
 lib_dirs = ["lib"]
-asset_dirs = ["share"]
 ```
 
 Generate the binary manifest:
@@ -118,9 +104,9 @@ Generate the binary manifest:
 nah manifest generate manifest.toml -o manifest.nah
 ```
 
-Include `manifest.nah` in your NAP package root.
+Include `manifest.nah` in your package root.
 
 ## Next Steps
 
-- See `examples/apps/` for complete working examples
-- Read SPEC.md for the full manifest format
+- [CLI Reference](cli.md) for all commands
+- [SPEC.md](../SPEC.md) for the full manifest format

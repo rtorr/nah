@@ -187,7 +187,7 @@ void create_test_app(const std::string& nah_root, const std::string& id,
         "id = \"" << nak_id << "\"\n"
         "version = \"1.0.0\"\n\n"
         "[paths]\n"
-        "install_root = \"" << app_dir << "\"\n";
+        "install_root = \"" << to_portable_path(app_dir) << "\"\n";
 }
 
 // Helper to create a test NAP package with manifest.nah
@@ -458,7 +458,7 @@ id = "com.nonexistent.nak"
 version = "1.0.0"
 
 [paths]
-install_root = ")" << app_dir << R"("
+install_root = ")" << to_portable_path(app_dir) << R"("
 )";
     
     auto result = verify_app(root.path(), "com.test.app", "1.0.0");
@@ -650,7 +650,7 @@ id = "com.test.app"
 version = "1.0.0"
 
 [paths]
-install_root = ")" << app_dir << R"("
+install_root = ")" << to_portable_path(app_dir) << R"("
 )";
     
     auto host = NahHost::create(root.path());
@@ -688,7 +688,7 @@ TEST_CASE("NahHost listApplications returns all installed apps") {
             "id = \"" << id << "\"\n"
             "version = \"" << version << "\"\n"
             "[paths]\n"
-            "install_root = \"" << app_dir << "\"\n";
+            "install_root = \"" << to_portable_path(app_dir) << "\"\n";
     }
     
     auto host = NahHost::create(root.path());
@@ -1223,7 +1223,7 @@ schema = "nah.nak.install.v1"
 id = "com.test.nak"
 version = "1.0.0"
 [paths]
-root = ")" << root.path() << R"(/naks/com.test.nak/1.0.0"
+root = ")" << to_portable_path(root.path() + "/naks/com.test.nak/1.0.0") << R"("
 )";
     
     // Install a test app

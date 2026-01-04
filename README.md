@@ -204,6 +204,25 @@ ctest --test-dir build --output-on-failure
 | `NAH_ENABLE_WARNINGS` | ON | Enable strict compiler warnings |
 | `NAH_ENABLE_SANITIZERS` | OFF | Enable ASan/UBSan (GCC/Clang) |
 
+### Creating a Release
+
+Releases are automated via GitHub Actions. To create a new release:
+
+```bash
+# Create and push a version tag
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers the release workflow which:
+1. Builds binaries for Linux (x64), macOS (x64, ARM64), and Windows (x64)
+2. Creates a GitHub Release with the binaries
+3. Auto-generates release notes from commits
+
+**Version format:**
+- `v1.0.0` - stable release
+- `v1.0.0-beta.1` - pre-release (marked as such on GitHub)
+
 ## Specification
 
 See [SPEC.md](SPEC.md) for the complete normative specification.

@@ -2,17 +2,14 @@
 #
 # Host Setup Script
 # =================
-# Reads host.toml and sets up the NAH root with all declared NAKs and apps.
+# Reads host.toml and installs pre-built NAKs and apps into the NAH root.
 #
 # Usage:
-#   ./setup.sh [--clean] [--skip-optional]
+#   ./setup.sh [--clean]
 #
-# This script:
-#   1. Reads host.toml to find declared NAKs and apps
-#   2. Builds any NAKs/apps that need building
-#   3. Installs them into the NAH root
-#   4. Copies host profiles
-#   5. Sets the default profile
+# Prerequisites:
+#   - NAK and NAP packages must already be built
+#   - NAH CLI must be available
 
 set -e
 
@@ -32,7 +29,7 @@ log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # =============================================================================
-# Parse host.toml (basic TOML parsing with grep/sed)
+# Parse host.toml
 # =============================================================================
 
 get_toml_value() {
@@ -42,13 +39,11 @@ get_toml_value() {
 
 get_toml_array_blocks() {
     local file="$1" block="$2"
-    # Count occurrences of [[block]]
     grep -c "^\[\[${block}\]\]" "$file" 2>/dev/null || echo 0
 }
 
 get_block_field() {
     local file="$1" block="$2" index="$3" field="$4"
-    # Extract the nth block and get the field
     awk -v block="$block" -v idx="$index" -v field="$field" '
         BEGIN { count=0; in_block=0 }
         /^\[\['"$block"'\]\]/ { count++; in_block=(count==idx) }
@@ -71,7 +66,6 @@ find_nah_cli() {
         return 0
     fi
 
-    # Check common locations
     for path in \
         "$SCRIPT_DIR/../../build/tools/nah/nah" \
         "/usr/local/bin/nah" \
@@ -88,60 +82,23 @@ find_nah_cli() {
 }
 
 # =============================================================================
-# Build helpers
-# =============================================================================
-
-build_cmake_project() {
-    local src_dir="$1" name="$2"
-    local build_dir="$src_dir/build"
-
-    if [ ! -f "$src_dir/CMakeLists.txt" ]; then
-        log_error "No CMakeLists.txt in $src_dir"
-        return 1
-    fi
-
-    log_info "Building $name..."
-    mkdir -p "$build_dir"
-    cmake -S "$src_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-    cmake --build "$build_dir" --parallel >/dev/null 2>&1
-    log_success "Built $name"
-}
-
-build_conan_project() {
-    local src_dir="$1" name="$2"
-
-    if ! command -v conan &>/dev/null; then
-        log_warn "Conan not available, skipping $name"
-        return 1
-    fi
-
-    log_info "Building $name with Conan..."
-    cd "$src_dir"
-    conan install . --output-folder=build --build=missing \
-        --deployer=full_deploy --deployer-folder=build/deploy >/dev/null 2>&1
-    cmake --preset conan-release >/dev/null 2>&1
-    cmake --build build/build/Release --parallel >/dev/null 2>&1
-    cd - >/dev/null
-    log_success "Built $name"
-}
-
-# =============================================================================
 # Main
 # =============================================================================
 
 CLEAN=0
-SKIP_OPTIONAL=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --clean) CLEAN=1; shift ;;
-        --skip-optional) SKIP_OPTIONAL=1; shift ;;
         --help|-h)
-            echo "Usage: $0 [--clean] [--skip-optional]"
+            echo "Usage: $0 [--clean]"
             echo ""
             echo "Options:"
-            echo "  --clean          Remove existing NAH root before setup"
-            echo "  --skip-optional  Skip optional NAKs and apps"
+            echo "  --clean    Remove existing NAH root before setup"
+            echo ""
+            echo "Prerequisites:"
+            echo "  NAK and NAP packages must already be built."
+            echo "  Run examples/scripts/build_all.sh first."
             exit 0
             ;;
         *) shift ;;
@@ -215,54 +172,21 @@ NAK_COUNT=$(get_toml_array_blocks "$HOST_MANIFEST" "naks")
 for i in $(seq 1 "$NAK_COUNT"); do
     NAK_ID=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "id")
     NAK_VERSION=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "version")
-    NAK_SOURCE=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "source")
-    NAK_DESC=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "description")
+    NAK_PACKAGE=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "package")
     NAK_OPTIONAL=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "optional")
 
-    if [ "$SKIP_OPTIONAL" = "1" ] && [ "$NAK_OPTIONAL" = "true" ]; then
-        log_warn "Skipping optional NAK: $NAK_ID"
-        continue
+    # Resolve package path
+    if [[ "$NAK_PACKAGE" != /* ]]; then
+        NAK_PACKAGE="$SCRIPT_DIR/${NAK_PACKAGE#./}"
     fi
 
-    # Resolve source path
-    if [[ "$NAK_SOURCE" != /* ]]; then
-        NAK_SOURCE="$SCRIPT_DIR/${NAK_SOURCE#./}"
-    fi
-
-    # Find or build NAK package
-    NAK_FILE=""
-
-    # Check for pre-built NAK
-    if [ -f "$NAK_SOURCE/build/${NAK_ID}-${NAK_VERSION}.nak" ]; then
-        NAK_FILE="$NAK_SOURCE/build/${NAK_ID}-${NAK_VERSION}.nak"
-    elif [ -f "$NAK_SOURCE/build/build/Release/${NAK_ID}-${NAK_VERSION}.nak" ]; then
-        NAK_FILE="$NAK_SOURCE/build/build/Release/${NAK_ID}-${NAK_VERSION}.nak"
-    else
-        # Need to build
-        if [ -f "$NAK_SOURCE/conanfile.py" ]; then
-            if build_conan_project "$NAK_SOURCE" "$NAK_DESC"; then
-                NAK_FILE="$NAK_SOURCE/build/build/Release/${NAK_ID}-${NAK_VERSION}.nak"
-            elif [ "$NAK_OPTIONAL" = "true" ]; then
-                log_warn "Skipping optional NAK: $NAK_ID (build failed)"
-                continue
-            else
-                log_error "Failed to build required NAK: $NAK_ID"
-                exit 1
-            fi
-        elif [ -f "$NAK_SOURCE/CMakeLists.txt" ]; then
-            build_cmake_project "$NAK_SOURCE" "$NAK_DESC"
-            cmake --build "$NAK_SOURCE/build" --target package_nak >/dev/null 2>&1 || true
-            NAK_FILE="$NAK_SOURCE/build/${NAK_ID}-${NAK_VERSION}.nak"
-        fi
-    fi
-
-    if [ -f "$NAK_FILE" ]; then
-        "$NAH_CLI" --root "$NAH_ROOT" nak install "$NAK_FILE" >/dev/null 2>&1
+    if [ -f "$NAK_PACKAGE" ]; then
+        "$NAH_CLI" --root "$NAH_ROOT" nak install "$NAK_PACKAGE" >/dev/null 2>&1
         log_success "Installed NAK: $NAK_ID@$NAK_VERSION"
     elif [ "$NAK_OPTIONAL" = "true" ]; then
-        log_warn "Skipping optional NAK: $NAK_ID (not found)"
+        log_warn "Skipping optional NAK: $NAK_ID (package not found)"
     else
-        log_error "NAK package not found: $NAK_ID"
+        log_error "NAK package not found: $NAK_PACKAGE"
         exit 1
     fi
 done
@@ -278,55 +202,33 @@ APP_COUNT=$(get_toml_array_blocks "$HOST_MANIFEST" "apps")
 for i in $(seq 1 "$APP_COUNT"); do
     APP_ID=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "id")
     APP_VERSION=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "version")
-    APP_SOURCE=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "source")
-    APP_DESC=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "description")
+    APP_PACKAGE=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "package")
     APP_NAK=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "nak")
     APP_OPTIONAL=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "optional")
 
-    if [ "$SKIP_OPTIONAL" = "1" ] && [ "$APP_OPTIONAL" = "true" ]; then
-        log_warn "Skipping optional app: $APP_ID"
-        continue
-    fi
-
     # Check if required NAK is installed
-    if [ -n "$APP_NAK" ]; then
-        if [ ! -d "$NAH_ROOT/naks/$APP_NAK" ]; then
-            if [ "$APP_OPTIONAL" = "true" ]; then
-                log_warn "Skipping $APP_ID (NAK $APP_NAK not installed)"
-                continue
-            else
-                log_error "Required NAK not installed: $APP_NAK"
-                exit 1
-            fi
+    if [ -n "$APP_NAK" ] && [ ! -d "$NAH_ROOT/naks/$APP_NAK" ]; then
+        if [ "$APP_OPTIONAL" = "true" ]; then
+            log_warn "Skipping optional app: $APP_ID (NAK $APP_NAK not installed)"
+            continue
+        else
+            log_error "Required NAK not installed: $APP_NAK"
+            exit 1
         fi
     fi
 
-    # Resolve source path
-    if [[ "$APP_SOURCE" != /* ]]; then
-        APP_SOURCE="$SCRIPT_DIR/${APP_SOURCE#./}"
+    # Resolve package path
+    if [[ "$APP_PACKAGE" != /* ]]; then
+        APP_PACKAGE="$SCRIPT_DIR/${APP_PACKAGE#./}"
     fi
 
-    # Find or build app package
-    APP_FILE=""
-
-    if [ -f "$APP_SOURCE/build/${APP_ID}-${APP_VERSION}.nap" ]; then
-        APP_FILE="$APP_SOURCE/build/${APP_ID}-${APP_VERSION}.nap"
-    else
-        # Build the app
-        if [ -f "$APP_SOURCE/CMakeLists.txt" ]; then
-            build_cmake_project "$APP_SOURCE" "$APP_DESC"
-            cmake --build "$APP_SOURCE/build" --target package_nap >/dev/null 2>&1 || true
-            APP_FILE="$APP_SOURCE/build/${APP_ID}-${APP_VERSION}.nap"
-        fi
-    fi
-
-    if [ -f "$APP_FILE" ]; then
-        "$NAH_CLI" --root "$NAH_ROOT" app install "$APP_FILE" >/dev/null 2>&1
+    if [ -f "$APP_PACKAGE" ]; then
+        "$NAH_CLI" --root "$NAH_ROOT" app install "$APP_PACKAGE" >/dev/null 2>&1
         log_success "Installed app: $APP_ID@$APP_VERSION"
     elif [ "$APP_OPTIONAL" = "true" ]; then
-        log_warn "Skipping optional app: $APP_ID (not found)"
+        log_warn "Skipping optional app: $APP_ID (package not found)"
     else
-        log_error "App package not found: $APP_ID"
+        log_error "App package not found: $APP_PACKAGE"
         exit 1
     fi
 done

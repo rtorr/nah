@@ -2,7 +2,8 @@
 # ==============
 # Declares the NAKs and apps this host requires.
 #
-# This file is read by setup.sh to install dependencies.
+# The host installs pre-built packages - it does not build them.
+# Use `package` to specify the .nak or .nap file path.
 
 [host]
 name = "example-host"
@@ -24,15 +25,15 @@ default_profile = "default"
 [[naks]]
 id = "com.example.sdk"
 version = "1.2.3"
-source = "../sdk"
+package = "../sdk/build/com.example.sdk-1.2.3.nak"
 description = "Framework SDK - basic runtime for C/C++ apps"
 
 [[naks]]
 id = "com.example.gameengine"
 version = "1.0.0"
-source = "../conan-sdk"
+package = "../conan-sdk/build/build/Release/com.example.gameengine-1.0.0.nak"
 description = "Game Engine SDK - runtime with graphics, networking, crypto"
-optional = true  # Skip if conan not available
+optional = true
 
 # =============================================================================
 # Apps (Native App Packages)
@@ -42,21 +43,21 @@ optional = true  # Skip if conan not available
 [[apps]]
 id = "com.example.app"
 version = "1.0.0"
-source = "../apps/app"
+package = "../apps/app/build/com.example.app-1.0.0.nap"
 nak = "com.example.sdk"
 description = "Basic C application with standalone manifest"
 
 [[apps]]
 id = "com.example.app_c"
 version = "1.0.0"
-source = "../apps/app_c"
+package = "../apps/app_c/build/com.example.app_c-1.0.0.nap"
 nak = "com.example.sdk"
 description = "C++ application with embedded manifest"
 
 [[apps]]
 id = "com.example.mygame"
 version = "1.0.0"
-source = "../apps/game-app"
+package = "../apps/game-app/build/com.example.mygame-1.0.0.nap"
 nak = "com.example.gameengine"
 description = "Game targeting the game engine SDK"
-optional = true  # Skip if gameengine NAK not available
+optional = true

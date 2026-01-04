@@ -124,6 +124,11 @@ target_link_libraries(nahhost PUBLIC
     nah_packaging
 )
 
+# On Windows, rename static lib to avoid conflict with DLL import lib
+if(WIN32)
+    set_target_properties(nahhost PROPERTIES OUTPUT_NAME "nahhost_static")
+endif()
+
 # =============================================================================
 # Shared Library (for users who want to update NAH without recompiling)
 # =============================================================================

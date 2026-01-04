@@ -66,6 +66,11 @@ AtomicWriteResult atomic_update_symlink(const std::string& link_path, const std:
 // Path Utilities
 // ============================================================================
 
+// Convert a path to use forward slashes (portable format)
+// NAH uses forward slashes internally for cross-platform consistency
+// in tar archives, manifests, and all stored paths.
+std::string to_portable_path(const std::string& path);
+
 // Get the directory containing a file path
 std::string get_parent_directory(const std::string& path);
 

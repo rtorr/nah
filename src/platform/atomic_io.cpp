@@ -225,6 +225,12 @@ AtomicWriteResult atomic_update_symlink(const std::string& link_path, const std:
     return result;
 }
 
+std::string to_portable_path(const std::string& path) {
+    std::string result = path;
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
+}
+
 std::string get_parent_directory(const std::string& path) {
     fs::path p(path);
     return p.parent_path().string();
@@ -238,7 +244,7 @@ std::string get_filename(const std::string& path) {
 std::string join_path(const std::string& base, const std::string& rel) {
     fs::path p(base);
     p /= rel;
-    return p.string();
+    return to_portable_path(p.string());
 }
 
 bool path_exists(const std::string& path) {

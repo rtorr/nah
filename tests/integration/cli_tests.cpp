@@ -952,15 +952,19 @@ cwd = "{NAH_APP_ROOT}"
     CHECK(fs::exists(temp / "META" / "nak.toml"));
     
     // Verify the generated nak.toml is valid
-    std::ifstream file(temp / "META" / "nak.toml");
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+    std::string content;
+    {
+        std::ifstream file(temp / "META" / "nak.toml");
+        content = std::string((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+    } // file closed here
     
     auto result = parse_nak_pack_manifest(content);
     CHECK(result.ok);
     CHECK(result.manifest.nak.id == "com.example.nak");
     
-    fs::remove_all(temp);
+    std::error_code ec;
+    fs::remove_all(temp, ec); // ignore errors on cleanup
 }
 
 TEST_CASE("profile init creates NAH root structure") {
@@ -993,9 +997,12 @@ binding_mode = "canonical"
     CHECK(fs::exists(temp / "registry" / "naks"));
     
     // Verify the profile is valid
-    std::ifstream file(temp / "host" / "profiles" / "default.toml");
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+    std::string content;
+    {
+        std::ifstream file(temp / "host" / "profiles" / "default.toml");
+        content = std::string((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+    } // file closed here
     
     auto result = parse_host_profile_full(content, "default.toml");
     CHECK(result.ok);
@@ -1005,7 +1012,8 @@ binding_mode = "canonical"
     auto target = fs::read_symlink(temp / "host" / "profile.current");
     CHECK(target == fs::path("profiles/default.toml"));
     
-    fs::remove_all(temp);
+    std::error_code ec;
+    fs::remove_all(temp, ec); // ignore errors on cleanup
 }
 
 TEST_CASE("profile init fails if host/ exists") {

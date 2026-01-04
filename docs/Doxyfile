@@ -48,7 +48,6 @@ GENERATE_XML           = NO
 
 # Diagrams (if Graphviz is available)
 HAVE_DOT               = NO
-CLASS_DIAGRAMS         = YES
 
 # Warnings
 QUIET                  = NO

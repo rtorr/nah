@@ -70,7 +70,7 @@ TEST_CASE("Manifest parses identity fields and requirement") {
         {10, "app.id"},
         {11, "1.2.3"},
         {12, "nak.id"},
-        {13, "^3.1.0"},
+        {13, ">=3.1.0 <4.0.0"},
         {20, "bin/app"},
     };
     auto blob = build_manifest(entries);

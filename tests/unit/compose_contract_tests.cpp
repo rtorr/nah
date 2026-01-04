@@ -73,7 +73,7 @@ Manifest create_test_manifest() {
     m.id = "com.example.app";
     m.version = "1.0.0";
     m.entrypoint_path = "bin/myapp";
-    m.nak_version_req = SemVerRequirement{RequirementKind::Caret, SemVer{3, 0, 0}, SemVer{4, 0, 0}, "3.0"};
+    m.nak_version_req = parse_range(">=3.0.0 <4.0.0");
     return m;
 }
 

@@ -71,7 +71,7 @@ NakSelectionResult select_nak_for_install(
     if (valid_candidates.empty()) {
         warnings.emit(Warning::nak_version_unsupported, 
                       {{"nak_id", manifest.nak_id}, 
-                       {"nak_version_req", manifest.nak_version_req->selection_key}});
+                       {"nak_version_req", manifest.nak_version_req->selection_key()}});
         return result;
     }
     
@@ -80,7 +80,7 @@ NakSelectionResult select_nak_for_install(
     
     if (profile.nak.binding_mode == BindingMode::Mapped) {
         // Mapped mode: look up selection_key in profile.nak.map
-        auto it = profile.nak.map.find(req.selection_key);
+        auto it = profile.nak.map.find(req.selection_key());
         if (it != profile.nak.map.end()) {
             // Find the entry matching the record_ref
             for (const auto* entry : valid_candidates) {
@@ -100,19 +100,19 @@ NakSelectionResult select_nak_for_install(
             // No entry for selection_key
             warnings.emit(Warning::nak_version_unsupported,
                           {{"nak_id", manifest.nak_id},
-                           {"selection_key", req.selection_key}});
+                           {"selection_key", req.selection_key()}});
             return result;
         }
     } else {
         // Canonical mode: choose the highest version that satisfies
         const NakRegistryEntry* highest = nullptr;
-        SemVer highest_ver{0, 0, 0};
+        std::optional<Version> highest_ver;
         
         for (const auto* entry : valid_candidates) {
             auto ver = parse_version(entry->version);
-            if (ver && (highest == nullptr || highest_ver < *ver)) {
+            if (ver && (!highest_ver || *highest_ver < *ver)) {
                 highest = entry;
-                highest_ver = *ver;
+                highest_ver = ver;
             }
         }
         
@@ -129,7 +129,7 @@ NakSelectionResult select_nak_for_install(
     result.pin.id = selected->id;
     result.pin.version = selected->version;
     result.pin.record_ref = selected->record_ref;
-    result.selection_reason = "matched " + req.selection_key + ", allowed by profile";
+    result.selection_reason = "matched " + req.selection_key() + ", allowed by profile";
     
     return result;
 }
@@ -226,7 +226,7 @@ PinnedNakLoadResult load_pinned_nak(
         warnings.emit(Warning::nak_version_unsupported,
                       {{"reason", "requirement_not_satisfied"},
                        {"version", nak_record.nak.version},
-                       {"requirement", manifest.nak_version_req->selection_key}});
+                       {"requirement", manifest.nak_version_req->selection_key()}});
         return result;
     }
     

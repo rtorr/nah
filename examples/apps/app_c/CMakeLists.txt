@@ -36,7 +36,7 @@ set(APP_VERSION "${PROJECT_VERSION}")
 
 # SDK requirement
 set(NAK_ID "com.example.sdk")
-set(NAK_VERSION_REQ "^1.0.0")
+set(NAK_VERSION_REQ ">=1.0.0 <2.0.0")
 
 message(STATUS "Building Application: ${APP_ID}@${APP_VERSION}")
 message(STATUS "  Requires NAK: ${NAK_ID} ${NAK_VERSION_REQ}")

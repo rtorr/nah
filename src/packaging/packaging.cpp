@@ -831,7 +831,7 @@ NapPackageInfo inspect_nap_package(const std::vector<uint8_t>& archive_data) {
             result.app_version = manifest_result.manifest.version;
             result.nak_id = manifest_result.manifest.nak_id;
             if (manifest_result.manifest.nak_version_req) {
-                result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key;
+                result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key();
             }
             result.entrypoint = manifest_result.manifest.entrypoint_path;
             result.manifest_source = "file:manifest.nah";
@@ -850,7 +850,7 @@ NapPackageInfo inspect_nap_package(const std::vector<uint8_t>& archive_data) {
                     result.app_version = manifest_result.manifest.version;
                     result.nak_id = manifest_result.manifest.nak_id;
                     if (manifest_result.manifest.nak_version_req) {
-                        result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key;
+                        result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key();
                     }
                     result.entrypoint = manifest_result.manifest.entrypoint_path;
                     result.manifest_source = "embedded:" + bin_path;

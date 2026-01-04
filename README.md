@@ -24,12 +24,12 @@ NAH fixes this by making launch behavior a deterministic composition:
 
 ## Key Concepts
 
-| Term | Description |
-|------|-------------|
-| **NAK** | Native App Kit - versioned SDK/framework bundle that apps target at launch |
-| **NAP** | Native App Package - application package targeting a specific NAK |
-| **App Manifest** | Immutable declaration embedded in app binary or as `manifest.nah` |
-| **Launch Contract** | Final executable contract: binary, argv, cwd, environment, library paths |
+| Term                | Description                                                                |
+| ------------------- | -------------------------------------------------------------------------- |
+| **NAK**             | Native App Kit - versioned SDK/framework bundle that apps target at launch |
+| **NAP**             | Native App Package - application package targeting a specific NAK          |
+| **App Manifest**    | Immutable declaration embedded in app binary or as `manifest.nah`          |
+| **Launch Contract** | Final executable contract: binary, argv, cwd, environment, library paths   |
 
 ## Installation
 
@@ -126,7 +126,7 @@ NAH_APP_MANIFEST(
     NAH_FIELD_ID("com.example.myapp")
     NAH_FIELD_VERSION("1.0.0")
     NAH_FIELD_NAK_ID("com.example.sdk")
-    NAH_FIELD_NAK_VERSION_REQ("^1.0.0")
+    NAH_FIELD_NAK_VERSION_REQ(">=1.0.0 <2.0.0")
     NAH_FIELD_ENTRYPOINT("bin/myapp")
     NAH_FIELD_LIB_DIR("lib")
 )
@@ -198,11 +198,11 @@ ctest --test-dir build --output-on-failure
 
 ### CMake Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `NAH_ENABLE_TESTS` | ON | Build test suite |
-| `NAH_ENABLE_WARNINGS` | ON | Enable strict compiler warnings |
-| `NAH_ENABLE_SANITIZERS` | OFF | Enable ASan/UBSan (GCC/Clang) |
+| Option                  | Default | Description                     |
+| ----------------------- | ------- | ------------------------------- |
+| `NAH_ENABLE_TESTS`      | ON      | Build test suite                |
+| `NAH_ENABLE_WARNINGS`   | ON      | Enable strict compiler warnings |
+| `NAH_ENABLE_SANITIZERS` | OFF     | Enable ASan/UBSan (GCC/Clang)   |
 
 ### Creating a Release
 
@@ -215,11 +215,13 @@ git push origin v1.0.0
 ```
 
 This triggers the release workflow which:
+
 1. Builds binaries for Linux (x64), macOS (x64, ARM64), and Windows (x64)
 2. Creates a GitHub Release with the binaries
 3. Auto-generates release notes from commits
 
 **Version format:**
+
 - `v1.0.0` - stable release
 - `v1.0.0-beta.1` - pre-release (marked as such on GitHub)
 

@@ -4,6 +4,7 @@ add_library(nah_manifest STATIC
     manifest/tlv_encode.cpp
 )
 target_include_directories(nah_manifest PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(nah_manifest PUBLIC semver)
 
 add_library(nah_platform STATIC
     platform/path_utils.cpp
@@ -36,6 +37,7 @@ target_link_libraries(nah_contract PUBLIC
     nah_platform
     nlohmann_json::nlohmann_json
     tomlplusplus::tomlplusplus
+    semver
 )
 
 add_library(nah_packaging STATIC

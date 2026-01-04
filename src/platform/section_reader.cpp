@@ -4,6 +4,15 @@
 #include <fstream>
 #include <vector>
 
+#ifdef _MSC_VER
+#include <stdlib.h>
+#define bswap32(x) _byteswap_ulong(x)
+#define bswap64(x) _byteswap_uint64(x)
+#else
+#define bswap32(x) __builtin_bswap32(x)
+#define bswap64(x) __builtin_bswap64(x)
+#endif
+
 namespace nah {
 
 namespace {
@@ -217,7 +226,7 @@ SectionReadResult read_macho_section(const std::vector<uint8_t>& data,
         return result;
     }
     
-    uint32_t ncmds = swap_bytes ? __builtin_bswap32(header->ncmds) : header->ncmds;
+    uint32_t ncmds = swap_bytes ? bswap32(header->ncmds) : header->ncmds;
     
     size_t offset = sizeof(mach_header_64);
     
@@ -228,8 +237,8 @@ SectionReadResult read_macho_section(const std::vector<uint8_t>& data,
         }
         
         const auto* lc = reinterpret_cast<const load_command*>(data.data() + offset);
-        uint32_t cmd = swap_bytes ? __builtin_bswap32(lc->cmd) : lc->cmd;
-        uint32_t cmdsize = swap_bytes ? __builtin_bswap32(lc->cmdsize) : lc->cmdsize;
+        uint32_t cmd = swap_bytes ? bswap32(lc->cmd) : lc->cmd;
+        uint32_t cmdsize = swap_bytes ? bswap32(lc->cmdsize) : lc->cmdsize;
         
         if (cmd == LC_SEGMENT_64) {
             if (offset + sizeof(segment_command_64) > data.size()) {
@@ -240,7 +249,7 @@ SectionReadResult read_macho_section(const std::vector<uint8_t>& data,
             const auto* seg = reinterpret_cast<const segment_command_64*>(data.data() + offset);
             
             if (std::strncmp(seg->segname, segment_name, 16) == 0) {
-                uint32_t nsects = swap_bytes ? __builtin_bswap32(seg->nsects) : seg->nsects;
+                uint32_t nsects = swap_bytes ? bswap32(seg->nsects) : seg->nsects;
                 
                 size_t sect_offset = offset + sizeof(segment_command_64);
                 
@@ -253,8 +262,8 @@ SectionReadResult read_macho_section(const std::vector<uint8_t>& data,
                     const auto* sect = reinterpret_cast<const section_64*>(data.data() + sect_offset);
                     
                     if (std::strncmp(sect->sectname, section_name, 16) == 0) {
-                        uint32_t sect_offset_val = swap_bytes ? __builtin_bswap32(sect->offset) : sect->offset;
-                        uint64_t sect_size = swap_bytes ? __builtin_bswap64(sect->size) : sect->size;
+                        uint32_t sect_offset_val = swap_bytes ? bswap32(sect->offset) : sect->offset;
+                        uint64_t sect_size = swap_bytes ? bswap64(sect->size) : sect->size;
                         
                         if (sect_offset_val + sect_size > data.size()) {
                             result.error = "section data out of bounds";

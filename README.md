@@ -3,67 +3,59 @@
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
-Apps need SDKs. Hosts run apps. But these are often built by different teams or vendors. How do they connect without everyone knowing everything about each other?
+NAH provides deterministic launch contracts for native applications. Applications declare their requirements in a manifest. SDKs (NAKs) declare what they provide. Hosts define policy. NAH composes these into an executable specification: binary path, arguments, environment, library paths.
 
-**NAH makes each party self-describing.** Apps declare what they need. SDKs declare what they provide. Hosts set policy. NAH composes them into a deterministic launch contract.
+## Core Mechanism
 
-```
-┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-│      App        │   │    SDK (NAK)    │   │      Host       │
-│                 │   │                 │   │                 │
-│ "I need SDK 2.x"│ + │ "I have 2.1.0"  │ + │ "Here's policy" │
-└────────┬────────┘   └────────┬────────┘   └────────┬────────┘
-         └──────────────┬────────────────────────────┘
-                        ▼
-              ┌─────────────────────┐
-              │   Launch Contract   │
-              │                     │
-              │ binary, env, paths  │
-              │ (auditable, exact)  │
-              └─────────────────────┘
-```
+NAH separates three concerns that are typically conflated:
 
-## Try It
+| Artifact | Owner | Contains |
+|----------|-------|----------|
+| **App Manifest** | App developer | Identity, NAK requirement, entrypoint, layout |
+| **NAK** | SDK developer | Libraries, resources, loader (optional) |
+| **Host Profile** | Host platform | Binding policy, allowed versions, environment |
+
+At install time, NAH pins a compatible NAK version. At launch time, NAH composes these artifacts into a **Launch Contract** containing the exact execution parameters.
+
+## Usage
 
 ```bash
-# Set up a host
-nah profile init ./myhost
-nah --root ./myhost nak install sdk-2.1.0.nak
-nah --root ./myhost app install myapp-1.0.0.nap
+# Initialize host
+nah profile init /opt/nah
 
-# See exactly how the app will launch
-nah --root ./myhost contract show com.example.myapp
+# Install SDK and app
+nah --root /opt/nah nak install sdk-2.1.0.nak
+nah --root /opt/nah app install myapp-1.0.0.nap
+
+# Show launch contract
+nah --root /opt/nah contract show com.example.myapp
 ```
 
-Output: binary path, library paths, environment variables, working directory. No guessing.
-
-## Who Is This For?
-
-| Role | What You Do | Guide |
-|------|-------------|-------|
-| **Host Platform** | Run apps and SDKs from vendors, control policy | [Getting Started: Host](docs/getting-started-host.md) |
-| **SDK Developer** | Ship runtimes/frameworks that apps depend on | [Getting Started: NAK](docs/getting-started-nak.md) |
-| **App Developer** | Build apps that need SDKs to run | [Getting Started: App](docs/getting-started-app.md) |
-
-Each party declares only what's in their domain. NAH handles the seams.
-
-## Multiple SDKs, Multiple Versions
-
-Hosts can have many SDKs installed. Apps declare requirements, NAH matches them:
-
+Contract output:
 ```
-naks/
-├── com.vendor.runtime/
-│   ├── 1.0.0/    ← legacy-app gets this
-│   └── 2.1.0/    ← modern-app gets this
-└── com.other.framework/
-    └── 3.2.0/    ← other-app gets this
+Application: com.example.myapp v1.0.0
+NAK: com.example.sdk v2.1.0
+Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
+CWD: /opt/nah/apps/com.example.myapp-1.0.0
+Library Paths: /opt/nah/naks/com.example.sdk/2.1.0/lib
 ```
 
-Legacy apps keep working. New apps use new SDKs. No manual coordination.
+## Multiple SDK Versions
 
-## Install
+NAKs are installed by ID and version. Multiple versions coexist:
 
+```
+/opt/nah/naks/
+├── com.vendor.runtime/1.0.0/
+├── com.vendor.runtime/2.1.0/
+└── com.other.framework/3.2.0/
+```
+
+Apps declare version requirements (e.g., `>=2.0.0 <3.0.0`). NAH selects the highest compatible version at install time.
+
+## Installation
+
+**Pre-built binaries:**
 ```bash
 # Linux
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-linux-x64.tar.gz | tar xz
@@ -72,27 +64,19 @@ sudo mv nah /usr/local/bin/
 # macOS
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-arm64.tar.gz | tar xz
 sudo mv nah /usr/local/bin/
+```
 
-# From source
+**From source:**
+```bash
 git clone https://github.com/rtorr/nah.git && cd nah
-cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 sudo cmake --install build
 ```
 
-## CLI Cheatsheet
+Requirements: CMake 3.21+, C++17 compiler
 
-```bash
-nah profile init <dir>           # Initialize host
-nah nak install <file.nak>       # Install SDK
-nah app install <file.nap>       # Install app
-nah contract show <app-id>       # Show launch contract
-nah doctor <app-id>              # Diagnose issues
-nah --json contract show <id>    # Machine-readable
-```
-
-[Full CLI Reference](docs/cli.md)
-
-## Use as a Library
+## Library Integration
 
 ```cmake
 include(FetchContent)
@@ -101,13 +85,19 @@ FetchContent_MakeAvailable(nah)
 target_link_libraries(your_target PRIVATE nahhost)
 ```
 
-Or with Conan: `nah/1.0.0`
+Conan: `nah/1.0.0`
 
 ## Documentation
 
-- [CLI Reference](docs/cli.md)
-- [API Reference](https://nah.rtorr.com/)
-- [Specification](SPEC.md)
+| Document | Description |
+|----------|-------------|
+| [Concepts](docs/concepts.md) | NAK, NAP, Host Profile, Launch Contract |
+| [Getting Started: Host](docs/getting-started-host.md) | Deploy NAH and manage apps |
+| [Getting Started: NAK](docs/getting-started-nak.md) | Build an SDK package |
+| [Getting Started: App](docs/getting-started-app.md) | Build an app with manifest |
+| [CLI Reference](docs/cli.md) | Command documentation |
+| [API Reference](https://nah.rtorr.com/) | Library documentation |
+| [Specification](SPEC.md) | Normative specification |
 
 ## License
 

@@ -5,6 +5,7 @@
 #include <nah/nak_selection.hpp>
 #include <nah/host_profile.hpp>
 #include <nah/nak_record.hpp>
+#include <nah/manifest.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,81 @@
 namespace fs = std::filesystem;
 
 using namespace nah;
+
+// Helper to compute CRC32 for manifest
+static uint32_t manifest_crc32(const uint8_t* data, size_t len) {
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; ++j) {
+            uint32_t mask = -(crc & 1u);
+            crc = (crc >> 1) ^ (0xEDB88320u & mask);
+        }
+    }
+    return ~crc;
+}
+
+// Helper to build a minimal manifest binary
+static std::vector<uint8_t> build_test_manifest(const std::string& app_id, 
+                                                 const std::string& version,
+                                                 const std::string& nak_id) {
+    // Build TLV payload
+    std::vector<uint8_t> payload;
+    
+    // Helper to add TLV entry
+    auto add_tlv = [&payload](uint16_t tag, const std::string& value) {
+        // Tag (2 bytes, little-endian)
+        payload.push_back(tag & 0xFF);
+        payload.push_back((tag >> 8) & 0xFF);
+        // Length (2 bytes, little-endian)
+        uint16_t len = static_cast<uint16_t>(value.size());
+        payload.push_back(len & 0xFF);
+        payload.push_back((len >> 8) & 0xFF);
+        // Value
+        payload.insert(payload.end(), value.begin(), value.end());
+    };
+    
+    // Add entries in ascending tag order (per SPEC)
+    add_tlv(10, app_id);        // TAG_APP_ID = 10
+    add_tlv(11, version);       // TAG_APP_VERSION = 11
+    add_tlv(12, nak_id);        // TAG_NAK_ID = 12
+    add_tlv(20, "bin/app");     // TAG_ENTRYPOINT = 20
+    
+    // Compute CRC
+    uint32_t crc = manifest_crc32(payload.data(), payload.size());
+    uint32_t total_size = static_cast<uint32_t>(payload.size() + 16);
+    
+    // Build header + payload
+    std::vector<uint8_t> blob;
+    
+    // Magic "NAHM" (0x4D48414E little-endian)
+    uint32_t magic = 0x4D48414E;
+    blob.push_back(magic & 0xFF);
+    blob.push_back((magic >> 8) & 0xFF);
+    blob.push_back((magic >> 16) & 0xFF);
+    blob.push_back((magic >> 24) & 0xFF);
+    // Version = 1
+    blob.push_back(1);
+    blob.push_back(0);
+    // Reserved
+    blob.push_back(0);
+    blob.push_back(0);
+    // Total size
+    blob.push_back(total_size & 0xFF);
+    blob.push_back((total_size >> 8) & 0xFF);
+    blob.push_back((total_size >> 16) & 0xFF);
+    blob.push_back((total_size >> 24) & 0xFF);
+    // CRC32
+    blob.push_back(crc & 0xFF);
+    blob.push_back((crc >> 8) & 0xFF);
+    blob.push_back((crc >> 16) & 0xFF);
+    blob.push_back((crc >> 24) & 0xFF);
+    
+    // Payload
+    blob.insert(blob.end(), payload.begin(), payload.end());
+    
+    return blob;
+}
 
 // Helper to create temporary NAH root for testing
 class TestNahRoot {
@@ -88,6 +164,12 @@ void create_test_app(const std::string& nah_root, const std::string& id,
     std::string app_dir = nah_root + "/apps/" + id + "-" + version;
     fs::create_directories(app_dir + "/bin");
     std::ofstream(app_dir + "/bin/app") << "#!/bin/sh\necho hello";
+    
+    // Create manifest.nah binary file
+    auto manifest_data = build_test_manifest(id, version, nak_id);
+    std::ofstream manifest_file(app_dir + "/manifest.nah", std::ios::binary);
+    manifest_file.write(reinterpret_cast<const char*>(manifest_data.data()),
+                        static_cast<std::streamsize>(manifest_data.size()));
     
     // Create app install record
     fs::create_directories(nah_root + "/registry/installs");
@@ -348,13 +430,23 @@ TEST_CASE("Verify app detects missing NAK") {
     fs::create_directories(app_dir + "/bin");
     std::ofstream(app_dir + "/bin/app") << "binary";
     
-    std::string record_path = root.path() + "/registry/apps/com.test.app@1.0.0.toml";
+    // Create manifest.nah for the app
+    auto manifest_data = build_test_manifest("com.test.app", "1.0.0", "com.nonexistent.nak");
+    std::ofstream manifest_file(app_dir + "/manifest.nah", std::ios::binary);
+    manifest_file.write(reinterpret_cast<const char*>(manifest_data.data()),
+                        static_cast<std::streamsize>(manifest_data.size()));
+    manifest_file.close();
+    
+    // verify_app looks in registry/installs/ with format: <id>-<version>-<instance_id>.toml
+    // The implementation parses the file contents, not the filename, so dashes in instance_id are fine
+    fs::create_directories(root.path() + "/registry/installs");
+    std::string record_path = root.path() + "/registry/installs/com.test.app-1.0.0-0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f.toml";
     std::ofstream(record_path) << R"(
 schema = "nah.app.install.v1"
 
 [install]
 installed_at = "2024-01-01T00:00:00Z"
-instance_id = "test-instance-id"
+instance_id = "0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f"
 manifest_source = "file:manifest.nah"
 
 [app]
@@ -377,7 +469,7 @@ install_root = ")" << app_dir << R"("
     
     bool found_nak_issue = false;
     for (const auto& issue : result.issues) {
-        if (issue.find("NAK") != std::string::npos) {
+        if (issue.find("NAK") != std::string::npos || issue.find("nak") != std::string::npos) {
             found_nak_issue = true;
             break;
         }
@@ -1198,4 +1290,210 @@ TEST_CASE("format detects invalid TOML") {
     auto result = parse_host_profile_full("not valid toml {{{{", "invalid.toml");
     
     CHECK_FALSE(result.ok);
+}
+
+// ============================================================================
+// --json Global Flag Tests (SPEC L1762)
+// ============================================================================
+
+TEST_CASE("contract show JSON output includes schema field") {
+    TestNahRoot root;
+    
+    // Install NAK first
+    auto pack_data = create_test_nak_pack("com.test.jsonnak", "1.0.0");
+    REQUIRE_FALSE(pack_data.empty());
+    
+    fs::path pack_file = fs::temp_directory_path() / "jsonnak.nak";
+    std::ofstream(pack_file, std::ios::binary).write(
+        reinterpret_cast<const char*>(pack_data.data()),
+        static_cast<std::streamsize>(pack_data.size()));
+    
+    NakInstallOptions opts;
+    opts.nah_root = root.path();
+    auto install_result = install_nak_pack(pack_file.string(), opts);
+    REQUIRE(install_result.ok);
+    
+    // Create app that uses the NAK
+    create_test_app(root.path(), "com.test.jsonapp", "1.0.0", "com.test.jsonnak");
+    
+    auto host = NahHost::create(root.path());
+    auto result = host->getLaunchContract("com.test.jsonapp", "1.0.0", "", false);
+    
+    REQUIRE(result.isOk());
+    
+    // Serialize to JSON (what --json flag does)
+    std::string json = serialize_contract_json(result.value(), false, std::nullopt);
+    
+    // Verify JSON structure per SPEC
+    CHECK(json.find("\"schema\": \"nah.launch.contract.v1\"") != std::string::npos);
+    CHECK(json.find("\"app\":") != std::string::npos);
+    CHECK(json.find("\"execution\":") != std::string::npos);
+    CHECK(json.find("\"environment\":") != std::string::npos);
+    CHECK(json.find("\"warnings\":") != std::string::npos);
+    
+    fs::remove(pack_file);
+}
+
+TEST_CASE("contract show JSON output includes execution details for host launch") {
+    TestNahRoot root;
+    
+    // Install NAK
+    auto pack_data = create_test_nak_pack("com.test.launchnak", "1.0.0");
+    REQUIRE_FALSE(pack_data.empty());
+    
+    fs::path pack_file = fs::temp_directory_path() / "launchnak.nak";
+    std::ofstream(pack_file, std::ios::binary).write(
+        reinterpret_cast<const char*>(pack_data.data()),
+        static_cast<std::streamsize>(pack_data.size()));
+    
+    NakInstallOptions opts;
+    opts.nah_root = root.path();
+    auto install_result = install_nak_pack(pack_file.string(), opts);
+    REQUIRE(install_result.ok);
+    
+    // Create app
+    create_test_app(root.path(), "com.test.launchapp", "1.0.0", "com.test.launchnak");
+    
+    auto host = NahHost::create(root.path());
+    auto result = host->getLaunchContract("com.test.launchapp", "1.0.0", "", false);
+    
+    REQUIRE(result.isOk());
+    
+    std::string json = serialize_contract_json(result.value(), false, std::nullopt);
+    
+    // Verify execution block has fields needed for host to launch app
+    CHECK(json.find("\"binary\":") != std::string::npos);
+    CHECK(json.find("\"cwd\":") != std::string::npos);
+    CHECK(json.find("\"library_paths\":") != std::string::npos);
+    CHECK(json.find("\"library_path_env_key\":") != std::string::npos);
+    CHECK(json.find("\"arguments\":") != std::string::npos);
+    
+    fs::remove(pack_file);
+}
+
+TEST_CASE("contract show JSON output includes NAH environment variables") {
+    TestNahRoot root;
+    
+    // Install NAK
+    auto pack_data = create_test_nak_pack("com.test.envnak", "1.0.0");
+    REQUIRE_FALSE(pack_data.empty());
+    
+    fs::path pack_file = fs::temp_directory_path() / "envnak.nak";
+    std::ofstream(pack_file, std::ios::binary).write(
+        reinterpret_cast<const char*>(pack_data.data()),
+        static_cast<std::streamsize>(pack_data.size()));
+    
+    NakInstallOptions opts;
+    opts.nah_root = root.path();
+    auto install_result = install_nak_pack(pack_file.string(), opts);
+    REQUIRE(install_result.ok);
+    
+    // Create app
+    create_test_app(root.path(), "com.test.envapp", "1.0.0", "com.test.envnak");
+    
+    auto host = NahHost::create(root.path());
+    auto result = host->getLaunchContract("com.test.envapp", "1.0.0", "", false);
+    
+    REQUIRE(result.isOk());
+    
+    std::string json = serialize_contract_json(result.value(), false, std::nullopt);
+    
+    // Verify standard NAH_ environment variables are present
+    CHECK(json.find("NAH_APP_ID") != std::string::npos);
+    CHECK(json.find("NAH_APP_VERSION") != std::string::npos);
+    CHECK(json.find("NAH_APP_ROOT") != std::string::npos);
+    
+    fs::remove(pack_file);
+}
+
+TEST_CASE("contract show JSON error output includes critical_error field") {
+    TestNahRoot root;
+    
+    auto host = NahHost::create(root.path());
+    
+    // Request contract for non-existent app
+    auto result = host->getLaunchContract("com.nonexistent.app", "", "", false);
+    
+    CHECK(result.isErr());
+    
+    // Create error envelope manually (what CLI does on error)
+    ContractEnvelope error_envelope;
+    std::string json = serialize_contract_json(error_envelope, false, CriticalError::INSTALL_RECORD_INVALID);
+    
+    // Error response should still have valid JSON structure
+    CHECK(json.find("\"schema\": \"nah.launch.contract.v1\"") != std::string::npos);
+    CHECK(json.find("\"critical_error\":") != std::string::npos);
+    CHECK(json.find("\"warnings\":") != std::string::npos);
+}
+
+TEST_CASE("contract show JSON with --trace includes trace information") {
+    // Test that trace serialization works correctly
+    // We manually populate trace data since compose_contract may not always populate it
+    
+    ContractEnvelope envelope;
+    envelope.contract.app.id = "com.test.traceapp";
+    envelope.contract.app.version = "1.0.0";
+    envelope.contract.environment["MY_VAR"] = "test_value";
+    
+    // Without trace data
+    std::string json_no_trace = serialize_contract_json(envelope, false, std::nullopt);
+    CHECK(json_no_trace.find("\"trace\":") == std::string::npos);
+    
+    // Add trace data
+    std::unordered_map<std::string, std::unordered_map<std::string, TraceEntry>> trace_map;
+    TraceEntry entry;
+    entry.value = "test_value";
+    entry.source_kind = "profile";
+    entry.source_path = "/nah/host/profiles/default.toml";
+    entry.precedence_rank = 1;
+    trace_map["environment"]["MY_VAR"] = entry;
+    envelope.trace = trace_map;
+    
+    // With trace flag and trace data
+    std::string json_with_trace = serialize_contract_json(envelope, true, std::nullopt);
+    CHECK(json_with_trace.find("\"trace\":") != std::string::npos);
+    CHECK(json_with_trace.find("\"source_kind\":") != std::string::npos);
+    CHECK(json_with_trace.find("\"precedence_rank\":") != std::string::npos);
+    
+    // With trace flag=false, trace data should not appear even if present
+    std::string json_trace_disabled = serialize_contract_json(envelope, false, std::nullopt);
+    CHECK(json_trace_disabled.find("\"trace\":") == std::string::npos);
+}
+
+TEST_CASE("JSON output is deterministic for reproducible builds") {
+    TestNahRoot root;
+    
+    // Install NAK
+    auto pack_data = create_test_nak_pack("com.test.deternak", "1.0.0");
+    REQUIRE_FALSE(pack_data.empty());
+    
+    fs::path pack_file = fs::temp_directory_path() / "deternak.nak";
+    std::ofstream(pack_file, std::ios::binary).write(
+        reinterpret_cast<const char*>(pack_data.data()),
+        static_cast<std::streamsize>(pack_data.size()));
+    
+    NakInstallOptions opts;
+    opts.nah_root = root.path();
+    auto install_result = install_nak_pack(pack_file.string(), opts);
+    REQUIRE(install_result.ok);
+    
+    // Create app
+    create_test_app(root.path(), "com.test.deterapp", "1.0.0", "com.test.deternak");
+    
+    auto host = NahHost::create(root.path());
+    
+    // Get contract twice
+    auto result1 = host->getLaunchContract("com.test.deterapp", "1.0.0", "", false);
+    auto result2 = host->getLaunchContract("com.test.deterapp", "1.0.0", "", false);
+    
+    REQUIRE(result1.isOk());
+    REQUIRE(result2.isOk());
+    
+    std::string json1 = serialize_contract_json(result1.value(), false, std::nullopt);
+    std::string json2 = serialize_contract_json(result2.value(), false, std::nullopt);
+    
+    // JSON output must be byte-for-byte identical
+    CHECK(json1 == json2);
+    
+    fs::remove(pack_file);
 }

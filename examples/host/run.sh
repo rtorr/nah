@@ -149,15 +149,45 @@ for app in "${APPS[@]}"; do
     echo "=============================================="
     echo ""
 
-    if [ "$SHOW_CONTRACT" = "1" ]; then
-        "$NAH_CLI" --root "$NAH_ROOT" contract show \
-            --app "$app_id" \
-            ${app_version:+--version "$app_version"} \
-            $PROFILE_ARGS 2>&1 || true
+    # Build target string (id or id@version)
+    if [ -n "$app_version" ]; then
+        target="${app_id}@${app_version}"
     else
-        "$NAH_CLI" --root "$NAH_ROOT" app launch \
-            "$app_id" \
-            ${app_version:+--version "$app_version"} \
-            $PROFILE_ARGS 2>&1 || true
+        target="$app_id"
+    fi
+
+    if [ "$SHOW_CONTRACT" = "1" ]; then
+        "$NAH_CLI" --root "$NAH_ROOT" $PROFILE_ARGS contract show "$target" 2>&1 || true
+    else
+        # Get the launch contract as JSON and execute the binary
+        contract_json=$("$NAH_CLI" --root "$NAH_ROOT" $PROFILE_ARGS --json contract show "$target" 2>&1)
+
+        # Check for critical error
+        critical_error=$(echo "$contract_json" | grep -o '"critical_error": *"[^"]*"' | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+        if [ -n "$critical_error" ] && [ "$critical_error" != "null" ]; then
+            log_error "Failed to get contract: $critical_error"
+            continue
+        fi
+
+        # Extract execution info from JSON
+        binary=$(echo "$contract_json" | grep -o '"binary": *"[^"]*"' | sed 's/.*: *"\([^"]*\)".*/\1/' | head -1)
+        cwd=$(echo "$contract_json" | grep -o '"cwd": *"[^"]*"' | sed 's/.*: *"\([^"]*\)".*/\1/' | head -1)
+
+        if [ -z "$binary" ]; then
+            log_error "No binary found in contract"
+            continue
+        fi
+
+        log_info "Binary: $binary"
+        log_info "CWD: $cwd"
+
+        # Execute the app (for demo, just show what would be executed)
+        if [ -x "$binary" ]; then
+            log_success "Would execute: $binary"
+            # Uncomment to actually run:
+            # cd "$cwd" && exec "$binary"
+        else
+            log_error "Binary not executable: $binary"
+        fi
     fi
 done

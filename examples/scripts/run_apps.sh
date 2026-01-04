@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Run NAH-managed apps
 #
+# This script demonstrates how a host uses NAH:
+# 1. Get the launch contract from NAH
+# 2. Set up environment variables
+# 3. Set library paths
+# 4. Execute the binary
+#
 # Usage:
 #   ./scripts/run_apps.sh [app_id]     # Run specific app or all apps
 #   ./scripts/run_apps.sh --contract   # Show contracts only (don't run)
@@ -63,34 +69,87 @@ if [ ! -d "$NAH_ROOT" ]; then
     exit 1
 fi
 
-# Get list of installed apps
+# Get list of installed apps (just the app id@version, not the path)
 get_installed_apps() {
-    $NAH_CLI --root "$NAH_ROOT" app list 2>/dev/null | grep -E '^com\.' || true
+    $NAH_CLI --root "$NAH_ROOT" app list 2>/dev/null | grep -oE '^[^ ]+' || true
 }
 
 # Show contract for an app
 show_contract() {
     local app_id="$1"
-    log_header "Contract: $app_id"
+    echo ""
+    echo "=== Contract: $app_id ==="
+    echo ""
     $NAH_CLI --root "$NAH_ROOT" contract show "$app_id" 2>&1 || {
         log_warn "Could not show contract for $app_id"
     }
 }
 
-# Run an app via NAH
+# Run an app via the launch contract (this is what a host does)
 run_app() {
     local app_id="$1"
-    log_header "Running: $app_id"
-
-    # Show what NAH will do
-    echo "Launch contract:"
-    $NAH_CLI --root "$NAH_ROOT" contract show "$app_id" 2>&1 | head -20 || true
+    echo ""
+    echo "=== Running: $app_id ==="
     echo ""
 
-    # Actually run the app
-    log_info "Launching via NAH..."
-    $NAH_CLI --root "$NAH_ROOT" run "$app_id" 2>&1 || {
-        log_warn "App exited with non-zero status"
+    # Get contract as JSON
+    local contract_json
+    contract_json=$($NAH_CLI --root "$NAH_ROOT" contract show "$app_id" --json 2>&1) || {
+        log_error "Failed to get contract for $app_id"
+        echo "$contract_json"
+        return 1
+    }
+
+    # Check for critical error
+    local critical_error
+    critical_error=$(echo "$contract_json" | jq -r '.critical_error // empty')
+    if [ -n "$critical_error" ] && [ "$critical_error" != "null" ]; then
+        log_error "Critical error: $critical_error"
+        return 1
+    fi
+
+    # Extract contract fields
+    local binary cwd lib_path_key
+    binary=$(echo "$contract_json" | jq -r '.execution.binary')
+    cwd=$(echo "$contract_json" | jq -r '.execution.cwd')
+    lib_path_key=$(echo "$contract_json" | jq -r '.execution.library_path_env_key')
+
+    # Build library path
+    local lib_paths
+    lib_paths=$(echo "$contract_json" | jq -r '.execution.library_paths | join(":")')
+
+    # Build arguments array
+    local args=()
+    while IFS= read -r arg; do
+        args+=("$arg")
+    done < <(echo "$contract_json" | jq -r '.execution.arguments[]')
+
+    # Extract and set environment variables
+    local env_vars=()
+    while IFS='=' read -r key value; do
+        if [ -n "$key" ]; then
+            env_vars+=("$key=$value")
+        fi
+    done < <(echo "$contract_json" | jq -r '.environment | to_entries | .[] | "\(.key)=\(.value)"')
+
+    # Show what we're about to do
+    log_info "Binary: $binary"
+    log_info "CWD: $cwd"
+    log_info "Args: ${args[*]}"
+    log_info "$lib_path_key: $lib_paths"
+    echo ""
+
+    # Execute the app
+    # Set environment, library path, change to cwd, and exec
+    (
+        cd "$cwd"
+        for env_var in "${env_vars[@]}"; do
+            export "${env_var?}"
+        done
+        export "$lib_path_key=$lib_paths"
+        exec "$binary" "${args[@]}"
+    ) || {
+        log_warn "App exited with non-zero status: $?"
     }
     echo ""
 }
@@ -114,7 +173,9 @@ else
 
     echo ""
     log_info "Installed apps:"
-    echo "$APPS"
+    for app in $APPS; do
+        echo "  $app"
+    done
     echo ""
 
     for app_id in $APPS; do

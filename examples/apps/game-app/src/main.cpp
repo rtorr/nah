@@ -5,21 +5,18 @@
  * 
  * This app uses SDK features powered by Conan dependencies:
  * - HTTP client (libcurl)
- * - JSON parsing (nlohmann_json) 
+ * - Asset loading with compression (zlib)
+ * - Cryptography (openssl)
  * - Logging (spdlog)
- * - Compression (zlib)
- * - Encryption (openssl)
  */
 
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 
 // Game Engine SDK headers
 #include <sdk/engine.hpp>
-#include <sdk/http.hpp>
-#include <sdk/config.hpp>
-#include <sdk/compression.hpp>
+#include <sdk/network.hpp>
+#include <sdk/assets.hpp>
 #include <sdk/crypto.hpp>
 
 namespace {
@@ -28,14 +25,13 @@ void print_environment() {
     printf("My Game v1.0.0\n");
     printf("==============\n\n");
     
-    const char* app_id = std::getenv("NAH_APP_ID");
-    const char* app_root = std::getenv("NAH_APP_ROOT");
-    const char* nak_id = std::getenv("NAH_NAK_ID");
-    const char* nak_root = std::getenv("NAH_NAK_ROOT");
-    
-    if (app_id) {
+    if (gameengine::is_nah_managed()) {
         printf("Running in NAH-managed environment\n");
-        printf("  NAH_APP_ID=%s\n", app_id);
+        const char* app_id = std::getenv("NAH_APP_ID");
+        const char* app_root = std::getenv("NAH_APP_ROOT");
+        const char* nak_id = std::getenv("NAH_NAK_ID");
+        const char* nak_root = std::getenv("NAH_NAK_ROOT");
+        printf("  NAH_APP_ID=%s\n", app_id ? app_id : "(not set)");
         printf("  NAH_APP_ROOT=%s\n", app_root ? app_root : "(not set)");
         printf("  NAH_NAK_ID=%s\n", nak_id ? nak_id : "(not set)");
         printf("  NAH_NAK_ROOT=%s\n", nak_root ? nak_root : "(not set)");
@@ -51,55 +47,54 @@ int main(int argc, char* argv[]) {
     print_environment();
     
     // Initialize the Game Engine SDK
-    sdk::EngineConfig config;
-    config.app_name = "My Game";
-    config.log_level = sdk::LogLevel::Debug;
+    gameengine::EngineConfig config;
+    config.app_id = "com.example.mygame";
+    config.use_nah_env = true;  // Override with NAH_* if available
     
-    sdk::Engine engine(config);
-    if (!engine.initialize()) {
+    auto engine = gameengine::Engine::create(config);
+    if (!engine || !engine->initialize()) {
         fprintf(stderr, "Failed to initialize game engine\n");
         return 1;
     }
     
-    printf("Game Engine initialized successfully!\n");
-    printf("  Engine version: %s\n", engine.version().c_str());
+    printf("Game Engine initialized!\n");
+    printf("  Engine version: %s\n", gameengine::version());
+    printf("  App ID: %s\n", engine->app_id().c_str());
+    printf("  App root: %s\n", engine->app_root().c_str());
     printf("\n");
     
     // Demonstrate SDK features
     
-    // 1. Configuration (JSON parsing via nlohmann_json)
-    printf("Loading game configuration...\n");
-    sdk::ConfigManager cfg;
-    if (cfg.load_from_file("assets/game_config.json")) {
-        printf("  Config loaded: %s\n", cfg.get_string("game.title", "Unknown").c_str());
+    // 1. Asset loading
+    printf("Testing asset loading...\n");
+    auto& assets = engine->assets();
+    auto config_text = assets.load_text("game_config.json");
+    if (config_text) {
+        printf("  Loaded game_config.json (%zu bytes)\n", config_text->size());
     } else {
-        printf("  Using default configuration\n");
+        printf("  game_config.json not found (using defaults)\n");
     }
     
-    // 2. Compression (zlib)
-    printf("\nTesting compression...\n");
-    const char* test_data = "Hello from My Game! This is test data for compression.";
-    auto compressed = sdk::compress(test_data, strlen(test_data));
-    printf("  Original: %zu bytes\n", strlen(test_data));
-    printf("  Compressed: %zu bytes\n", compressed.size());
-    
-    // 3. Crypto (openssl)
+    // 2. Cryptography
     printf("\nTesting crypto...\n");
-    auto hash = sdk::sha256(test_data, strlen(test_data));
-    printf("  SHA256: %s\n", sdk::to_hex(hash).c_str());
+    auto& crypto = engine->crypto();
+    std::string test_data = "Hello from My Game!";
+    auto hash = crypto.sha256(test_data);
+    printf("  SHA256(\"%s\") = %s\n", test_data.c_str(), hash.c_str());
     
-    // 4. HTTP client (libcurl) - just show capability
-    printf("\nHTTP client available: %s\n", sdk::HttpClient::available() ? "yes" : "no");
+    auto random = crypto.random_hex(16);
+    printf("  Random (16 bytes): %s\n", random.c_str());
     
-    // 5. Logging (spdlog)
-    printf("\nLogging test:\n");
-    engine.log_info("Game started successfully");
-    engine.log_debug("Debug message from game");
+    // 3. Network (show capability)
+    printf("\nTesting network...\n");
+    auto& network = engine->network();
+    printf("  NetworkManager ready\n");
+    // In a real app: auto response = network.get("https://api.example.com/status");
     
     printf("\nGame initialization complete!\n");
-    printf("In a real game, the main loop would start here...\n\n");
+    printf("In a real game, the main loop would start here.\n\n");
     
-    engine.shutdown();
+    engine->shutdown();
     printf("Game Engine shut down cleanly.\n");
     
     return 0;

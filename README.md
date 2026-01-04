@@ -1,7 +1,7 @@
 # NAH - Native Application Host
 
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-API-blue)](https://github.rtorr.com/)
+[![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
 NAH standardizes how native applications are installed, inspected, and launched. It provides a deterministic contract between applications and hosts, ensuring portable app binaries while giving hosts full control over policy, layout, and enforcement.
 
@@ -308,7 +308,7 @@ This updates the VERSION file, commits, tags, and pushes. GitHub Actions then:
 | Resource | Description |
 |----------|-------------|
 | [CLI Reference](docs/cli.md) | Complete command-line reference |
-| [API Reference](https://github.rtorr.com/api/) | Library documentation (Doxygen) |
+| [API Reference](https://nah.rtorr.com/api/) | Library documentation (Doxygen) |
 | [Getting Started: App](docs/getting-started-app.md) | Build apps for NAH |
 | [Getting Started: NAK](docs/getting-started-nak.md) | Build SDKs/frameworks |
 | [Getting Started: Host](docs/getting-started-host.md) | Deploy NAH in production |

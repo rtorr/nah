@@ -30,27 +30,35 @@ find_examples_dir() {
 
 # Find NAH CLI
 # Sets: NAH_CLI
+# Prefers project-built CLI over system PATH for development
 find_nah_cli() {
     if [ -n "$NAH_CLI" ] && [ -x "$NAH_CLI" ]; then
         return 0
     fi
 
-    # Check PATH
-    if command -v nah &> /dev/null; then
-        NAH_CLI="$(command -v nah)"
-        return 0
-    fi
-
-    # Check common build locations
+    # Check project build locations first (prefer local build for development)
     local examples_dir="$(find_examples_dir)"
     local locations=(
         "$examples_dir/../build/tools/nah/nah"
         "$examples_dir/../cmake-build-release/tools/nah/nah"
         "$examples_dir/../cmake-build-debug/tools/nah/nah"
-        "/usr/local/bin/nah"
     )
 
     for loc in "${locations[@]}"; do
+        if [ -x "$loc" ]; then
+            NAH_CLI="$loc"
+            return 0
+        fi
+    done
+
+    # Fall back to PATH
+    if command -v nah &> /dev/null; then
+        NAH_CLI="$(command -v nah)"
+        return 0
+    fi
+
+    # Last resort: system locations
+    for loc in "/usr/local/bin/nah" "/usr/bin/nah"; do
         if [ -x "$loc" ]; then
             NAH_CLI="$loc"
             return 0
@@ -62,6 +70,7 @@ find_nah_cli() {
 
 # Build a CMake project
 # Usage: build_cmake_project <dir> <name> [extra_cmake_args...]
+# Note: Runs in a subshell to preserve working directory
 build_cmake_project() {
     local dir="$1"
     local name="$2"
@@ -75,24 +84,26 @@ build_cmake_project() {
         return 1
     fi
 
-    cd "$dir"
+    (
+        cd "$dir"
 
-    if [ "${CLEAN:-0}" = "1" ] && [ -d "build" ]; then
-        rm -rf build
-    fi
+        if [ "${CLEAN:-0}" = "1" ] && [ -d "build" ]; then
+            rm -rf build
+        fi
 
-    mkdir -p build
-    cd build
+        mkdir -p build
+        cd build
 
-    if ! cmake .. -DNAH_CLI="$NAH_CLI" $extra_args; then
-        log_error "CMake configuration failed for $name"
-        return 1
-    fi
+        if ! cmake .. -DNAH_CLI="$NAH_CLI" $extra_args; then
+            log_error "CMake configuration failed for $name"
+            exit 1
+        fi
 
-    if ! cmake --build .; then
-        log_error "Build failed for $name"
-        return 1
-    fi
+        if ! cmake --build .; then
+            log_error "Build failed for $name"
+            exit 1
+        fi
+    ) || return 1
 
     log_success "Built $name"
     return 0
@@ -100,45 +111,48 @@ build_cmake_project() {
 
 # Build a Conan project
 # Usage: build_conan_project <dir> <name>
+# Note: Runs in a subshell to preserve working directory
 build_conan_project() {
     local dir="$1"
     local name="$2"
 
     if [ "${SKIP_CONAN:-0}" = "1" ]; then
         log_warn "Skipping $name (SKIP_CONAN=1)"
-        return 0
+        return 1
     fi
 
     if ! command -v conan &> /dev/null; then
         log_warn "Skipping $name (Conan not found)"
-        return 0
+        return 1
     fi
 
     log_info "Building $name with Conan..."
 
-    cd "$dir"
+    (
+        cd "$dir"
 
-    if [ "${CLEAN:-0}" = "1" ] && [ -d "build" ]; then
-        rm -rf build
-    fi
+        if [ "${CLEAN:-0}" = "1" ] && [ -d "build" ]; then
+            rm -rf build
+        fi
 
-    # Install Conan dependencies with full_deploy
-    if ! conan install . --output-folder=build --build=missing \
-        --deployer=full_deploy --deployer-folder=build/deploy 2>&1; then
-        log_error "Conan install failed for $name"
-        return 1
-    fi
+        # Install Conan dependencies with full_deploy
+        if ! conan install . --output-folder=build --build=missing \
+            --deployer=full_deploy --deployer-folder=build/deploy 2>&1; then
+            log_error "Conan install failed for $name"
+            exit 1
+        fi
 
-    # Configure and build
-    if ! cmake --preset conan-release -DNAH_CLI="$NAH_CLI"; then
-        log_error "CMake configuration failed for $name"
-        return 1
-    fi
+        # Configure and build
+        if ! cmake --preset conan-release -DNAH_CLI="$NAH_CLI"; then
+            log_error "CMake configuration failed for $name"
+            exit 1
+        fi
 
-    if ! cmake --build build/build/Release; then
-        log_error "Build failed for $name"
-        return 1
-    fi
+        if ! cmake --build build/build/Release; then
+            log_error "Build failed for $name"
+            exit 1
+        fi
+    ) || return 1
 
     log_success "Built $name"
     return 0

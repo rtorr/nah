@@ -63,7 +63,12 @@ message(STATUS "NAH CLI: ${NAH_CLI}")
 # =============================================================================
 
 if(DEFINED GAMEENGINE_SDK_DIR)
-    set(SDK_INCLUDE_DIR "${GAMEENGINE_SDK_DIR}/../include")
+    # GAMEENGINE_SDK_DIR points to build output (e.g., conan-sdk/build/build/Release)
+    # Include dir is at the source root (e.g., conan-sdk/include)
+    get_filename_component(_sdk_build_parent "${GAMEENGINE_SDK_DIR}" DIRECTORY)
+    get_filename_component(_sdk_build_parent "${_sdk_build_parent}" DIRECTORY)
+    get_filename_component(_sdk_root "${_sdk_build_parent}" DIRECTORY)
+    set(SDK_INCLUDE_DIR "${_sdk_root}/include")
     set(SDK_LIB_DIR "${GAMEENGINE_SDK_DIR}")
     message(STATUS "Using Game Engine SDK from: ${GAMEENGINE_SDK_DIR}")
 elseif(DEFINED GAMEENGINE_SDK_INCLUDE_DIR AND DEFINED GAMEENGINE_SDK_LIB_DIR)
@@ -103,6 +108,50 @@ endif()
 if(SDK_LIB_DIR AND EXISTS "${SDK_LIB_DIR}")
     target_link_directories(mygame PRIVATE ${SDK_LIB_DIR})
     target_link_libraries(mygame PRIVATE gameengine)
+
+    # The SDK is a static library, so we need its transitive dependencies
+    # These are bundled in the NAK at runtime, but needed for dev builds
+    # SDK_LIB_DIR is conan-sdk/build/build/Release, deploy is at conan-sdk/build/deploy
+    get_filename_component(_sdk_build_root "${SDK_LIB_DIR}/../.." ABSOLUTE)
+    set(CONAN_DEPLOY_DIR "${_sdk_build_root}/deploy/full_deploy/host")
+
+    if(EXISTS "${CONAN_DEPLOY_DIR}")
+        message(STATUS "Finding Conan dependencies in: ${CONAN_DEPLOY_DIR}")
+
+        # Find and link Conan-deployed dependencies using GLOB_RECURSE
+        file(GLOB_RECURSE CURL_LIB "${CONAN_DEPLOY_DIR}/libcurl/*/libcurl.a")
+        file(GLOB_RECURSE ZLIB_LIB "${CONAN_DEPLOY_DIR}/zlib/*/libz.a")
+        file(GLOB_RECURSE SSL_LIB "${CONAN_DEPLOY_DIR}/openssl/*/libssl.a")
+        file(GLOB_RECURSE CRYPTO_LIB "${CONAN_DEPLOY_DIR}/openssl/*/libcrypto.a")
+        file(GLOB_RECURSE SPDLOG_LIB "${CONAN_DEPLOY_DIR}/spdlog/*/libspdlog.a")
+        file(GLOB_RECURSE FMT_LIB "${CONAN_DEPLOY_DIR}/fmt/*/libfmt.a")
+
+        message(STATUS "  CURL: ${CURL_LIB}")
+        message(STATUS "  ZLIB: ${ZLIB_LIB}")
+
+        target_link_libraries(mygame PRIVATE
+            ${CURL_LIB}
+            ${SSL_LIB}
+            ${CRYPTO_LIB}
+            ${ZLIB_LIB}
+            ${SPDLOG_LIB}
+            ${FMT_LIB}
+        )
+
+        # macOS system frameworks needed by curl/openssl
+        if(APPLE)
+            find_library(SECURITY_FRAMEWORK Security)
+            find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
+            find_library(SYSTEMCONFIGURATION_FRAMEWORK SystemConfiguration)
+            target_link_libraries(mygame PRIVATE
+                ${SECURITY_FRAMEWORK}
+                ${COREFOUNDATION_FRAMEWORK}
+                ${SYSTEMCONFIGURATION_FRAMEWORK}
+            )
+        endif()
+    else()
+        message(WARNING "Conan deploy directory not found: ${CONAN_DEPLOY_DIR}")
+    endif()
 elseif(SDK_LIBRARY)
     target_link_libraries(mygame PRIVATE ${SDK_LIBRARY})
 endif()

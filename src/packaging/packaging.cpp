@@ -1550,29 +1550,31 @@ VerifyResult verify_app(const std::string& nah_root,
                          const std::string& version) {
     VerifyResult result;
     
-    // Find the app install record
+    // Find the app install record by scanning all .toml files and checking contents
     // SPEC: registry/installs/<id>-<version>-<instance_id>.toml
+    // Note: We parse the file contents rather than the filename because
+    // all three components (id, version, instance_id) can contain dashes
     std::string record_dir = join_path(nah_root, "registry/installs");
-    std::string version_to_verify = version;
+    std::string version_to_verify;
     std::string record_path;
     
     if (is_directory(record_dir)) {
-        std::string prefix = app_id + "-";
         for (const auto& entry : list_directory(record_dir)) {
-            if (entry.rfind(prefix, 0) == 0 && entry.size() > 5 &&
-                entry.substr(entry.size() - 5) == ".toml") {
-                // Filename format: <id>-<version>-<instance_id>.toml
-                std::string without_ext = entry.substr(0, entry.size() - 5);
-                size_t first_dash = without_ext.find('-');
-                if (first_dash != std::string::npos) {
-                    std::string rest = without_ext.substr(first_dash + 1);
-                    size_t last_dash = rest.rfind('-');
-                    if (last_dash != std::string::npos) {
-                        std::string found_version = rest.substr(0, last_dash);
-                        if (version.empty() || found_version == version) {
-                            version_to_verify = found_version;
-                            record_path = join_path(record_dir, entry);
-                            break;
+            if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".toml") {
+                std::string candidate_path = join_path(record_dir, entry);
+                std::ifstream file(candidate_path);
+                if (file) {
+                    std::stringstream ss;
+                    ss << file.rdbuf();
+                    auto parse_result = parse_app_install_record_full(ss.str(), candidate_path);
+                    if (parse_result.ok) {
+                        // Check if this record matches the requested app
+                        if (parse_result.record.app.id == app_id) {
+                            if (version.empty() || parse_result.record.app.version == version) {
+                                version_to_verify = parse_result.record.app.version;
+                                record_path = candidate_path;
+                                break;
+                            }
                         }
                     }
                 }

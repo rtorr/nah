@@ -44,19 +44,19 @@ echo "  NAH Examples Build Script"
 echo "=============================================="
 echo ""
 
-cd "$EXAMPLES_DIR"
-
 # 1. Build SDK NAK
-build_cmake_project "sdk" "Framework SDK (NAK)" || exit 1
-(cd sdk/build && cmake --build . --target package_nak)
+build_cmake_project "$EXAMPLES_DIR/sdk" "Framework SDK (NAK)" || exit 1
+(cd "$EXAMPLES_DIR/sdk/build" && cmake --build . --target package_nak)
 
 # 2. Build Conan SDK NAK
-if build_conan_project "conan-sdk" "Game Engine SDK (NAK)"; then
-    (cd conan-sdk && cmake --build build/build/Release --target package_nak)
+CONAN_SDK_BUILT=0
+if build_conan_project "$EXAMPLES_DIR/conan-sdk" "Game Engine SDK (NAK)"; then
+    (cd "$EXAMPLES_DIR/conan-sdk" && cmake --build build/build/Release --target package_nak)
+    CONAN_SDK_BUILT=1
 fi
 
 # 3. Build apps
-for app_dir in apps/app apps/app_c; do
+for app_dir in "$EXAMPLES_DIR"/apps/app "$EXAMPLES_DIR"/apps/app_c; do
     if [ -d "$app_dir" ]; then
         app_name=$(basename "$app_dir")
         build_cmake_project "$app_dir" "App: $app_name" || exit 1
@@ -65,9 +65,10 @@ for app_dir in apps/app apps/app_c; do
 done
 
 # 4. Build game-app (only if conan-sdk was built)
-if [ -f "conan-sdk/build/build/Release/libgameengine.a" ] || [ -f "conan-sdk/build/build/Release/gameengine.lib" ]; then
-    build_cmake_project "apps/game-app" "App: game-app" "-DGAMEENGINE_SDK_DIR=$EXAMPLES_DIR/conan-sdk/build/build/Release" || exit 1
-    (cd apps/game-app/build && cmake --build . --target package_nap 2>/dev/null || true)
+if [ "$CONAN_SDK_BUILT" = "1" ]; then
+    build_cmake_project "$EXAMPLES_DIR/apps/game-app" "App: game-app" \
+        "-DGAMEENGINE_SDK_DIR=$EXAMPLES_DIR/conan-sdk/build/build/Release" || exit 1
+    (cd "$EXAMPLES_DIR/apps/game-app/build" && cmake --build . --target package_nap 2>/dev/null || true)
 else
     log_warn "Skipping game-app (conan-sdk not built)"
 fi

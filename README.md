@@ -14,8 +14,9 @@ NAH defines a contract between applications, SDKs, and host platforms. Each part
 ### I'm a Host Platform
 
 You run apps you didn't build, using SDKs you didn't write. You need to:
+
 - Install SDKs and apps from vendors
-- Control where things go on your filesystem  
+- Control where things go on your filesystem
 - Set policies (which SDK versions are allowed, what capabilities are granted)
 - Know exactly how apps will launch before running them
 
@@ -28,7 +29,7 @@ nah profile init /opt/myplatform
 # Install SDKs from vendors
 nah --root /opt/myplatform nak install vendor-sdk-2.1.0.nak
 
-# Install apps 
+# Install apps
 nah --root /opt/myplatform app install thirdparty-app-1.0.0.nap
 
 # See exactly what will happen at launch time
@@ -40,6 +41,7 @@ You never need to read the app's source code or the SDK's build scripts. The con
 ### I'm an SDK/Framework Developer
 
 You ship a runtime, framework, or SDK that apps depend on. You need to:
+
 - Provide libraries, binaries, and resources
 - Tell apps where to find things
 - Not care about host filesystem layouts
@@ -73,6 +75,7 @@ You don't know where the host will install you. You don't care. Apps reference y
 ### I'm an App Developer
 
 You build an app that needs an SDK. You need to:
+
 - Declare which SDK version you require
 - Ship your app without hardcoding paths
 - Work on any host that has a compatible SDK
@@ -99,6 +102,45 @@ nah app pack ./my-app -o myapp-1.0.0.nap
 
 You don't know where the host will put your app or the SDK. You don't care. Your manifest says "I need SDK 2.x" and NAH ensures you get it at launch.
 
+## Multiple SDKs, Multiple Versions
+
+A host can have many SDKs installed, each with multiple versions. Apps declare what they need, and NAH matches them to what's available.
+
+```
+Host: /opt/myplatform
+├── naks/
+│   ├── com.vendor.runtime/
+│   │   ├── 1.0.0/          # Legacy apps still need this
+│   │   ├── 2.0.0/
+│   │   └── 2.1.0/          # Latest
+│   └── com.other.framework/
+│       └── 3.2.0/
+└── apps/
+    ├── legacy-app/         # needs runtime >=1.0.0 <2.0.0 → gets 1.0.0
+    ├── modern-app/         # needs runtime >=2.0.0 <3.0.0 → gets 2.1.0
+    └── other-app/          # needs framework ^3.0.0 → gets 3.2.0
+```
+
+Each app gets the right SDK version for its requirements. Legacy apps keep working. New apps use new SDKs. Different apps can use completely different SDKs. The host doesn't need to manage this - NAH resolves it from the manifests.
+
+```bash
+# Install SDK versions as needed
+nah --root /opt/myplatform nak install vendor-runtime-1.0.0.nak
+nah --root /opt/myplatform nak install vendor-runtime-2.1.0.nak
+nah --root /opt/myplatform nak install other-framework-3.2.0.nak
+
+# Install apps - NAH matches each to a compatible SDK
+nah --root /opt/myplatform app install legacy-app-1.0.0.nap
+nah --root /opt/myplatform app install modern-app-1.0.0.nap
+
+# Each contract shows which SDK version was selected
+nah --root /opt/myplatform contract show com.example.legacy-app
+# → NAK: com.vendor.runtime v1.0.0
+
+nah --root /opt/myplatform contract show com.example.modern-app
+# → NAK: com.vendor.runtime v2.1.0
+```
+
 ## How It Fits Together
 
 ```
@@ -106,12 +148,12 @@ You don't know where the host will put your app or the SDK. You don't care. Your
 │                         HOST PLATFORM                            │
 │  Profile: policies, allowed versions, environment overrides      │
 │                                                                  │
-│  ┌─────────────────────┐      ┌─────────────────────┐           │
-│  │     SDK (NAK)       │      │    Application      │           │
-│  │                     │      │                     │           │
-│  │ "I provide libs at  │      │ "I need SDK 2.x    │           │
-│  │  these paths"       │      │  and run bin/app"  │           │
-│  └──────────┬──────────┘      └──────────┬──────────┘           │
+│  ┌─────────────────────┐      ┌─────────────────────┐            │
+│  │   SDKs (NAKs)       │      │    Application      │            │
+│  │                     │      │                     │            │
+│  │ runtime 1.0, 2.0,   │      │ "I need runtime 2.x │            │
+│  │ 2.1, framework 3.2  │      │  and run bin/app"   │            │
+│  └──────────┬──────────┘      └──────────┬──────────┘            │
 │             │                            │                       │
 │             └──────────┬─────────────────┘                       │
 │                        ▼                                         │
@@ -119,15 +161,16 @@ You don't know where the host will put your app or the SDK. You don't care. Your
 │             │   Launch Contract   │                              │
 │             │                     │                              │
 │             │ binary: /opt/.../app│                              │
+│             │ NAK: runtime 2.1.0  │                              │
 │             │ LD_PATH: /opt/.../lib                              │
-│             │ env: SDK_ROOT=...   │                              │
 │             └─────────────────────┘                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 Each party stays in their lane:
+
 - **Apps** declare dependencies, not paths
-- **SDKs** declare capabilities, not install locations  
+- **SDKs** declare capabilities, not install locations
 - **Hosts** control layout and policy
 - **Contracts** are the composed result - auditable, deterministic
 
@@ -199,22 +242,22 @@ Or with Conan: `nah/1.0.0`
 
 ## Documentation
 
-| Resource | Description |
-|----------|-------------|
-| [Getting Started: Host](docs/getting-started-host.md) | Set up a host platform |
-| [Getting Started: NAK](docs/getting-started-nak.md) | Build an SDK/framework package |
-| [Getting Started: App](docs/getting-started-app.md) | Build an app with a manifest |
-| [CLI Reference](docs/cli.md) | Complete command-line documentation |
-| [API Reference](https://nah.rtorr.com/) | Library documentation |
-| [SPEC.md](SPEC.md) | Complete specification |
+| Resource                                              | Description                         |
+| ----------------------------------------------------- | ----------------------------------- |
+| [Getting Started: Host](docs/getting-started-host.md) | Set up a host platform              |
+| [Getting Started: NAK](docs/getting-started-nak.md)   | Build an SDK/framework package      |
+| [Getting Started: App](docs/getting-started-app.md)   | Build an app with a manifest        |
+| [CLI Reference](docs/cli.md)                          | Complete command-line documentation |
+| [API Reference](https://nah.rtorr.com/)               | Library documentation               |
+| [SPEC.md](SPEC.md)                                    | Complete specification              |
 
 ## Why NAH?
 
-| Role | Without NAH | With NAH |
-|------|-------------|----------|
+| Role     | Without NAH                                                                  | With NAH                                          |
+| -------- | ---------------------------------------------------------------------------- | ------------------------------------------------- |
 | **Host** | Read every app's docs, write custom launch scripts, hope SDK paths are right | Install packages, inspect contracts, apply policy |
-| **SDK** | Write install scripts per platform, document paths, hope apps find you | Declare what you provide, ship a `.nak` |
-| **App** | Hardcode paths or write setup scripts, break when hosts differ | Declare what you need, ship a `.nap` |
+| **SDK**  | Write install scripts per platform, document paths, hope apps find you       | Declare what you provide, ship a `.nak`           |
+| **App**  | Hardcode paths or write setup scripts, break when hosts differ               | Declare what you need, ship a `.nap`              |
 
 Everyone focuses on their own domain. NAH handles the seams.
 

@@ -3,24 +3,36 @@
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
+NAH is a launch contract system for native applications. It computes how to run an application - binary path, library paths, environment variables - from declarations provided by the app, the SDK, and the host.
+
+NAH is not a package manager. It does not download packages, resolve transitive dependencies, or manage repositories. Apps and SDKs are delivered to the host through whatever mechanism you already use. NAH's job starts after they arrive: given what's installed, compute the exact parameters needed to launch correctly.
+
+## The Problem
+
 When you deploy a native application, someone must determine how to launch it: which binary to run, what library paths to set, which environment variables are required, what SDK version it needs. This information typically lives in documentation, install scripts, or tribal knowledge. It drifts. It breaks.
 
-NAH solves this by making applications self-describing. The app declares what it requires. The host declares what it provides. NAH computes the exact launch parameters - binary, arguments, environment, library paths - as a queryable contract.
+## The Solution
+
+NAH makes applications self-describing. Each party declares what they own:
+
+- **App developers** embed a manifest: identity, SDK requirement, entrypoint
+- **SDK developers** package their libraries and declare what they provide
+- **Host operators** configure policy: where things go, what versions are allowed
+
+NAH composes these declarations into a launch contract. The contract is queryable, auditable, and deterministic.
 
 ## What This Looks Like
 
-Install an SDK and an app:
 ```bash
+# Install SDK and app (delivered via your existing mechanism)
 nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
 nah --root /opt/nah app install myapp-1.0.0.nap
-```
 
-Ask NAH how to launch the app:
-```bash
+# Query the launch contract
 nah --root /opt/nah contract show com.example.myapp
 ```
 
-NAH returns:
+Output:
 ```
 Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
 CWD: /opt/nah/apps/com.example.myapp-1.0.0
@@ -30,19 +42,11 @@ Environment:
   NAH_NAK_ROOT=/opt/nah/naks/vendor-sdk/2.1.0
 ```
 
-No documentation to read. No install script to debug. The contract is computed from declarations.
+The contract is computed from declarations. No documentation to read. No install script to debug.
 
-## How It Works
+## Multiple SDK Versions
 
-Three parties, each declaring only what they own:
-
-- **App developers** embed a manifest: "I am app X, I need SDK Y version >=2.0"
-- **SDK developers** package their SDK: "I am SDK Y version 2.1, here are my libraries"
-- **Host operators** set policy: "I allow SDK Y versions 2.x, install apps here"
-
-NAH composes these into a launch contract. If the app needs SDK 2.x and the host has 2.1 installed, the contract resolves the paths. If the SDK is missing, NAH reports it.
-
-Multiple SDK versions coexist. Legacy apps get old versions. New apps get new versions. The host doesn't coordinate this manually.
+Multiple SDK versions coexist on the same host. Apps declare version requirements (e.g., `>=2.0.0 <3.0.0`). NAH selects a compatible version at install time and pins it. Legacy apps continue using old SDK versions. New apps use new versions. No manual coordination required.
 
 ## Installation
 

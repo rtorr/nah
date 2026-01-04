@@ -22,12 +22,12 @@ set(APP_VERSION "${PROJECT_VERSION}")
 
 # NAK requirement
 # Change this to demonstrate different version constraints:
-#   "^1.0.0" - any 1.x.x version (broad compatibility)
-#   "^1.2.0" - version 1.2.0 or higher in 1.x series
-#   "~1.2.0" - version 1.2.x only
+#   ">=1.0.0 <2.0.0" - any 1.x.x version (broad compatibility)
+#   ">=1.2.0 <2.0.0" - version 1.2.0 or higher in 1.x series
+#   ">=1.2.0 <1.3.0" - version 1.2.x only
 #   "1.2.3"  - exact version
 set(NAK_ID "com.example.sdk")
-set(NAK_VERSION_REQ "^1.0.0")
+set(NAK_VERSION_REQ ">=1.0.0 <2.0.0")
 
 message(STATUS "Building Application: ${APP_ID}@${APP_VERSION}")
 message(STATUS "  Requires NAK: ${NAK_ID} ${NAK_VERSION_REQ}")

@@ -27,7 +27,7 @@ struct Manifest {
     std::string id;
     std::string version; // raw string
     std::string nak_id;
-    std::optional<SemVerRequirement> nak_version_req;
+    std::optional<VersionRange> nak_version_req;
     std::string entrypoint_path;
     std::vector<std::string> entrypoint_args;
     std::vector<std::string> env_vars;

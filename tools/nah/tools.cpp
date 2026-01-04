@@ -1635,7 +1635,7 @@ int cmd_manifest_show(const GlobalOptions& opts, const std::string& target) {
         j["version"] = m.version;
         j["nak_id"] = m.nak_id;
         if (m.nak_version_req) {
-            j["nak_version_req"] = m.nak_version_req->selection_key;
+            j["nak_version_req"] = m.nak_version_req->selection_key();
         }
         j["entrypoint"] = m.entrypoint_path;
         j["entrypoint_args"] = m.entrypoint_args;
@@ -1650,7 +1650,7 @@ int cmd_manifest_show(const GlobalOptions& opts, const std::string& target) {
         std::cout << "Version: " << m.version << std::endl;
         std::cout << "NAK ID: " << m.nak_id << std::endl;
         if (m.nak_version_req) {
-            std::cout << "NAK Version Req: " << m.nak_version_req->selection_key << std::endl;
+            std::cout << "NAK Version Req: " << m.nak_version_req->selection_key() << std::endl;
         }
         std::cout << "Entrypoint: " << m.entrypoint_path << std::endl;
         

@@ -153,9 +153,9 @@ ManifestFieldsResult parse_manifest(const std::vector<uint8_t>& blob) {
                 break;
             case MANIFEST_TAG_NAK_VERSION_REQ: {
                 if (!manifest.nak_version_req.has_value()) {
-                    auto req = parse_requirement(e.value);
-                    if (req) {
-                        manifest.nak_version_req = req;
+                    auto range = parse_range(e.value);
+                    if (range) {
+                        manifest.nak_version_req = range;
                     } else {
                         res.warnings.push_back("invalid_manifest:nak_version_req");
                     }

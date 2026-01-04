@@ -33,7 +33,7 @@ NAH_APP_MANIFEST(
         .id("com.yourcompany.myapp")    // Your app ID
         .version("1.0.0")                // Your version
         .nak_id("com.example.sdk")       // NAK you depend on
-        .nak_version_req("^1.0.0")       // Version requirement
+        .nak_version_req(">=1.0.0 <2.0.0")  // Version requirement
         .entrypoint("bin/myapp")         // Path to binary
         .lib_dir("lib")
         .asset_dir("share")
@@ -43,12 +43,16 @@ NAH_APP_MANIFEST(
 
 ### Version Requirements
 
-| Format   | Example  | Meaning                      |
-|----------|----------|------------------------------|
-| Caret    | `^1.2.0` | Compatible with 1.x (>=1.2.0 <2.0.0) |
-| Tilde    | `~1.2.0` | Patch updates only (>=1.2.0 <1.3.0) |
-| Exact    | `1.2.0`  | Exactly this version         |
-| Wildcard | `1.2.*`  | Any 1.2.x                    |
+NAH uses [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) range syntax:
+
+| Format | Example | Meaning |
+|--------|---------|---------|
+| Exact | `1.2.0` | Exactly version 1.2.0 |
+| Greater/Equal | `>=1.2.0` | Version 1.2.0 or higher |
+| Range | `>=1.2.0 <2.0.0` | Version 1.2.0 up to (not including) 2.0.0 |
+| OR | `>=1.0.0 <2.0.0 \|\| >=3.0.0` | 1.x versions or 3.0.0+ |
+
+Comparators: `=`, `<`, `<=`, `>`, `>=`. Space-separated comparators are AND'd.
 
 ## 3. Build Your App
 
@@ -102,7 +106,7 @@ Instead of embedding the manifest in code, you can use a separate `manifest.toml
 id = "com.yourcompany.myapp"
 version = "1.0.0"
 nak_id = "com.example.sdk"
-nak_version_req = "^1.0.0"
+nak_version_req = ">=1.0.0 <2.0.0"
 entrypoint = "bin/myapp"
 lib_dirs = ["lib"]
 asset_dirs = ["share"]

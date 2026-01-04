@@ -239,48 +239,84 @@ When decoded, `ENTRYPOINT_PATH` MUST be represented as `entrypoint_relative_path
 
 ### SemVer Requirement (Normative)
 
-NAH uses Semantic Versioning 2.0.0 (SemVer) for NAK versions.
+NAH uses [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) for NAK versions. This section specifies version parsing, comparison, and range satisfaction semantics.
 
-A "SemVer requirement" string MUST be one of the following supported forms:
+#### Version Format
 
-- exact: X.Y.Z
-- caret: ^X.Y.Z
-- tilde: ~X.Y.Z
-- wildcard: X.Y.\* or X.Y.x
-- bounded: >=X.Y.Z <A.B.C
+A valid SemVer version string has the form:
 
-#### SemVer Parsing and Satisfaction (Normative)
+```
+MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+```
 
-NAH SemVer handling in v1.0 is **core-only**.
+Where:
+- `MAJOR`, `MINOR`, `PATCH` are non-negative decimal integers with no leading zeros
+- `PRERELEASE` (optional) is a series of dot-separated identifiers (alphanumeric and hyphen)
+- `BUILD` (optional) is a series of dot-separated identifiers (alphanumeric and hyphen)
 
-- A NAK version string (`nak.version`) MUST be exactly `MAJOR.MINOR.PATCH` with non-negative decimal integers and no pre-release (`-`) or build metadata (`+`).
-- Pre-release and build metadata are not supported in v1.0. Any installed NAK record with `nak.version` containing `-` or `+` MUST be treated as invalid for composition: emit `nak_pin_invalid` when loaded as a pin and mark the NAK unresolved. At install-time selection, such versions MUST be ignored as candidates.
+Examples:
+- `1.0.0` - release version
+- `1.0.0-alpha.1` - pre-release version
+- `1.0.0+build.123` - release with build metadata
+- `1.0.0-beta.2+build.456` - pre-release with build metadata
 
-Whitespace around a requirement MUST be trimmed before parsing.
+#### Version Comparison (Normative)
 
-**Comparison:**
+Per SemVer 2.0.0 specification:
 
-- Versions compare by `(MAJOR, MINOR, PATCH)` integer tuple ordering.
+1. Compare by `(MAJOR, MINOR, PATCH)` as integers, left to right
+2. A pre-release version has **lower** precedence than its release version: `1.0.0-alpha < 1.0.0`
+3. Pre-release identifiers compare: numeric identifiers by integer value, alphanumeric identifiers lexically, numeric < alphanumeric, shorter < longer when prefixes match
+4. Build metadata is **ignored** for comparison purposes
 
-**Satisfaction:**
+#### Version Range Syntax (Normative)
 
-- Exact `X.Y.Z`: satisfied iff `v == X.Y.Z`
-- Caret `^X.Y.Z`: satisfied iff `v >= X.Y.Z` and:
-  - if `X > 0`, `v < (X+1).0.0`
-  - else if `X == 0` and `Y > 0`, `v < 0.(Y+1).0`
-  - else (`X == 0` and `Y == 0`), `v < 0.0.(Z+1)`
+A version range specifies which versions satisfy a requirement. NAH uses standard comparator-based range syntax:
 
-- Tilde `~X.Y.Z`: satisfied iff `v >= X.Y.Z` and `v < X.(Y+1).0`
-- Wildcard `X.Y.*` or `X.Y.x`: satisfied iff `v.MAJOR == X` and `v.MINOR == Y`
-- Bounded `>=X.Y.Z <A.B.C`: satisfied iff `v >= X.Y.Z` and `v < A.B.C`
+**Comparators:**
+- `=X.Y.Z` or `X.Y.Z` - exact match (equal to)
+- `<X.Y.Z` - less than
+- `<=X.Y.Z` - less than or equal
+- `>X.Y.Z` - greater than
+- `>=X.Y.Z` - greater than or equal
 
-**Mapped-mode min_version and selection_key:**
+**Combining Comparators:**
+- Space-separated comparators are AND'd together: `>=1.0.0 <2.0.0` means both must be satisfied
+- `||` separates alternative sets (OR): `>=1.0.0 <2.0.0 || >=3.0.0` means either set can satisfy
 
-- For `X.Y.Z`, `^X.Y.Z`, `~X.Y.Z`, and `>=X.Y.Z <A.B.C`, `min_version = X.Y.Z`
-- For `X.Y.*` or `X.Y.x`, `min_version = X.Y.0`
-- `selection_key = "<min_version.MAJOR>.<min_version.MINOR>"`
+**Examples:**
+- `1.0.0` - exactly version 1.0.0
+- `>=1.0.0` - version 1.0.0 or higher
+- `>=1.0.0 <2.0.0` - version 1.0.0 up to (but not including) 2.0.0
+- `>=1.0.0 <2.0.0 || >=3.0.0 <4.0.0` - 1.x or 3.x versions
 
-If parsing fails or the form is unsupported, NAH MUST emit `invalid_manifest` and treat the NAK as unresolved per warning policy.
+Whitespace around comparators and `||` MUST be trimmed. Leading/trailing whitespace in the entire requirement string MUST be trimmed before parsing.
+
+#### Range Satisfaction (Normative)
+
+A version `v` satisfies a range if:
+1. For a single comparator: `v` meets the comparison condition
+2. For a comparator set (AND): `v` satisfies ALL comparators in the set
+3. For multiple sets (OR): `v` satisfies AT LEAST ONE comparator set
+
+**Pre-release Handling:**
+Pre-release versions satisfy ranges following SemVer 2.0.0 comparison rules. A pre-release version like `1.0.0-alpha.1` is less than `1.0.0` and satisfies `>=0.9.0 <1.0.0` but not `>=1.0.0`.
+
+#### Mapped-mode min_version and selection_key (Normative)
+
+For mapped binding mode, NAH derives a `selection_key` from the version range:
+
+1. `min_version` is the minimum version that could satisfy the range (from the first comparator set's lower bound)
+2. `selection_key = "<min_version.MAJOR>.<min_version.MINOR>"`
+
+Examples:
+- `>=1.2.3 <2.0.0` → min_version=1.2.3, selection_key="1.2"
+- `>=3.0.0` → min_version=3.0.0, selection_key="3.0"
+- `>=1.0.0 <2.0.0 || >=3.0.0` → min_version=1.0.0 (from first set), selection_key="1.0"
+
+#### Error Handling (Normative)
+
+If parsing fails or the range syntax is invalid, NAH MUST emit `invalid_manifest` and treat the NAK as unresolved per warning policy.
 
 ### App Install Record
 
@@ -325,13 +361,13 @@ instance_id = "uuid-string"      # Unique per install
 id = "com.example.app"           # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
 version = "1.2.3"                # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
 nak_id = "com.example.nak"           # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
-nak_version_req = "^3.0.0"   # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
+nak_version_req = ">=3.0.0 <4.0.0"   # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
 
 [nak]
 id = "com.example.nak"                   # Resolved NAK id
 version = "3.0.2"                # Resolved NAK version
 record_ref = "com.example.nak@3.0.2.toml"  # Required pin to NAK record file
-# selection_reason = "matched ^3.0.0, allowed by profile"  # Optional audit-only string
+# selection_reason = "matched >=3.0.0 <4.0.0, allowed by profile"  # Optional audit-only string
 
 [paths]
 install_root = "/nah/apps/com.example.app-1.2.3"   # Absolute path to app root
@@ -2056,7 +2092,7 @@ instance_id = "0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f"
 id = "com.example.app"
 version = "1.2.3"
 nak_id = "com.example.nak"
-nak_version_req = "^3.1.0"
+nak_version_req = ">=3.1.0 <4.0.0"
 
 [nak]
 id = "com.example.nak"

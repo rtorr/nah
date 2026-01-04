@@ -28,7 +28,7 @@ set(APP_VERSION "${PROJECT_VERSION}")
 
 # NAK requirement - targets the Game Engine SDK (conan-sdk)
 set(NAK_ID "com.example.gameengine")
-set(NAK_VERSION_REQ "^1.0.0")
+set(NAK_VERSION_REQ ">=1.0.0 <2.0.0")
 
 message(STATUS "Building Application: ${APP_ID}@${APP_VERSION}")
 message(STATUS "  Requires NAK: ${NAK_ID} ${NAK_VERSION_REQ}")

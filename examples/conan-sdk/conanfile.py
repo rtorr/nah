@@ -16,7 +16,7 @@ class GameEngineSDK(ConanFile):
 
     Apps using this SDK just declare:
         nak_id = "com.example.gameengine"
-        nak_version_req = "^1.0.0"
+        nak_version_req = ">=1.0.0 <2.0.0"
 
     They don't need to know about zlib, openssl, curl, etc.
     """

@@ -3,6 +3,14 @@ include(FetchContent)
 # ZLIB for gzip compression
 find_package(ZLIB REQUIRED)
 
+# cpp-semver for Semantic Versioning 2.0.0
+# https://github.com/z4kn4fein/cpp-semver
+FetchContent_Declare(
+    cpp-semver
+    GIT_REPOSITORY https://github.com/z4kn4fein/cpp-semver.git
+    GIT_TAG        v0.4.0
+)
+
 # toml++ for TOML parsing
 FetchContent_Declare(
     tomlplusplus
@@ -31,4 +39,4 @@ FetchContent_Declare(
     GIT_TAG        v2.4.11
 )
 
-FetchContent_MakeAvailable(tomlplusplus nlohmann_json cli11 doctest)
+FetchContent_MakeAvailable(cpp-semver tomlplusplus nlohmann_json cli11 doctest)

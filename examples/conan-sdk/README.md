@@ -24,7 +24,7 @@ curl, etc.) into a single NAK that applications target.
 │                                                         │
 │  manifest:                                              │
 │    nak_id = "com.example.gameengine"                    │
-│    nak_version_req = "^1.0.0"                           │
+│    nak_version_req = ">=1.0.0 <2.0.0"                   │
 │                                                         │
 │  Game code - uses engine API, doesn't know about deps   │
 └─────────────────────────────────────────────────────────┘
@@ -122,7 +122,7 @@ The app's manifest:
 id = "com.example.mygame"
 version = "1.0.0"
 nak_id = "com.example.gameengine"
-nak_version_req = "^1.0.0"
+nak_version_req = ">=1.0.0 <2.0.0"
 entrypoint = "bin/mygame"
 ```
 

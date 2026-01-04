@@ -94,7 +94,7 @@ run_app() {
 
     # Get contract as JSON
     local contract_json
-    contract_json=$($NAH_CLI --root "$NAH_ROOT" contract show "$app_id" --json 2>&1) || {
+    contract_json=$($NAH_CLI --root "$NAH_ROOT" --json contract show "$app_id" 2>&1) || {
         log_error "Failed to get contract for $app_id"
         echo "$contract_json"
         return 1

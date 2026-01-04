@@ -114,14 +114,16 @@ static const uint8_t manifest[] = { ... };
 
 ## Version Requirements
 
-Apps declare NAK version requirements in their manifest:
+Apps declare NAK version requirements using [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) range syntax:
 
 | Format | Example | Meaning |
 |--------|---------|---------|
-| Caret | `^1.2.0` | `>=1.2.0 <2.0.0` |
-| Tilde | `~1.2.0` | `>=1.2.0 <1.3.0` |
-| Exact | `1.2.0` | Exactly 1.2.0 |
-| Wildcard | `1.2.*` | Any 1.2.x |
+| Exact | `1.2.0` | Exactly version 1.2.0 |
+| Greater/Equal | `>=1.2.0` | Version 1.2.0 or higher |
+| Range | `>=1.2.0 <2.0.0` | Version 1.2.0 up to (not including) 2.0.0 |
+| OR | `>=1.0.0 <2.0.0 \|\| >=3.0.0` | 1.x versions or 3.0.0+ |
+
+Comparators: `=`, `<`, `<=`, `>`, `>=`. Space-separated comparators are AND'd together. `||` separates OR alternatives.
 
 ## Building in Isolation
 

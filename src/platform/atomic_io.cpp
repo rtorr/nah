@@ -1,5 +1,6 @@
 #include "nah/platform.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>

@@ -162,7 +162,11 @@ class NahConan(ConanFile):
             self.cpp_info.defines = ["NAH_SHARED"]
         else:
             # Static libraries - order matters for linker
-            self.cpp_info.components["nahhost"].libs = ["nahhost"]
+            # On Windows, static lib is named nahhost_static to avoid conflict with DLL import lib
+            nahhost_lib = (
+                "nahhost_static" if self.settings.os == "Windows" else "nahhost"
+            )
+            self.cpp_info.components["nahhost"].libs = [nahhost_lib]
             self.cpp_info.components["nahhost"].requires = [
                 "nah_contract",
                 "nah_config",

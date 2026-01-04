@@ -1,6 +1,7 @@
 # NAH - Native Application Host
 
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://rtorr.github.io/nah/)
 
 NAH standardizes how native applications are installed, inspected, and launched. It provides a deterministic contract between applications and hosts, ensuring portable app binaries while giving hosts full control over policy, layout, and enforcement.
 
@@ -96,7 +97,7 @@ nah --root ./my-nah-root doctor com.example.myapp
 nah validate profile host-profile.toml
 ```
 
-Run `nah --help` or `nah <command> --help` for full usage information.
+Run `nah --help` or `nah <command> --help` for full usage information. See [CLI Reference](docs/cli.md) for complete documentation.
 
 ## Using NAH as a Library
 
@@ -302,9 +303,16 @@ This updates the VERSION file, commits, tags, and pushes. GitHub Actions then:
 2. Creates a GitHub Release with the binaries
 3. Auto-generates release notes from commits
 
-## Specification
+## Documentation
 
-See [SPEC.md](SPEC.md) for the complete normative specification.
+| Resource | Description |
+|----------|-------------|
+| [CLI Reference](docs/cli.md) | Complete command-line reference |
+| [API Reference](https://rtorr.github.io/nah/api/) | Library documentation (Doxygen) |
+| [Getting Started: App](docs/getting-started-app.md) | Build apps for NAH |
+| [Getting Started: NAK](docs/getting-started-nak.md) | Build SDKs/frameworks |
+| [Getting Started: Host](docs/getting-started-host.md) | Deploy NAH in production |
+| [SPEC.md](SPEC.md) | Complete normative specification |
 
 ## License
 

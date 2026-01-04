@@ -1,5 +1,26 @@
 #pragma once
 
+/**
+ * @file nahhost.hpp
+ * @brief Main NAH library interface for contract composition
+ * 
+ * This is the primary header for using NAH as a library. It provides:
+ * - NahHost: The main class for interacting with a NAH root
+ * - Result<T>: Error handling type for fallible operations
+ * - AppInfo: Application metadata
+ * 
+ * @example
+ * ```cpp
+ * #include <nah/nahhost.hpp>
+ * 
+ * auto host = nah::NahHost::create("/nah");
+ * auto contract = host->getLaunchContract("com.example.myapp");
+ * if (contract.isOk()) {
+ *     // Use contract.value() to launch the app
+ * }
+ * ```
+ */
+
 #include "nah/types.hpp"
 #include "nah/contract.hpp"
 #include "nah/host_profile.hpp"
@@ -15,6 +36,9 @@ namespace nah {
 // App Info
 // ============================================================================
 
+/**
+ * @brief Metadata about an installed application
+ */
 struct AppInfo {
     std::string id;
     std::string version;
@@ -27,6 +51,9 @@ struct AppInfo {
 // Error Handling (per SPEC L1692-L1738)
 // ============================================================================
 
+/**
+ * @brief Error codes for NAH operations
+ */
 enum class ErrorCode {
     // System / IO
     FILE_NOT_FOUND,
@@ -44,6 +71,9 @@ enum class ErrorCode {
     PROFILE_PARSE_ERROR,
 };
 
+/**
+ * @brief Error type with code and message
+ */
 class Error {
 public:
     Error(ErrorCode code, std::string message)
@@ -67,6 +97,14 @@ private:
 // Result Type (per SPEC L1692-L1710)
 // ============================================================================
 
+/**
+ * @brief Result type for fallible operations
+ * @tparam T The success value type
+ * @tparam E The error type (default: Error)
+ * 
+ * Used throughout the NAH API for operations that can fail.
+ * Check isOk() before accessing value(), or isErr() before error().
+ */
 template<typename T, typename E = Error>
 class Result {
 public:
@@ -134,41 +172,95 @@ private:
 // NahHost Class (per SPEC L1660-L1684)
 // ============================================================================
 
+/**
+ * @brief Main interface for interacting with a NAH root
+ * 
+ * NahHost provides methods for:
+ * - Listing and finding installed applications
+ * - Managing host profiles
+ * - Generating launch contracts
+ * 
+ * @example
+ * ```cpp
+ * auto host = nah::NahHost::create("/nah");
+ * 
+ * // List all apps
+ * for (const auto& app : host->listApplications()) {
+ *     std::cout << app.id << "@" << app.version << "\n";
+ * }
+ * 
+ * // Get launch contract
+ * auto result = host->getLaunchContract("com.example.myapp");
+ * if (result.isOk()) {
+ *     const auto& contract = result.value().contract;
+ *     // Launch using contract.execution.binary, etc.
+ * }
+ * ```
+ */
 class NahHost {
 public:
-    // Creation
+    /**
+     * @brief Create a NahHost instance for a NAH root directory
+     * @param root_path Path to the NAH root (e.g., "/nah")
+     * @return Unique pointer to NahHost instance
+     */
     static std::unique_ptr<NahHost> create(const std::string& root_path);
     
-    // Get the NAH root path
+    /// Get the NAH root path
     const std::string& root() const { return root_; }
 
-    // Application discovery
+    /// List all installed applications
     std::vector<AppInfo> listApplications() const;
+    
+    /**
+     * @brief Find an installed application by ID
+     * @param id Application identifier (e.g., "com.example.myapp")
+     * @param version Optional specific version (default: latest)
+     * @return AppInfo or error if not found
+     */
     Result<AppInfo> findApplication(const std::string& id,
                                      const std::string& version = "") const;
 
-    // Profile management
+    /// Get the currently active host profile
     Result<HostProfile> getActiveHostProfile() const;
+    
+    /// Set the active host profile by name
     Result<void> setActiveHostProfile(const std::string& name);
+    
+    /// List all available profile names
     std::vector<std::string> listProfiles() const;
+    
+    /// Load a specific profile by name
     Result<HostProfile> loadProfile(const std::string& name) const;
+    
+    /// Validate a host profile
     Result<void> validateProfile(const HostProfile& profile) const;
 
-    // Launch contract generation
+    /**
+     * @brief Generate a launch contract for an application
+     * @param app_id Application identifier
+     * @param version Optional specific version (default: latest installed)
+     * @param profile Optional profile name (default: active profile)
+     * @param enable_trace Include composition trace in result
+     * @return ContractEnvelope containing the launch contract
+     */
     Result<ContractEnvelope> getLaunchContract(
         const std::string& app_id,
         const std::string& version = "",
         const std::string& profile = "",
         bool enable_trace = false) const;
     
-    // Low-level contract composition
+    /**
+     * @brief Low-level contract composition from explicit inputs
+     * @param inputs Composition inputs (manifest, profile, paths, etc.)
+     * @return ContractEnvelope containing the composed contract
+     */
     Result<ContractEnvelope> composeContract(
         const CompositionInputs& inputs) const;
 
 private:
     explicit NahHost(std::string root) : root_(std::move(root)) {}
     
-    // Resolve active profile following SPEC resolution rules
     Result<HostProfile> resolveActiveProfile(const std::string& explicit_name = "") const;
     
     std::string root_;

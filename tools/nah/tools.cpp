@@ -16,6 +16,11 @@
 #include <iostream>
 #include <set>
 #include <sstream>
+#include <vector>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -44,13 +49,241 @@ std::string read_file(const std::string& path) {
     return ss.str();
 }
 
-void print_error(const std::string& msg, bool json_mode) {
+// ANSI color codes (disabled if not a terminal)
+namespace color {
+    bool enabled = true;
+    
+    void init() {
+        #ifdef _WIN32
+        enabled = false;  // Simplified: disable on Windows
+        #else
+        enabled = isatty(fileno(stderr));
+        #endif
+    }
+    
+    std::string red(const std::string& s)    { return enabled ? "\033[31m" + s + "\033[0m" : s; }
+    std::string green(const std::string& s)  { return enabled ? "\033[32m" + s + "\033[0m" : s; }
+    std::string yellow(const std::string& s) { return enabled ? "\033[33m" + s + "\033[0m" : s; }
+    std::string blue(const std::string& s)   { return enabled ? "\033[34m" + s + "\033[0m" : s; }
+    std::string bold(const std::string& s)   { return enabled ? "\033[1m" + s + "\033[0m" : s; }
+    std::string dim(const std::string& s)    { return enabled ? "\033[2m" + s + "\033[0m" : s; }
+}
+
+// Levenshtein distance for command suggestions
+int levenshtein_distance(const std::string& s1, const std::string& s2) {
+    const size_t m = s1.size(), n = s2.size();
+    if (m == 0) return static_cast<int>(n);
+    if (n == 0) return static_cast<int>(m);
+    
+    std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1));
+    for (size_t i = 0; i <= m; ++i) dp[i][0] = static_cast<int>(i);
+    for (size_t j = 0; j <= n; ++j) dp[0][j] = static_cast<int>(j);
+    
+    for (size_t i = 1; i <= m; ++i) {
+        for (size_t j = 1; j <= n; ++j) {
+            int cost = (s1[i-1] == s2[j-1]) ? 0 : 1;
+            dp[i][j] = std::min({dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost});
+        }
+    }
+    return dp[m][n];
+}
+
+// Find similar commands for suggestions
+std::vector<std::string> find_similar_commands(const std::string& input, 
+                                                const std::vector<std::string>& valid_commands,
+                                                int max_distance = 3) {
+    std::vector<std::pair<int, std::string>> candidates;
+    for (const auto& cmd : valid_commands) {
+        int dist = levenshtein_distance(input, cmd);
+        if (dist <= max_distance) {
+            candidates.push_back({dist, cmd});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end());
+    
+    std::vector<std::string> result;
+    for (const auto& [dist, cmd] : candidates) {
+        result.push_back(cmd);
+        if (result.size() >= 3) break;  // Max 3 suggestions
+    }
+    return result;
+}
+
+// Error context for better messages
+struct ErrorContext {
+    std::string file_path;
+    int line_number = -1;
+    std::string line_content;
+    std::string field_name;
+    std::vector<std::string> valid_values;
+    std::string hint;
+    std::string help_command;
+};
+
+void print_error(const std::string& msg, bool json_mode, const ErrorContext& ctx = {}) {
     if (json_mode) {
         nlohmann::json j;
         j["error"] = msg;
+        if (!ctx.file_path.empty()) j["file"] = ctx.file_path;
+        if (ctx.line_number > 0) j["line"] = ctx.line_number;
+        if (!ctx.hint.empty()) j["hint"] = ctx.hint;
+        if (!ctx.valid_values.empty()) j["valid_values"] = ctx.valid_values;
         std::cout << j.dump(2) << std::endl;
     } else {
-        std::cerr << "error: " << msg << std::endl;
+        std::cerr << color::red("error: ") << msg << std::endl;
+        
+        // Show file location if available
+        if (!ctx.file_path.empty()) {
+            std::cerr << color::dim("  --> ") << ctx.file_path;
+            if (ctx.line_number > 0) {
+                std::cerr << ":" << ctx.line_number;
+            }
+            std::cerr << std::endl;
+        }
+        
+        // Show the problematic line with context
+        if (ctx.line_number > 0 && !ctx.line_content.empty()) {
+            std::string line_num = std::to_string(ctx.line_number);
+            std::string padding(line_num.size(), ' ');
+            std::cerr << color::dim(padding + " |") << std::endl;
+            std::cerr << color::dim(line_num + " | ") << ctx.line_content << std::endl;
+            std::cerr << color::dim(padding + " |") << std::endl;
+        }
+        
+        // Show valid values if available
+        if (!ctx.valid_values.empty()) {
+            std::cerr << std::endl << "Valid values: ";
+            for (size_t i = 0; i < ctx.valid_values.size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << color::green(ctx.valid_values[i]);
+            }
+            std::cerr << std::endl;
+        }
+        
+        // Show hint if available
+        if (!ctx.hint.empty()) {
+            std::cerr << std::endl << color::blue("hint: ") << ctx.hint << std::endl;
+        }
+        
+        // Show help command if available
+        if (!ctx.help_command.empty()) {
+            std::cerr << std::endl << "For more information, try: " 
+                      << color::bold(ctx.help_command) << std::endl;
+        }
+    }
+}
+
+void print_warning(const std::string& msg, bool json_mode) {
+    if (json_mode) return;  // Warnings go in the JSON structure
+    std::cerr << color::yellow("warning: ") << msg << std::endl;
+}
+
+// Check if NAH root exists and is valid
+bool check_nah_root(const std::string& root, bool json_mode) {
+    if (!fs::exists(root)) {
+        ErrorContext ctx;
+        ctx.hint = "Initialize a new NAH root with: nah profile init " + root;
+        print_error("NAH root directory does not exist: " + root, json_mode, ctx);
+        return false;
+    }
+    
+    if (!fs::exists(root + "/host")) {
+        ErrorContext ctx;
+        ctx.hint = "This directory exists but is not a valid NAH root.\n"
+                   "       Initialize it with: nah profile init " + root;
+        print_error("Invalid NAH root (missing host/ directory): " + root, json_mode, ctx);
+        return false;
+    }
+    
+    return true;
+}
+
+// Parse target string (id[@version]) with helpful errors
+bool parse_target(const std::string& target, std::string& id, std::string& version,
+                  bool json_mode, const std::string& entity_type = "application") {
+    if (target.empty()) {
+        ErrorContext ctx;
+        ctx.hint = "Specify a target as: <id> or <id>@<version>\n"
+                   "       Example: com.example.myapp or com.example.myapp@1.0.0";
+        print_error(entity_type + " target is required", json_mode, ctx);
+        return false;
+    }
+    
+    id = target;
+    version.clear();
+    
+    auto at_pos = target.find('@');
+    if (at_pos != std::string::npos) {
+        id = target.substr(0, at_pos);
+        version = target.substr(at_pos + 1);
+        
+        if (id.empty()) {
+            ErrorContext ctx;
+            ctx.hint = "The format is: <id>@<version>, not @<version>";
+            print_error("Invalid target format: missing ID before '@'", json_mode, ctx);
+            return false;
+        }
+        
+        if (version.empty()) {
+            ErrorContext ctx;
+            ctx.hint = "Either specify a version after '@' or omit '@' entirely";
+            print_error("Invalid target format: missing version after '@'", json_mode, ctx);
+            return false;
+        }
+    }
+    
+    // Validate ID format (reverse domain notation)
+    if (id.find('.') == std::string::npos) {
+        print_warning("ID '" + id + "' is not in reverse domain notation (e.g., com.example.app)", json_mode);
+    }
+    
+    return true;
+}
+
+// Suggest available apps/NAKs when target not found
+void suggest_available_targets(const std::string& nah_root, const std::string& missing_id,
+                               const std::string& entity_type, bool json_mode) {
+    if (json_mode) return;
+    
+    std::vector<std::string> available;
+    
+    if (entity_type == "application" || entity_type == "app") {
+        auto host = nah::NahHost::create(nah_root);
+        for (const auto& app : host->listApplications()) {
+            available.push_back(app.id);
+        }
+    } else if (entity_type == "NAK" || entity_type == "nak") {
+        for (const auto& entry : nah::scan_nak_registry(nah_root)) {
+            available.push_back(entry.id + "@" + entry.version);
+        }
+    }
+    
+    if (available.empty()) {
+        std::cerr << std::endl << "No " << entity_type << "s are currently installed." << std::endl;
+        if (entity_type == "application" || entity_type == "app") {
+            std::cerr << "Install one with: " << color::bold("nah app install <package.nap>") << std::endl;
+        } else {
+            std::cerr << "Install one with: " << color::bold("nah nak install <package.nak>") << std::endl;
+        }
+        return;
+    }
+    
+    // Find similar IDs
+    auto suggestions = find_similar_commands(missing_id, available, 5);
+    
+    if (!suggestions.empty()) {
+        std::cerr << std::endl << "Did you mean?" << std::endl;
+        for (const auto& s : suggestions) {
+            std::cerr << "  " << color::green(s) << std::endl;
+        }
+    } else if (available.size() <= 10) {
+        std::cerr << std::endl << "Available " << entity_type << "s:" << std::endl;
+        for (const auto& s : available) {
+            std::cerr << "  " << s << std::endl;
+        }
+    } else {
+        std::cerr << std::endl << "Run " << color::bold("nah " + entity_type + " list") 
+                  << " to see all installed " << entity_type << "s." << std::endl;
     }
 }
 
@@ -59,6 +292,10 @@ void print_error(const std::string& msg, bool json_mode) {
 // ============================================================================
 
 int cmd_app_list(const GlobalOptions& opts) {
+    if (!check_nah_root(opts.root, opts.json)) {
+        return 1;
+    }
+    
     auto host = nah::NahHost::create(opts.root);
     auto apps = host->listApplications();
     
@@ -88,20 +325,22 @@ int cmd_app_list(const GlobalOptions& opts) {
 }
 
 int cmd_app_show(const GlobalOptions& opts, const std::string& target) {
+    if (!check_nah_root(opts.root, opts.json)) {
+        return 1;
+    }
+    
     auto host = nah::NahHost::create(opts.root);
     
     // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto result = host->findApplication(id, version);
     if (result.isErr()) {
-        print_error(result.error().message(), opts.json);
+        print_error("Application not found: " + target, opts.json);
+        suggest_available_targets(opts.root, id, "application", opts.json);
         return 1;
     }
     
@@ -160,13 +399,9 @@ int cmd_app_install(const GlobalOptions& opts, const std::string& package_path,
 }
 
 int cmd_app_uninstall(const GlobalOptions& opts, const std::string& target) {
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto result = nah::uninstall_app(opts.root, id, version);
@@ -189,13 +424,9 @@ int cmd_app_uninstall(const GlobalOptions& opts, const std::string& target) {
 }
 
 int cmd_app_verify(const GlobalOptions& opts, const std::string& target) {
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto result = nah::verify_app(opts.root, id, version);
@@ -374,13 +605,9 @@ int cmd_nak_list(const GlobalOptions& opts) {
 }
 
 int cmd_nak_show(const GlobalOptions& opts, const std::string& target) {
-    // Parse target: nak_id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "NAK")) {
+        return 1;
     }
     
     auto entries = nah::scan_nak_registry(opts.root);
@@ -446,15 +673,18 @@ int cmd_nak_install(const GlobalOptions& opts, const std::string& pack_path,
 }
 
 int cmd_nak_path(const GlobalOptions& opts, const std::string& target) {
-    // Parse target: nak_id@version
-    auto at_pos = target.find('@');
-    if (at_pos == std::string::npos) {
-        print_error("target must be nak_id@version", opts.json);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "NAK")) {
         return 1;
     }
     
-    std::string id = target.substr(0, at_pos);
-    std::string version = target.substr(at_pos + 1);
+    if (version.empty()) {
+        ErrorContext ctx;
+        ctx.hint = "The path command requires an exact version.\n"
+                   "       Example: nah nak path com.example.sdk@1.0.0";
+        print_error("NAK version is required for path lookup", opts.json, ctx);
+        return 1;
+    }
     
     auto entries = nah::scan_nak_registry(opts.root);
     
@@ -826,17 +1056,12 @@ int cmd_profile_validate(const GlobalOptions& opts, const std::string& path) {
 
 int cmd_contract_show(const GlobalOptions& opts, const std::string& target,
                        const std::string& /*overrides_file*/) {
-    auto host = nah::NahHost::create(opts.root);
-    
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
+    auto host = nah::NahHost::create(opts.root);
     auto result = host->getLaunchContract(id, version, opts.profile, opts.trace);
     
     if (result.isErr()) {
@@ -911,13 +1136,9 @@ int cmd_contract_show(const GlobalOptions& opts, const std::string& target,
 
 int cmd_contract_explain(const GlobalOptions& opts, const std::string& target, 
                           const std::string& path) {
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto host = nah::NahHost::create(opts.root);
@@ -1024,13 +1245,9 @@ int cmd_contract_explain(const GlobalOptions& opts, const std::string& target,
 
 int cmd_contract_diff(const GlobalOptions& opts, const std::string& target,
                        const std::string& profile_a, const std::string& profile_b) {
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto host = nah::NahHost::create(opts.root);
@@ -1119,13 +1336,9 @@ int cmd_contract_diff(const GlobalOptions& opts, const std::string& target,
 }
 
 int cmd_contract_resolve(const GlobalOptions& opts, const std::string& target) {
-    // Parse target: id[@version]
-    std::string id = target;
-    std::string version;
-    auto at_pos = target.find('@');
-    if (at_pos != std::string::npos) {
-        id = target.substr(0, at_pos);
-        version = target.substr(at_pos + 1);
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "application")) {
+        return 1;
     }
     
     auto host = nah::NahHost::create(opts.root);
@@ -1384,16 +1597,12 @@ int cmd_manifest_show(const GlobalOptions& opts, const std::string& target) {
         }
     } else {
         // Try as app target
-        auto host = nah::NahHost::create(opts.root);
-        
-        std::string id = target;
-        std::string version;
-        auto at_pos = target.find('@');
-        if (at_pos != std::string::npos) {
-            id = target.substr(0, at_pos);
-            version = target.substr(at_pos + 1);
+        std::string id, version;
+        if (!parse_target(target, id, version, opts.json, "application")) {
+            return 1;
         }
         
+        auto host = nah::NahHost::create(opts.root);
         auto app_result = host->findApplication(id, version);
         if (app_result.isOk()) {
             std::string manifest_path = app_result.value().install_root + "/manifest.nah";
@@ -1504,12 +1713,9 @@ int cmd_doctor(const GlobalOptions& opts, const std::string& target, bool fix) {
         }
     } else {
         // Target is an installed app id[@version]
-        std::string id = target;
-        std::string version;
-        auto at_pos = target.find('@');
-        if (at_pos != std::string::npos) {
-            id = target.substr(0, at_pos);
-            version = target.substr(at_pos + 1);
+        std::string id, version;
+        if (!parse_target(target, id, version, opts.json, "application")) {
+            return 1;
         }
         
         auto app_result = host->findApplication(id, version);
@@ -1780,116 +1986,254 @@ int cmd_format(const GlobalOptions& opts, const std::string& path, bool check) {
 // ============================================================================
 
 int main(int argc, char** argv) {
-    CLI::App app{"nah - Native Application Host CLI v1.0"};
+    // Initialize color output
+    color::init();
+    
+    CLI::App app{"nah - Native Application Host CLI v1.0\n\n"
+                 "Manage native applications, NAKs, profiles, and launch contracts."};
     app.require_subcommand(0, 1);
+    app.footer("\nRun 'nah <command> --help' for more information on a command.\n"
+               "Documentation: https://github.com/anthropics/nah");
     
     GlobalOptions opts;
     
     // Global flags
-    app.add_option("--root", opts.root, "NAH root directory")->default_val("/nah");
-    app.add_option("--profile", opts.profile, "Profile name to use");
-    app.add_flag("--json", opts.json, "Output in JSON format");
-    app.add_flag("--trace", opts.trace, "Include trace information");
-    app.add_flag("-v,--verbose", opts.verbose, "Verbose output");
-    app.add_flag("-q,--quiet", opts.quiet, "Quiet output");
+    app.add_option("--root", opts.root, 
+        "NAH root directory (default: /nah)\n"
+        "Can also be set via NAH_ROOT environment variable")->default_val("/nah")->envname("NAH_ROOT");
+    app.add_option("--profile", opts.profile, 
+        "Use a specific profile instead of the active one");
+    app.add_flag("--json", opts.json, 
+        "Output in JSON format for machine parsing");
+    app.add_flag("--trace", opts.trace, 
+        "Include trace information showing where each value came from");
+    app.add_flag("-v,--verbose", opts.verbose, 
+        "Show detailed progress information");
+    app.add_flag("-q,--quiet", opts.quiet, 
+        "Suppress non-essential output");
+    
+    // Helper for subcommand failure messages with suggestions
+    auto make_failure_handler = []() {
+        return [](const CLI::App* failed_app, const CLI::Error& e) {
+            std::string error_msg = e.what();
+            std::string result;
+            
+            // Get available subcommands for THIS app
+            std::vector<std::string> valid_cmds;
+            for (const auto* sub : failed_app->get_subcommands({})) {
+                valid_cmds.push_back(sub->get_name());
+            }
+            
+            // Check for unknown argument/subcommand errors
+            if (error_msg.find("was not expected") != std::string::npos ||
+                error_msg.find("could not be matched") != std::string::npos) {
+                
+                // Extract the unknown command
+                std::string unknown_cmd;
+                auto colon_pos = error_msg.rfind(':');
+                if (colon_pos != std::string::npos && colon_pos + 2 < error_msg.size()) {
+                    unknown_cmd = error_msg.substr(colon_pos + 2);
+                    while (!unknown_cmd.empty() && std::isspace(unknown_cmd.back())) {
+                        unknown_cmd.pop_back();
+                    }
+                }
+                
+                result = error_msg + "\n";
+                
+                // Find similar commands
+                if (!unknown_cmd.empty() && !valid_cmds.empty()) {
+                    auto suggestions = find_similar_commands(unknown_cmd, valid_cmds, 3);
+                    if (!suggestions.empty()) {
+                        result += "\nDid you mean?\n";
+                        for (const auto& s : suggestions) {
+                            result += "  " + s + "\n";
+                        }
+                    }
+                }
+                
+                // Show available commands if no close match
+                if (!valid_cmds.empty() && result.find("Did you mean") == std::string::npos) {
+                    result += "\nAvailable subcommands:\n";
+                    for (const auto& cmd : valid_cmds) {
+                        result += "  " + cmd + "\n";
+                    }
+                }
+            } else if (error_msg.find("subcommand is required") != std::string::npos) {
+                // Missing subcommand - show available options
+                result = error_msg + "\n";
+                if (!valid_cmds.empty()) {
+                    result += "\nAvailable subcommands:\n";
+                    for (const auto& cmd : valid_cmds) {
+                        result += "  " + cmd + "\n";
+                    }
+                }
+            } else {
+                result = CLI::FailureMessage::simple(failed_app, e);
+            }
+            
+            result += "\nRun '" + failed_app->get_name() + " --help' for usage information.\n";
+            return result;
+        };
+    };
     
     // ========== App Commands ==========
     auto app_cmd = app.add_subcommand("app", "Application lifecycle commands");
+    app_cmd->require_subcommand(1);  // Must specify a subcommand
+    app_cmd->failure_message(make_failure_handler());
+    app_cmd->footer("\nExamples:\n"
+                    "  nah app list                        # List all installed apps\n"
+                    "  nah app show com.example.myapp      # Show app details\n"
+                    "  nah app install ./myapp-1.0.0.nap   # Install from package\n"
+                    "  nah app verify com.example.myapp    # Verify installation");
     
-    auto app_list = app_cmd->add_subcommand("list", "List installed applications");
+    auto app_list = app_cmd->add_subcommand("list", "List all installed applications");
     app_list->callback([&]() { std::exit(cmd_app_list(opts)); });
     
     std::string app_target;
-    auto app_show = app_cmd->add_subcommand("show", "Show application details");
-    app_show->add_option("target", app_target, "Application id[@version]")->required();
+    auto app_show = app_cmd->add_subcommand("show", "Show details of an installed application");
+    app_show->add_option("target", app_target, 
+        "Application identifier, optionally with version\n"
+        "Examples: com.example.myapp, com.example.myapp@1.0.0")->required();
     app_show->callback([&]() { std::exit(cmd_app_show(opts, app_target)); });
     
     std::string package_path;
     bool app_force = false;
-    auto app_install = app_cmd->add_subcommand("install", "Install an application");
-    app_install->add_option("package", package_path, "Path to .nap package")->required();
-    app_install->add_flag("-f,--force", app_force, "Overwrite existing installation");
+    auto app_install = app_cmd->add_subcommand("install", "Install an application from a .nap package");
+    app_install->add_option("package", package_path, 
+        "Path to the .nap package file")->required()->check(CLI::ExistingFile);
+    app_install->add_flag("-f,--force", app_force, 
+        "Overwrite existing installation if present");
     app_install->callback([&]() { std::exit(cmd_app_install(opts, package_path, app_force)); });
     
-    auto app_uninstall = app_cmd->add_subcommand("uninstall", "Uninstall an application");
-    app_uninstall->add_option("target", app_target, "Application id[@version]")->required();
+    auto app_uninstall = app_cmd->add_subcommand("uninstall", "Remove an installed application");
+    app_uninstall->add_option("target", app_target, 
+        "Application to uninstall (id or id@version)")->required();
     app_uninstall->callback([&]() { std::exit(cmd_app_uninstall(opts, app_target)); });
     
-    auto app_verify = app_cmd->add_subcommand("verify", "Verify an installed application");
-    app_verify->add_option("target", app_target, "Application id[@version]")->required();
+    auto app_verify = app_cmd->add_subcommand("verify", "Verify an installed application is healthy");
+    app_verify->add_option("target", app_target, 
+        "Application to verify")->required();
+    app_verify->footer("\nChecks:\n"
+                       "  - Install record is valid\n"
+                       "  - App directory structure exists\n"
+                       "  - Manifest is present and valid\n"
+                       "  - Required NAK is available");
     app_verify->callback([&]() { std::exit(cmd_app_verify(opts, app_target)); });
     
     std::string init_dir;
-    auto app_init = app_cmd->add_subcommand("init", "Create application skeleton");
-    app_init->add_option("dir", init_dir, "Directory to create")->required();
+    auto app_init = app_cmd->add_subcommand("init", "Create a new application project skeleton");
+    app_init->add_option("dir", init_dir, 
+        "Directory to create (will be created if it doesn't exist)")->required();
     app_init->callback([&]() { std::exit(cmd_app_init(opts, init_dir)); });
     
     std::string pack_dir, pack_output;
-    auto app_pack = app_cmd->add_subcommand("pack", "Create NAP package");
-    app_pack->add_option("dir", pack_dir, "Directory to package")->required();
-    app_pack->add_option("-o,--output", pack_output, "Output file")->required();
+    auto app_pack = app_cmd->add_subcommand("pack", "Create a .nap package from a directory");
+    app_pack->add_option("dir", pack_dir, 
+        "Directory containing the application")->required()->check(CLI::ExistingDirectory);
+    app_pack->add_option("-o,--output", pack_output, 
+        "Output .nap file path")->required();
     app_pack->callback([&]() { std::exit(cmd_app_pack(opts, pack_dir, pack_output)); });
     
     // ========== NAK Commands ==========
-    auto nak_cmd = app.add_subcommand("nak", "NAK lifecycle commands");
+    auto nak_cmd = app.add_subcommand("nak", "Native App Kit (NAK) lifecycle commands");
+    nak_cmd->require_subcommand(1);
+    nak_cmd->failure_message(make_failure_handler());
+    nak_cmd->footer("\nExamples:\n"
+                    "  nah nak list                           # List installed NAKs\n"
+                    "  nah nak show com.example.sdk@1.0.0     # Show NAK details\n"
+                    "  nah nak install ./sdk-1.0.0.nak        # Install a NAK");
     
-    auto nak_list = nak_cmd->add_subcommand("list", "List installed NAKs");
+    auto nak_list = nak_cmd->add_subcommand("list", "List all installed NAKs");
     nak_list->callback([&]() { std::exit(cmd_nak_list(opts)); });
     
     std::string nak_target;
     auto nak_show = nak_cmd->add_subcommand("show", "Show NAK details");
-    nak_show->add_option("target", nak_target, "NAK id[@version]")->required();
+    nak_show->add_option("target", nak_target, 
+        "NAK identifier with version (e.g., com.example.sdk@1.0.0)")->required();
     nak_show->callback([&]() { std::exit(cmd_nak_show(opts, nak_target)); });
     
     std::string nak_pack_path;
     bool nak_force = false;
-    auto nak_install = nak_cmd->add_subcommand("install", "Install a NAK");
-    nak_install->add_option("pack", nak_pack_path, "Path to .nak pack")->required();
-    nak_install->add_flag("-f,--force", nak_force, "Overwrite existing installation");
+    auto nak_install = nak_cmd->add_subcommand("install", "Install a NAK from a .nak pack");
+    nak_install->add_option("pack", nak_pack_path, 
+        "Path to the .nak pack file")->required()->check(CLI::ExistingFile);
+    nak_install->add_flag("-f,--force", nak_force, 
+        "Overwrite existing version if present");
     nak_install->callback([&]() { std::exit(cmd_nak_install(opts, nak_pack_path, nak_force)); });
     
-    auto nak_path = nak_cmd->add_subcommand("path", "Get NAK root path");
-    nak_path->add_option("target", nak_target, "NAK id@version")->required();
+    auto nak_path = nak_cmd->add_subcommand("path", "Print the installation path of a NAK");
+    nak_path->add_option("target", nak_target, 
+        "NAK id@version (version required)")->required();
+    nak_path->footer("\nUseful for build scripts that need the NAK location.");
     nak_path->callback([&]() { std::exit(cmd_nak_path(opts, nak_target)); });
     
     std::string nak_init_dir;
-    auto nak_init = nak_cmd->add_subcommand("init", "Create NAK skeleton");
-    nak_init->add_option("dir", nak_init_dir, "Directory to create")->required();
+    auto nak_init = nak_cmd->add_subcommand("init", "Create a new NAK project skeleton");
+    nak_init->add_option("dir", nak_init_dir, 
+        "Directory to create")->required();
     nak_init->callback([&]() { std::exit(cmd_nak_init(opts, nak_init_dir)); });
     
     std::string nak_pack_dir, nak_pack_output;
-    auto nak_pack_cmd = nak_cmd->add_subcommand("pack", "Create NAK pack");
-    nak_pack_cmd->add_option("dir", nak_pack_dir, "Directory to package")->required();
-    nak_pack_cmd->add_option("-o,--output", nak_pack_output, "Output file")->required();
+    auto nak_pack_cmd = nak_cmd->add_subcommand("pack", "Create a .nak pack from a directory");
+    nak_pack_cmd->add_option("dir", nak_pack_dir, 
+        "Directory containing the NAK")->required()->check(CLI::ExistingDirectory);
+    nak_pack_cmd->add_option("-o,--output", nak_pack_output, 
+        "Output .nak file path")->required();
     nak_pack_cmd->callback([&]() { std::exit(cmd_nak_pack(opts, nak_pack_dir, nak_pack_output)); });
     
     // ========== Profile Commands ==========
-    auto profile_cmd = app.add_subcommand("profile", "Profile management commands");
+    auto profile_cmd = app.add_subcommand("profile", "Host profile management");
+    profile_cmd->require_subcommand(1);
+    profile_cmd->failure_message(make_failure_handler());
+    profile_cmd->footer("\nProfiles control how NAH behaves for your host environment.\n"
+                        "\nExamples:\n"
+                        "  nah profile init ./my-nah-root    # Create new NAH root\n"
+                        "  nah profile list                  # List available profiles\n"
+                        "  nah profile set production        # Switch to production profile");
     
     std::string profile_init_dir;
-    auto profile_init = profile_cmd->add_subcommand("init", "Create NAH root directory");
-    profile_init->add_option("dir", profile_init_dir, "Directory to initialize")->required();
+    auto profile_init = profile_cmd->add_subcommand("init", "Initialize a new NAH root directory");
+    profile_init->add_option("dir", profile_init_dir, 
+        "Directory to initialize as a NAH root")->required();
+    profile_init->footer("\nCreates the required directory structure:\n"
+                         "  <dir>/host/profiles/default.toml\n"
+                         "  <dir>/host/profile.current -> profiles/default.toml\n"
+                         "  <dir>/apps/\n"
+                         "  <dir>/naks/\n"
+                         "  <dir>/registry/installs/\n"
+                         "  <dir>/registry/naks/");
     profile_init->callback([&]() { std::exit(cmd_profile_init(opts, profile_init_dir)); });
     
-    auto profile_list = profile_cmd->add_subcommand("list", "List profiles");
+    auto profile_list = profile_cmd->add_subcommand("list", "List all available profiles");
     profile_list->callback([&]() { std::exit(cmd_profile_list(opts)); });
     
     std::string profile_name;
-    auto profile_show = profile_cmd->add_subcommand("show", "Show profile");
-    profile_show->add_option("name", profile_name, "Profile name");
+    auto profile_show = profile_cmd->add_subcommand("show", "Display a profile's configuration");
+    profile_show->add_option("name", profile_name, 
+        "Profile name (omit for active profile)");
     profile_show->callback([&]() { std::exit(cmd_profile_show(opts, profile_name)); });
     
-    auto profile_set = profile_cmd->add_subcommand("set", "Set active profile");
-    profile_set->add_option("name", profile_name, "Profile name")->required();
+    auto profile_set = profile_cmd->add_subcommand("set", "Set the active profile");
+    profile_set->add_option("name", profile_name, 
+        "Profile name to activate")->required();
     profile_set->callback([&]() { std::exit(cmd_profile_set(opts, profile_name)); });
     
     std::string profile_path;
-    auto profile_validate = profile_cmd->add_subcommand("validate", "Validate profile");
-    profile_validate->add_option("path", profile_path, "Profile file path")->required();
+    auto profile_validate = profile_cmd->add_subcommand("validate", "Validate a profile file");
+    profile_validate->add_option("path", profile_path, 
+        "Path to profile TOML file")->required()->check(CLI::ExistingFile);
     profile_validate->callback([&]() { std::exit(cmd_profile_validate(opts, profile_path)); });
     
     // ========== Contract Commands ==========
-    auto contract_cmd = app.add_subcommand("contract", "Contract commands");
+    auto contract_cmd = app.add_subcommand("contract", "Launch contract inspection");
+    contract_cmd->require_subcommand(1);
+    contract_cmd->failure_message(make_failure_handler());
+    contract_cmd->footer("\nContracts define exactly how an application will be launched.\n"
+                         "They combine app manifest, NAK config, and host profile.\n"
+                         "\nExamples:\n"
+                         "  nah contract show com.example.app         # Show launch contract\n"
+                         "  nah contract show com.example.app --json  # Machine-readable output\n"
+                         "  nah contract explain com.example.app environment.PATH");
     
     std::string contract_target, overrides_file;
     auto contract_show = contract_cmd->add_subcommand("show", "Show launch contract");
@@ -1915,44 +2259,150 @@ int main(int argc, char** argv) {
     contract_resolve->callback([&]() { std::exit(cmd_contract_resolve(opts, contract_target)); });
     
     // ========== Manifest Commands ==========
-    auto manifest_cmd = app.add_subcommand("manifest", "Manifest commands");
+    auto manifest_cmd = app.add_subcommand("manifest", "Binary manifest inspection and generation");
+    manifest_cmd->require_subcommand(1);
+    manifest_cmd->failure_message(make_failure_handler());
+    manifest_cmd->footer("\nManifests are embedded in application binaries to declare dependencies.\n"
+                         "\nExamples:\n"
+                         "  nah manifest show ./myapp              # Extract manifest from binary\n"
+                         "  nah manifest generate manifest.toml -o manifest.nah");
     
     std::string manifest_target;
-    auto manifest_show = manifest_cmd->add_subcommand("show", "Show manifest");
-    manifest_show->add_option("target", manifest_target, "Binary or app id[@version]")->required();
+    auto manifest_show = manifest_cmd->add_subcommand("show", "Display manifest from a binary or installed app");
+    manifest_show->add_option("target", manifest_target, 
+        "Binary file path or installed app id[@version]")->required();
     manifest_show->callback([&]() { std::exit(cmd_manifest_show(opts, manifest_target)); });
     
     std::string manifest_input, manifest_output;
     auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from TOML");
-    manifest_generate->add_option("input", manifest_input, "Input TOML file")->required();
-    manifest_generate->add_option("-o,--output", manifest_output, "Output binary manifest file")->required();
+    manifest_generate->add_option("input", manifest_input, 
+        "Input TOML file with manifest definition")->required()->check(CLI::ExistingFile);
+    manifest_generate->add_option("-o,--output", manifest_output, 
+        "Output binary manifest file (.nah)")->required();
     manifest_generate->callback([&]() { std::exit(cmd_manifest_generate(opts, manifest_input, manifest_output)); });
     
     // ========== Doctor Command ==========
     std::string doctor_target;
     bool doctor_fix = false;
-    auto doctor_cmd = app.add_subcommand("doctor", "Diagnose issues");
-    doctor_cmd->add_option("target", doctor_target, "Binary or app id[@version]")->required();
-    doctor_cmd->add_flag("--fix", doctor_fix, "Attempt to fix issues");
+    auto doctor_cmd = app.add_subcommand("doctor", "Diagnose and optionally fix issues");
+    doctor_cmd->add_option("target", doctor_target, 
+        "Application or binary to diagnose")->required();
+    doctor_cmd->add_flag("--fix", doctor_fix, 
+        "Attempt to automatically fix detected issues");
+    doctor_cmd->footer("\nDiagnoses common issues like:\n"
+                       "  - Missing or invalid manifests\n"
+                       "  - Missing NAK dependencies\n"
+                       "  - Invalid install records\n"
+                       "  - File permission problems");
     doctor_cmd->callback([&]() { std::exit(cmd_doctor(opts, doctor_target, doctor_fix)); });
     
     // ========== Validate Command ==========
     std::string validate_kind, validate_path;
     bool validate_strict = false;
-    auto validate_cmd = app.add_subcommand("validate", "Validate files");
+    auto validate_cmd = app.add_subcommand("validate", "Validate configuration files");
     validate_cmd->add_option("kind", validate_kind, 
-        "Kind: profile, install-record, nak-record, package, nak-pack, capabilities")->required();
-    validate_cmd->add_option("path", validate_path, "File path")->required();
-    validate_cmd->add_flag("--strict", validate_strict, "Strict mode");
+        "Type of file to validate")->required()
+        ->check(CLI::IsMember({"profile", "install-record", "nak-record", "package", "nak-pack", "capabilities"}));
+    validate_cmd->add_option("path", validate_path, 
+        "Path to file to validate")->required()->check(CLI::ExistingFile);
+    validate_cmd->add_flag("--strict", validate_strict, 
+        "Treat warnings as errors");
+    validate_cmd->footer("\nValidation kinds:\n"
+                         "  profile         Host profile TOML\n"
+                         "  install-record  App install record TOML\n"
+                         "  nak-record      NAK install record TOML\n"
+                         "  package         NAP package archive\n"
+                         "  nak-pack        NAK pack archive\n"
+                         "  capabilities    Capabilities declaration");
     validate_cmd->callback([&]() { std::exit(cmd_validate(opts, validate_kind, validate_path, validate_strict)); });
     
     // ========== Format Command ==========
     std::string format_path;
     bool format_check = false;
-    auto format_cmd = app.add_subcommand("format", "Format TOML files");
-    format_cmd->add_option("file", format_path, "File to format")->required();
-    format_cmd->add_flag("--check", format_check, "Check only, don't modify");
+    auto format_cmd = app.add_subcommand("format", "Format TOML configuration files");
+    format_cmd->add_option("file", format_path, 
+        "TOML file to format")->required()->check(CLI::ExistingFile);
+    format_cmd->add_flag("--check", format_check, 
+        "Check if file needs formatting (exit 1 if changes needed)");
+    format_cmd->footer("\nUseful in CI to enforce consistent formatting.");
     format_cmd->callback([&]() { std::exit(cmd_format(opts, format_path, format_check)); });
+    
+    // Custom failure handler for better error messages
+    app.failure_message([](const CLI::App* failed_app, const CLI::Error& e) {
+        std::string error_msg = e.what();
+        std::string result;
+        
+        // Find the actual app that triggered the error (may be a subcommand)
+        const CLI::App* error_app = failed_app;
+        std::vector<CLI::App*> parsed_subs = failed_app->get_subcommands();
+        if (!parsed_subs.empty()) {
+            // Get the deepest parsed subcommand
+            error_app = parsed_subs.back();
+        }
+        
+        // Get available subcommands from the error source
+        std::vector<std::string> valid_cmds;
+        for (const auto* sub : error_app->get_subcommands({})) {
+            valid_cmds.push_back(sub->get_name());
+        }
+        
+        // Check for missing subcommand errors
+        if (error_msg.find("subcommand is required") != std::string::npos) {
+            result = error_msg + "\n";
+            if (!valid_cmds.empty()) {
+                result += "\nAvailable subcommands:\n";
+                for (const auto& cmd : valid_cmds) {
+                    result += "  " + cmd + "\n";
+                }
+            }
+            result += "\nRun 'nah " + error_app->get_name() + " --help' for usage information.\n";
+            return result;
+        }
+        
+        // Check for unknown argument/subcommand errors
+        if (error_msg.find("was not expected") != std::string::npos ||
+            error_msg.find("could not be matched") != std::string::npos) {
+            
+            // Try to extract the unknown command from error message
+            // Format is usually: "The following argument was not expected: xyz"
+            std::string unknown_cmd;
+            auto colon_pos = error_msg.rfind(':');
+            if (colon_pos != std::string::npos && colon_pos + 2 < error_msg.size()) {
+                unknown_cmd = error_msg.substr(colon_pos + 2);
+                // Trim whitespace
+                while (!unknown_cmd.empty() && std::isspace(unknown_cmd.back())) {
+                    unknown_cmd.pop_back();
+                }
+            }
+            
+            result = error_msg + "\n";
+            
+            // Find similar commands using Levenshtein distance
+            if (!unknown_cmd.empty() && !valid_cmds.empty()) {
+                auto suggestions = find_similar_commands(unknown_cmd, valid_cmds, 3);
+                if (!suggestions.empty()) {
+                    result += "\nDid you mean?\n";
+                    for (const auto& s : suggestions) {
+                        result += "  " + s + "\n";
+                    }
+                }
+            }
+            
+            // Show available commands if no close match
+            if (!valid_cmds.empty() && result.find("Did you mean") == std::string::npos) {
+                result += "\nAvailable subcommands:\n";
+                for (const auto& cmd : valid_cmds) {
+                    result += "  " + cmd + "\n";
+                }
+            }
+        } else {
+            // For other errors, use default message
+            result = CLI::FailureMessage::simple(failed_app, e);
+        }
+        
+        result += "\nRun '" + error_app->get_name() + " --help' for usage information.\n";
+        return result;
+    });
     
     // Parse and run
     CLI11_PARSE(app, argc, argv);

@@ -19,6 +19,18 @@ namespace fs = std::filesystem;
 
 namespace nah {
 
+namespace {
+// Safe string copy that null-terminates and avoids MSVC strncpy warnings
+inline void safe_copy(char* dest, const char* src, size_t dest_size) {
+    if (dest_size == 0) return;
+    size_t i = 0;
+    for (; i < dest_size - 1 && src[i] != '\0'; ++i) {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+} // namespace
+
 // ============================================================================
 // Tar Format Constants (POSIX ustar)
 // ============================================================================
@@ -127,16 +139,16 @@ static TarHeader create_tar_header(const TarEntry& entry) {
     }
     
     if (path.size() <= TAR_NAME_SIZE - 1) {
-        std::strncpy(header.name, path.c_str(), TAR_NAME_SIZE - 1);
+        safe_copy(header.name, path.c_str(), TAR_NAME_SIZE);
     } else {
         // Use prefix for long paths
         size_t split = path.rfind('/', TAR_NAME_SIZE - 2);
         if (split != std::string::npos && split <= TAR_PREFIX_SIZE - 1) {
-            std::strncpy(header.prefix, path.substr(0, split).c_str(), TAR_PREFIX_SIZE - 1);
-            std::strncpy(header.name, path.substr(split + 1).c_str(), TAR_NAME_SIZE - 1);
+            safe_copy(header.prefix, path.substr(0, split).c_str(), TAR_PREFIX_SIZE);
+            safe_copy(header.name, path.substr(split + 1).c_str(), TAR_NAME_SIZE);
         } else {
             // Path too long - truncate (shouldn't happen with reasonable paths)
-            std::strncpy(header.name, path.substr(0, TAR_NAME_SIZE - 1).c_str(), TAR_NAME_SIZE - 1);
+            safe_copy(header.name, path.substr(0, TAR_NAME_SIZE - 1).c_str(), TAR_NAME_SIZE);
         }
     }
     
@@ -230,7 +242,7 @@ static std::vector<uint8_t> gzip_compress(const std::vector<uint8_t>& data) {
     strm.avail_in = static_cast<uInt>(data.size());
     
     std::vector<uint8_t> compressed;
-    compressed.resize(deflateBound(&strm, data.size()));
+    compressed.resize(deflateBound(&strm, static_cast<uLong>(data.size())));
     
     strm.next_out = compressed.data();
     strm.avail_out = static_cast<uInt>(compressed.size());

@@ -133,7 +133,7 @@ OverridesParseResult parse_overrides_file(const std::string& content, const std:
             
             result.ok = true;
             return result;
-        } catch (const nlohmann::json::exception& e) {
+        } catch (const nlohmann::json::exception&) {
             result.error = "parse_failure";
             return result;
         }

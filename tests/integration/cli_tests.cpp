@@ -21,7 +21,7 @@ static uint32_t manifest_crc32(const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         crc ^= data[i];
         for (int j = 0; j < 8; ++j) {
-            uint32_t mask = -(crc & 1u);
+            uint32_t mask = (crc & 1u) ? 0xFFFFFFFFu : 0u;
             crc = (crc >> 1) ^ (0xEDB88320u & mask);
         }
     }

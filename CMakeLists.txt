@@ -1,19 +1,28 @@
 cmake_minimum_required(VERSION 3.21)
-project(nah VERSION 1.0 LANGUAGES CXX)
+project(nah VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Global options
-option(NAH_ENABLE_TESTS "Build NAH tests" ON)
-option(NAH_ENABLE_WARNINGS "Enable strict warnings" ON)
+# Determine if NAH is the top-level project or included via add_subdirectory/FetchContent
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(NAH_MAIN_PROJECT ON)
+else()
+    set(NAH_MAIN_PROJECT OFF)
+endif()
+
+# Global options (defaults appropriate for top-level vs subdirectory)
+option(NAH_ENABLE_TESTS "Build NAH tests" ${NAH_MAIN_PROJECT})
+option(NAH_ENABLE_TOOLS "Build NAH CLI tools" ${NAH_MAIN_PROJECT})
+option(NAH_ENABLE_WARNINGS "Enable strict warnings" ${NAH_MAIN_PROJECT})
 option(NAH_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
+option(NAH_INSTALL "Generate install targets" ${NAH_MAIN_PROJECT})
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake)
 
-# Common compile options
-if(NAH_ENABLE_WARNINGS)
+# Common compile options (only for main project to avoid polluting parent)
+if(NAH_ENABLE_WARNINGS AND NAH_MAIN_PROJECT)
     if(MSVC)
         add_compile_options(/W4 /permissive- /wd4324)
     else()
@@ -28,7 +37,10 @@ if(NAH_ENABLE_SANITIZERS AND NOT MSVC)
 endif()
 
 add_subdirectory(src)
-add_subdirectory(tools)
+
+if(NAH_ENABLE_TOOLS)
+    add_subdirectory(tools)
+endif()
 
 if(NAH_ENABLE_TESTS)
     enable_testing()
@@ -36,13 +48,19 @@ if(NAH_ENABLE_TESTS)
 endif()
 
 # Installation
-include(GNUInstallDirs)
+if(NAH_INSTALL)
+    include(GNUInstallDirs)
 
-install(TARGETS nah
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+    # Install CLI tool
+    if(NAH_ENABLE_TOOLS)
+        install(TARGETS nah
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
 
-install(DIRECTORY include/nah
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
-)
+    # Install headers
+    install(DIRECTORY include/nah
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+    )
+endif()

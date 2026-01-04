@@ -313,11 +313,22 @@ bool copy_file(const std::string& src, const std::string& dst) {
 }
 
 std::optional<std::string> get_env(const std::string& name) {
+#ifdef _MSC_VER
+    char* val = nullptr;
+    size_t len = 0;
+    if (_dupenv_s(&val, &len, name.c_str()) == 0 && val != nullptr) {
+        std::string result(val);
+        free(val);
+        return result;
+    }
+    return std::nullopt;
+#else
     const char* val = std::getenv(name.c_str());
     if (val) {
         return std::string(val);
     }
     return std::nullopt;
+#endif
 }
 
 std::unordered_map<std::string, std::string> get_all_env() {

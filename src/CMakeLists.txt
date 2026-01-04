@@ -1,3 +1,46 @@
+# =============================================================================
+# NAH Libraries - Static and Shared
+# =============================================================================
+#
+# Build behavior:
+# - Static libraries are always built (for CLI and users who prefer static)
+# - Shared library is built when NAH_BUILD_SHARED=ON (default: ON)
+#
+# Linking:
+# - CLI tool always links statically for easy distribution
+# - Users can link against nahhost (static) or nahhost_shared (shared)
+#
+# Cross-platform notes:
+# - Windows: Uses __declspec(dllexport/dllimport) via NAH_API macro
+# - Linux/macOS: Uses visibility("default") for exported symbols
+# - All platforms: fPIC is enabled for shared library sources
+
+# Collect all source files for the unified shared library
+set(NAH_ALL_SOURCES
+    manifest/manifest.cpp
+    manifest/tlv_decode.cpp
+    manifest/tlv_encode.cpp
+    platform/path_utils.cpp
+    platform/atomic_io.cpp
+    platform/section_reader.cpp
+    config/install_record.cpp
+    config/nak_record.cpp
+    config/host_profile.cpp
+    contract/contract.cpp
+    contract/semver.cpp
+    contract/types.cpp
+    contract/warnings.cpp
+    contract/expansion.cpp
+    contract/capabilities.cpp
+    contract/nak_selection.cpp
+    packaging/packaging.cpp
+    nahhost/nahhost.cpp
+)
+
+# =============================================================================
+# Static Libraries (for CLI and users who prefer static linking)
+# =============================================================================
+
 add_library(nah_manifest STATIC
     manifest/manifest.cpp
     manifest/tlv_decode.cpp
@@ -80,3 +123,52 @@ target_link_libraries(nahhost PUBLIC
     nah_platform
     nah_packaging
 )
+
+# =============================================================================
+# Shared Library (for users who want to update NAH without recompiling)
+# =============================================================================
+
+if(NAH_BUILD_SHARED)
+    add_library(nahhost_shared SHARED ${NAH_ALL_SOURCES})
+
+    # Set shared library properties
+    set_target_properties(nahhost_shared PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        OUTPUT_NAME "nahhost"
+        # Position-independent code required for shared libraries
+        POSITION_INDEPENDENT_CODE ON
+    )
+
+    # Windows-specific: export all symbols or use explicit exports
+    if(WIN32)
+        set_target_properties(nahhost_shared PROPERTIES
+            WINDOWS_EXPORT_ALL_SYMBOLS OFF
+        )
+    endif()
+
+    # GCC/Clang: hide symbols by default, only export marked ones
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(nahhost_shared PRIVATE -fvisibility=hidden)
+    endif()
+
+    target_include_directories(nahhost_shared PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+
+    target_link_libraries(nahhost_shared PUBLIC
+        nlohmann_json::nlohmann_json
+        tomlplusplus::tomlplusplus
+        semver
+        ZLIB::ZLIB
+    )
+
+    # Define macros for DLL export/import
+    # NAH_BUILDING_SHARED: defined when building the shared library
+    # NAH_SHARED: defined by users when linking against the shared library
+    target_compile_definitions(nahhost_shared
+        PRIVATE NAH_BUILDING_SHARED
+        PUBLIC $<BUILD_INTERFACE:NAH_SHARED>
+    )
+endif()

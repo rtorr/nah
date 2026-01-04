@@ -25,6 +25,7 @@ option(NAH_ENABLE_TOOLS "Build NAH CLI tools" ${NAH_MAIN_PROJECT})
 option(NAH_ENABLE_WARNINGS "Enable strict warnings" ${NAH_MAIN_PROJECT})
 option(NAH_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
 option(NAH_INSTALL "Generate install targets" ${NAH_MAIN_PROJECT})
+option(NAH_BUILD_SHARED "Build shared library (libnahhost.so/dylib)" ON)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake)
 
@@ -62,6 +63,21 @@ if(NAH_INSTALL)
     if(NAH_ENABLE_TOOLS)
         install(TARGETS nah
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
+
+    # Install static libraries
+    install(TARGETS nahhost nah_contract nah_config nah_platform nah_manifest nah_packaging
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+
+    # Install shared library
+    if(NAH_BUILD_SHARED)
+        install(TARGETS nahhost_shared
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # For Windows DLLs
         )
     endif()
 

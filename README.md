@@ -3,50 +3,59 @@
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
-NAH is a launch contract system for native applications. It computes how to run an application - binary path, library paths, environment variables - from declarations provided by the app, the SDK, and the host.
+NAH is a launch contract system for native applications.
 
-NAH includes tooling to install apps and SDKs from package files. Contract composition - determining how to launch an app - operates entirely on local state. There is no dependency solving or version negotiation. Given what's installed, NAH computes the exact parameters needed to launch.
+When you deploy a native application, someone must figure out how to launch it: which binary, what library paths, which environment variables, what SDK version. This information typically lives in documentation that drifts, install scripts that diverge, or tribal knowledge that doesn't scale.
 
-## The Problem
+NAH eliminates this by making applications self-describing. Apps declare what they need. SDKs declare what they provide. Hosts declare policy. NAH composes these into a launch contract - the exact parameters needed to run the application.
 
-When you deploy a native application, someone must determine how to launch it: which binary to run, what library paths to set, which environment variables are required, what SDK version it needs. This information typically lives in documentation, install scripts, or tribal knowledge. It drifts. It breaks.
+## What NAH Provides
 
-## The Solution
+**For host operators**: Install an app, query its launch contract. No need to read documentation or reverse-engineer scripts. The contract tells you the binary path, library paths, environment variables, and working directory.
 
-NAH makes applications self-describing. Each party declares what they own:
+**For app developers**: Embed a manifest declaring your SDK requirement and entrypoint. Ship one package that works on any host with a compatible SDK, regardless of where the SDK is installed.
 
-- **App developers** embed a manifest: identity, SDK requirement, entrypoint
-- **SDK developers** package their libraries and declare what they provide
-- **Host operators** configure policy: where things go, what versions are allowed
+**For SDK developers**: Package your libraries once. Multiple versions coexist on the same host. Apps pin to compatible versions at install time. Update the SDK without breaking existing apps.
 
-NAH composes these declarations into a launch contract. The contract is queryable, auditable, and deterministic.
-
-## What This Looks Like
+## Example
 
 ```bash
-# Install SDK and app (delivered via your existing mechanism)
 nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
 nah --root /opt/nah app install myapp-1.0.0.nap
-
-# Query the launch contract
 nah --root /opt/nah contract show com.example.myapp
 ```
 
-Output:
 ```
+Application: com.example.myapp v1.0.0
+SDK: com.vendor.sdk v2.1.0
 Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
 CWD: /opt/nah/apps/com.example.myapp-1.0.0
-Library Paths: /opt/nah/naks/vendor-sdk/2.1.0/lib
+Library Paths: /opt/nah/naks/com.vendor.sdk/2.1.0/lib
 Environment:
   NAH_APP_ID=com.example.myapp
-  NAH_NAK_ROOT=/opt/nah/naks/vendor-sdk/2.1.0
+  NAH_APP_VERSION=1.0.0
+  NAH_NAK_ROOT=/opt/nah/naks/com.vendor.sdk/2.1.0
 ```
 
-The contract is computed from declarations. No documentation to read. No install script to debug.
+The contract is deterministic. Same inputs, same output. Auditable before execution.
 
-## Multiple SDK Versions
+## Key Properties
 
-Multiple SDK versions coexist on the same host. Apps declare version requirements (e.g., `>=2.0.0 <3.0.0`). NAH selects a compatible version at install time and pins it. Legacy apps continue using old SDK versions. New apps use new versions. No manual coordination required.
+- **No network at launch time**: Contract composition uses only local state
+- **No dependency solving**: Apps declare requirements, hosts install SDKs, NAH matches them
+- **Version coexistence**: Multiple SDK versions installed side-by-side
+- **Install-time pinning**: SDK version locked when app is installed, not resolved at launch
+- **Host controls layout**: SDKs and apps go where the host decides, not where the app expects
+
+## When to Use NAH
+
+NAH is designed for environments where:
+
+- Apps and SDKs come from different vendors or teams
+- Hosts need to control where software is installed
+- Multiple SDK versions must coexist for different apps
+- Launch configuration must be auditable
+- Apps must remain portable across different host configurations
 
 ## Installation
 
@@ -67,7 +76,7 @@ sudo cmake --install build
 
 ## Library Integration
 
-NAH can be used as a C++ library for programmatic contract composition:
+NAH can be embedded as a C++ library:
 
 ```cmake
 include(FetchContent)
@@ -78,12 +87,14 @@ target_link_libraries(your_target PRIVATE nahhost)
 
 ## Documentation
 
-- [Concepts](docs/concepts.md) - Terminology and architecture
-- [Getting Started: Host](docs/getting-started-host.md) - Deploy and manage applications
-- [Getting Started: SDK](docs/getting-started-nak.md) - Package an SDK for NAH
-- [Getting Started: App](docs/getting-started-app.md) - Build an app with a manifest
-- [CLI Reference](docs/cli.md) - Command documentation
-- [Specification](SPEC.md) - Normative specification
+| Document | Description |
+|----------|-------------|
+| [Concepts](docs/concepts.md) | Core terminology: manifests, NAKs, profiles, contracts |
+| [Getting Started: Host](docs/getting-started-host.md) | Set up a host and deploy applications |
+| [Getting Started: SDK](docs/getting-started-nak.md) | Package an SDK for distribution |
+| [Getting Started: App](docs/getting-started-app.md) | Build an application with a manifest |
+| [CLI Reference](docs/cli.md) | Command-line interface documentation |
+| [Specification](SPEC.md) | Normative specification |
 
 ## License
 

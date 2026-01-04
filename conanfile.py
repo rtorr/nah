@@ -3,12 +3,20 @@ import os
 from conan import ConanFile
 from conan.tools.build import check_min_cppstd
 from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
-from conan.tools.files import copy
+from conan.tools.files import copy, load
+
+
+def get_version():
+    try:
+        version_file = os.path.join(os.path.dirname(__file__), "VERSION")
+        return load(None, version_file).strip()
+    except Exception:
+        return "1.0.0"
 
 
 class NahConan(ConanFile):
     name = "nah"
-    version = "1.0.0"
+    version = get_version()
     license = "MIT"
     author = "Ryan Torr"
     url = "https://github.com/rtorr/nah"

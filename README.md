@@ -1,7 +1,7 @@
 # NAH - Native Application Host
 
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://rtorr.github.io/nah/)
+[![Docs](https://img.shields.io/badge/docs-API-blue)](https://rtorr.github.io/nah/)
 
 NAH standardizes how native applications are installed, inspected, and launched. It provides a deterministic contract between applications and hosts, ensuring portable app binaries while giving hosts full control over policy, layout, and enforcement.
 

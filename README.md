@@ -3,70 +3,133 @@
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
-You've built your app. It works on your machine. Now you need to ship it.
+NAH defines a contract between applications, SDKs, and host platforms. Each party declares what they provide or require, and NAH composes them into a deterministic launch specification.
 
-What environment variables need to be set? What library paths? What SDK version does it actually need? How does the host know how to launch it correctly?
+**The problem**: Apps need SDKs. Hosts run apps. But these are often built by different teams, companies, or vendors. How do they connect without everyone needing to know everything about each other?
 
-Today this lives in README files that get outdated, shell scripts that diverge per environment, and tribal knowledge. The result: "works on my machine," finger-pointing between teams, and hours lost to deployment debugging.
+**The solution**: Each party describes only what's in their domain. NAH handles the composition.
 
-**NAH makes apps self-describing.** The app carries its launch contract - what it needs to run. The host reads the contract and composes the correct environment. No guessing, no drift, no ambiguity.
+## Three Perspectives
 
-## How It Works
+### I'm a Host Platform
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Application   │     │      Host       │     │  Launch Contract│
-│                 │     │                 │     │                 │
-│ "I need SDK 2.x │ ──► │ "I have SDK 2.1 │ ──► │ binary: /app/bin│
-│  and these libs"│     │  installed here"│     │ env: LD_PATH=...│
-│                 │     │                 │     │ cwd: /app       │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-     Manifest              Profile               Executable Spec
-    (immutable)            (mutable)              (auditable)
-```
+You run apps you didn't build, using SDKs you didn't write. You need to:
+- Install SDKs and apps from vendors
+- Control where things go on your filesystem  
+- Set policies (which SDK versions are allowed, what capabilities are granted)
+- Know exactly how apps will launch before running them
 
-The app declares intent. The host provides policy. NAH composes them into a concrete, auditable launch specification.
-
-## Quick Example
+**With NAH**: You define a profile with your policies. Apps and SDKs come as packages that describe themselves. You install them, and NAH tells you exactly how each app will launch given your configuration.
 
 ```bash
-# Host: set up the environment
-nah profile init ./my-deployment
-nah --root ./my-deployment nak install sdk-2.1.0.nak
+# Set up your host
+nah profile init /opt/myplatform
 
-# Deploy an app
-nah --root ./my-deployment app install myapp-1.0.0.nap
+# Install SDKs from vendors
+nah --root /opt/myplatform nak install vendor-sdk-2.1.0.nak
 
-# See exactly how the app will launch
-nah --root ./my-deployment contract show com.example.myapp
+# Install apps 
+nah --root /opt/myplatform app install thirdparty-app-1.0.0.nap
+
+# See exactly what will happen at launch time
+nah --root /opt/myplatform contract show com.vendor.app
 ```
 
-Output:
+You never need to read the app's source code or the SDK's build scripts. The contract shows you the truth: binary path, library paths, environment variables, working directory. Audit it, approve it, run it.
+
+### I'm an SDK/Framework Developer
+
+You ship a runtime, framework, or SDK that apps depend on. You need to:
+- Provide libraries, binaries, and resources
+- Tell apps where to find things
+- Not care about host filesystem layouts
+- Support multiple versions installed side-by-side
+
+**With NAH**: You package your SDK as a NAK (Native App Kit). You declare what you provide - library paths, environment variables, optional loader binaries. Apps target your SDK by ID and version range. Hosts install you wherever they want.
+
+```toml
+# META/nak.toml - your SDK's declaration
+schema = "nah.nak.pack.v1"
+
+[nak]
+id = "com.mycompany.sdk"
+version = "2.1.0"
+
+[paths]
+resource_root = "resources"
+lib_dirs = ["lib", "lib/plugins"]
+
+[environment]
+MY_SDK_VERSION = "2.1.0"
 ```
-Application: com.example.myapp v1.0.0
-NAK: com.example.sdk v2.1.0
-Binary: /my-deployment/apps/com.example.myapp-1.0.0/bin/myapp
-CWD: /my-deployment/apps/com.example.myapp-1.0.0
 
-Library Paths (LD_LIBRARY_PATH):
-  /my-deployment/naks/com.example.sdk/2.1.0/lib
-
-Environment:
-  NAH_APP_ID=com.example.myapp
-  NAH_APP_VERSION=1.0.0
-  NAH_NAK_ROOT=/my-deployment/naks/com.example.sdk/2.1.0
+```bash
+# Package it
+nah nak pack ./my-sdk -o my-sdk-2.1.0.nak
 ```
 
-No shell scripts. No guessing. The contract is the truth.
+You don't know where the host will install you. You don't care. Apps reference you by ID, and NAH resolves paths at launch time.
 
-## Key Concepts
+### I'm an App Developer
 
-| Term | Description |
-|------|-------------|
-| **Manifest** | Immutable declaration embedded in the app - what it needs to run |
-| **NAK** | Native App Kit - versioned SDK/runtime bundle that apps depend on |
-| **Profile** | Host configuration - where things are, what's allowed, policy overrides |
-| **Contract** | The composed result - exactly how to launch the app |
+You build an app that needs an SDK. You need to:
+- Declare which SDK version you require
+- Ship your app without hardcoding paths
+- Work on any host that has a compatible SDK
+
+**With NAH**: You embed a manifest in your app declaring what you need. You don't specify paths - just the SDK ID and version requirement. The host figures out the rest.
+
+```cpp
+#include <nah/manifest.h>
+
+NAH_APP_MANIFEST(
+    NAH_FIELD_ID("com.mycompany.myapp")
+    NAH_FIELD_VERSION("1.0.0")
+    NAH_FIELD_NAK_ID("com.vendor.sdk")
+    NAH_FIELD_NAK_VERSION_REQ(">=2.0.0 <3.0.0")
+    NAH_FIELD_ENTRYPOINT("bin/myapp")
+    NAH_FIELD_LIB_DIR("lib")
+)
+```
+
+```bash
+# Package it
+nah app pack ./my-app -o myapp-1.0.0.nap
+```
+
+You don't know where the host will put your app or the SDK. You don't care. Your manifest says "I need SDK 2.x" and NAH ensures you get it at launch.
+
+## How It Fits Together
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         HOST PLATFORM                            │
+│  Profile: policies, allowed versions, environment overrides      │
+│                                                                  │
+│  ┌─────────────────────┐      ┌─────────────────────┐           │
+│  │     SDK (NAK)       │      │    Application      │           │
+│  │                     │      │                     │           │
+│  │ "I provide libs at  │      │ "I need SDK 2.x    │           │
+│  │  these paths"       │      │  and run bin/app"  │           │
+│  └──────────┬──────────┘      └──────────┬──────────┘           │
+│             │                            │                       │
+│             └──────────┬─────────────────┘                       │
+│                        ▼                                         │
+│             ┌─────────────────────┐                              │
+│             │   Launch Contract   │                              │
+│             │                     │                              │
+│             │ binary: /opt/.../app│                              │
+│             │ LD_PATH: /opt/.../lib                              │
+│             │ env: SDK_ROOT=...   │                              │
+│             └─────────────────────┘                              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Each party stays in their lane:
+- **Apps** declare dependencies, not paths
+- **SDKs** declare capabilities, not install locations  
+- **Hosts** control layout and policy
+- **Contracts** are the composed result - auditable, deterministic
 
 ## Installation
 
@@ -94,68 +157,29 @@ sudo cmake --install build
 
 Requirements: CMake 3.21+, C++17 compiler
 
-## For App Developers
-
-Embed a manifest in your application:
-
-```cpp
-#include <nah/manifest.h>
-
-NAH_APP_MANIFEST(
-    NAH_FIELD_ID("com.example.myapp")
-    NAH_FIELD_VERSION("1.0.0")
-    NAH_FIELD_NAK_ID("com.example.sdk")
-    NAH_FIELD_NAK_VERSION_REQ(">=2.0.0 <3.0.0")
-    NAH_FIELD_ENTRYPOINT("bin/myapp")
-    NAH_FIELD_LIB_DIR("lib")
-)
-```
-
-Package and ship:
+## CLI Quick Reference
 
 ```bash
-nah app pack ./my-app -o myapp-1.0.0.nap
+# Host setup
+nah profile init <dir>              # Initialize a NAH root
+nah nak install <file.nak>          # Install an SDK
+nah app install <file.nap>          # Install an app
+
+# Inspection
+nah app list                        # List installed apps
+nah nak list                        # List installed SDKs
+nah contract show <app-id>          # Show launch contract
+nah doctor <app-id>                 # Diagnose issues
+
+# Packaging
+nah app pack <dir> -o <file.nap>    # Package an app
+nah nak pack <dir> -o <file.nak>    # Package an SDK
+
+# Machine-readable output
+nah --json contract show <app-id>   # JSON for scripting
 ```
 
-Your app now carries its requirements. No external documentation needed.
-
-## For Platform/Ops Teams
-
-Set up a host environment:
-
-```bash
-nah profile init /opt/nah
-```
-
-Configure policy in `/opt/nah/host/profiles/default.toml`:
-
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-allow_versions = ["2.*"]  # Only allow SDK 2.x
-
-[warnings]
-nak_not_found = "error"   # Fail fast if SDK missing
-
-[environment]
-DEPLOYMENT_ENV = "production"
-```
-
-Deploy apps:
-
-```bash
-nah --root /opt/nah nak install sdk-2.1.0.nak
-nah --root /opt/nah app install myapp-1.0.0.nap
-```
-
-Audit before launch:
-
-```bash
-nah --root /opt/nah doctor com.example.myapp
-nah --root /opt/nah --json contract show com.example.myapp
-```
+See [docs/cli.md](docs/cli.md) for complete reference.
 
 ## Using NAH as a Library
 
@@ -171,45 +195,28 @@ FetchContent_MakeAvailable(nah)
 target_link_libraries(your_target PRIVATE nahhost)
 ```
 
-Or with Conan:
-
-```ini
-[requires]
-nah/1.0.0
-```
-
-## CLI Reference
-
-```bash
-nah profile init <dir>          # Initialize a NAH root
-nah nak install <file.nak>      # Install an SDK/runtime
-nah app install <file.nap>      # Install an application
-nah app list                    # List installed apps
-nah contract show <app-id>      # Show launch contract
-nah doctor <app-id>             # Diagnose issues
-nah --json contract show <id>   # Machine-readable output
-```
-
-See [docs/cli.md](docs/cli.md) for complete reference.
+Or with Conan: `nah/1.0.0`
 
 ## Documentation
 
 | Resource | Description |
 |----------|-------------|
+| [Getting Started: Host](docs/getting-started-host.md) | Set up a host platform |
+| [Getting Started: NAK](docs/getting-started-nak.md) | Build an SDK/framework package |
+| [Getting Started: App](docs/getting-started-app.md) | Build an app with a manifest |
 | [CLI Reference](docs/cli.md) | Complete command-line documentation |
 | [API Reference](https://nah.rtorr.com/) | Library documentation |
-| [Getting Started: App](docs/getting-started-app.md) | Build apps with NAH manifests |
-| [Getting Started: NAK](docs/getting-started-nak.md) | Create SDK/runtime bundles |
-| [Getting Started: Host](docs/getting-started-host.md) | Deploy NAH in production |
 | [SPEC.md](SPEC.md) | Complete specification |
 
 ## Why NAH?
 
-**For app developers**: Ship once, run anywhere NAH is deployed. No per-environment hacks.
+| Role | Without NAH | With NAH |
+|------|-------------|----------|
+| **Host** | Read every app's docs, write custom launch scripts, hope SDK paths are right | Install packages, inspect contracts, apply policy |
+| **SDK** | Write install scripts per platform, document paths, hope apps find you | Declare what you provide, ship a `.nak` |
+| **App** | Hardcode paths or write setup scripts, break when hosts differ | Declare what you need, ship a `.nap` |
 
-**For platform teams**: Know exactly what apps need. Audit before you deploy. Update SDKs without rebuilding apps.
-
-**For everyone**: Stop debugging "works on my machine." The contract is the source of truth.
+Everyone focuses on their own domain. NAH handles the seams.
 
 ## License
 

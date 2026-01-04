@@ -4,6 +4,8 @@
 // Version parsing and comparison provided by cpp-semver library.
 // Range parsing follows standard comparator syntax with || for unions.
 
+// cpp-semver requires <cstdint> but doesn't include it (GCC strictness)
+#include <cstdint>
 #include <semver/semver.hpp>
 #include <optional>
 #include <string>

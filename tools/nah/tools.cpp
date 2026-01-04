@@ -1992,8 +1992,9 @@ int main(int argc, char** argv) {
     CLI::App app{"nah - Native Application Host CLI v1.0\n\n"
                  "Manage native applications, NAKs, profiles, and launch contracts."};
     app.require_subcommand(0, 1);
+    app.set_version_flag("-V,--version", "1.0.0");
     app.footer("\nRun 'nah <command> --help' for more information on a command.\n"
-               "Documentation: https://github.com/anthropics/nah");
+               "Documentation: https://github.com/rtorr/nah");
     
     GlobalOptions opts;
     

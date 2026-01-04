@@ -4,6 +4,7 @@
 #include <nah/manifest_tlv.hpp>
 #include <nah/install_record.hpp>
 #include <nah/host_profile.hpp>
+#include <nah/platform.hpp>
 #include <nah/types.hpp>
 #include <nah/warnings.hpp>
 #include <nah/semver.hpp>
@@ -21,6 +22,11 @@ using namespace nah;
 // ============================================================================
 
 namespace {
+
+// Shorthand for portable path conversion in tests
+std::string pp(const fs::path& path) {
+    return to_portable_path(path.string());
+}
 
 // Create a temporary directory with test files
 class TempTestDir {
@@ -302,7 +308,7 @@ TEST_CASE("compose_contract: app.entrypoint is resolved under app.root") {
     auto result = compose_contract(inputs);
     
     CHECK(result.ok);
-    CHECK(result.envelope.contract.app.entrypoint == (tmp.app_root / "bin" / "myapp").string());
+    CHECK(result.envelope.contract.app.entrypoint == pp(tmp.app_root / "bin" / "myapp"));
 }
 
 // ============================================================================
@@ -630,7 +636,7 @@ TEST_CASE("compose_contract: manifest LIB_DIR entries resolved under app.root") 
     CHECK(result.ok);
     bool found_lib = false;
     for (const auto& path : result.envelope.contract.execution.library_paths) {
-        if (path == (tmp.app_root / "lib" / "native").string()) {
+        if (path == pp(tmp.app_root / "lib" / "native")) {
             found_lib = true;
             break;
         }
@@ -701,7 +707,7 @@ TEST_CASE("compose_contract: asset exports resolved under app.root") {
     
     CHECK(result.ok);
     REQUIRE(result.envelope.contract.exports.count("icon") == 1);
-    CHECK(result.envelope.contract.exports.at("icon").path == (tmp.app_root / "assets" / "icon.png").string());
+    CHECK(result.envelope.contract.exports.at("icon").path == pp(tmp.app_root / "assets" / "icon.png"));
     CHECK(result.envelope.contract.exports.at("icon").type == "image/png");
 }
 
@@ -773,7 +779,7 @@ TEST_CASE("compose_contract: duplicate asset export ids use last wins") {
     CHECK(result.ok);
     REQUIRE(result.envelope.contract.exports.count("data") == 1);
     // Last wins
-    CHECK(result.envelope.contract.exports.at("data").path == (tmp.app_root / "assets" / "second.txt").string());
+    CHECK(result.envelope.contract.exports.at("data").path == pp(tmp.app_root / "assets" / "second.txt"));
 }
 
 // ============================================================================

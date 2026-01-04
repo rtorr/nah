@@ -567,9 +567,7 @@ PathValidation validate_extraction_path(const std::string& entry_path,
     
     result.safe = true;
     // Always use forward slashes for portable paths (tar archives are Unix-style)
-    std::string norm_str = normalized.string();
-    std::replace(norm_str.begin(), norm_str.end(), '\\', '/');
-    result.normalized_path = norm_str;
+    result.normalized_path = to_portable_path(normalized.string());
     return result;
 }
 

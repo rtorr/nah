@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'include/**'
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - "include/**"
+      - "docs/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -35,7 +35,9 @@ jobs:
         run: sed -i "s/PROJECT_NUMBER.*/PROJECT_NUMBER = ${{ steps.version.outputs.version }}/" docs/Doxyfile
 
       - name: Generate API docs
-        run: cd docs && doxygen Doxyfile
+        run: |
+          mkdir -p docs/build/docs
+          cd docs && doxygen Doxyfile
 
       - name: Create site structure
         run: |

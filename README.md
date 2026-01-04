@@ -1,5 +1,7 @@
 # NAH - Native Application Host
 
+[![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
+
 NAH standardizes how native applications are installed, inspected, and launched. It provides a deterministic contract between applications and hosts, ensuring portable app binaries while giving hosts full control over policy, layout, and enforcement.
 
 ## The Problem
@@ -31,39 +33,70 @@ NAH fixes this by making launch behavior a deterministic composition:
 
 ## Installation
 
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/rtorr/nah/releases):
+
+```bash
+# Linux
+curl -L https://github.com/rtorr/nah/releases/latest/download/nah-linux-x64.tar.gz | tar xz
+sudo mv nah /usr/local/bin/
+
+# macOS (Apple Silicon)
+curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-arm64.tar.gz | tar xz
+sudo mv nah /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-x64.tar.gz | tar xz
+sudo mv nah /usr/local/bin/
+```
+
 ### Build from Source
 
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
-sudo cmake --install .
+git clone https://github.com/rtorr/nah.git
+cd nah
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+sudo cmake --install build
 ```
 
 ### Requirements
 
-- CMake 3.20+
+- CMake 3.21+
 - C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
+- Optional: Ninja for faster builds
 - Optional: Conan 2.x for examples with dependencies
 
 ## CLI Usage
 
 ```bash
-# Show launch contract for an installed app
-nah contract show --root /nah --app com.example.myapp
+# Initialize a new NAH root
+nah profile init ./my-nah-root
 
-# Install a NAK
-nah nak install --root /nah mynak.nak
+# Install a NAK (SDK/framework)
+nah --root ./my-nah-root nak install sdk-1.0.0.nak
 
-# Install an app
-nah app install --root /nah myapp.nap
+# Install an application
+nah --root ./my-nah-root app install myapp-1.0.0.nap
 
-# Launch an app
-nah app launch --root /nah com.example.myapp
+# List installed apps
+nah --root ./my-nah-root app list
 
-# Validate configuration
-nah validate --root /nah
+# Show launch contract for an app
+nah --root ./my-nah-root contract show com.example.myapp
+
+# Get contract as JSON (for scripting)
+nah --root ./my-nah-root --json contract show com.example.myapp
+
+# Diagnose issues with an app
+nah --root ./my-nah-root doctor com.example.myapp
+
+# Validate a configuration file
+nah validate profile host-profile.toml
 ```
+
+Run `nah --help` or `nah <command> --help` for full usage information.
 
 ## On-Disk Layout
 
@@ -147,6 +180,29 @@ See [examples/README.md](examples/README.md) for details.
 3. **Auditable contracts** - Launch behavior is data, not scattered glue
 4. **Portable payloads** - No host paths embedded in app declarations
 5. **Policy evolves without rebuilds** - Hosts update bindings independently
+
+## Development
+
+### Building
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+### Running Tests
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+### CMake Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `NAH_ENABLE_TESTS` | ON | Build test suite |
+| `NAH_ENABLE_WARNINGS` | ON | Enable strict compiler warnings |
+| `NAH_ENABLE_SANITIZERS` | OFF | Enable ASan/UBSan (GCC/Clang) |
 
 ## Specification
 

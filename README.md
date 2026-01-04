@@ -3,59 +3,49 @@
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
-NAH provides deterministic launch contracts for native applications. Applications declare their requirements in a manifest. SDKs (NAKs) declare what they provide. Hosts define policy. NAH composes these into an executable specification: binary path, arguments, environment, library paths.
+When you deploy a native application, someone must determine how to launch it: which binary to run, what library paths to set, which environment variables are required, what SDK version it needs. This information typically lives in documentation, install scripts, or tribal knowledge. It drifts. It breaks.
 
-## Core Mechanism
+NAH solves this by making applications self-describing. The app declares what it requires. The host declares what it provides. NAH computes the exact launch parameters - binary, arguments, environment, library paths - as a queryable contract.
 
-NAH separates three concerns that are typically conflated:
+## What This Looks Like
 
-| Artifact | Owner | Contains |
-|----------|-------|----------|
-| **App Manifest** | App developer | Identity, NAK requirement, entrypoint, layout |
-| **NAK** | SDK developer | Libraries, resources, loader (optional) |
-| **Host Profile** | Host platform | Binding policy, allowed versions, environment |
-
-At install time, NAH pins a compatible NAK version. At launch time, NAH composes these artifacts into a **Launch Contract** containing the exact execution parameters.
-
-## Usage
-
+Install an SDK and an app:
 ```bash
-# Initialize host
-nah profile init /opt/nah
-
-# Install SDK and app
-nah --root /opt/nah nak install sdk-2.1.0.nak
+nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
 nah --root /opt/nah app install myapp-1.0.0.nap
+```
 
-# Show launch contract
+Ask NAH how to launch the app:
+```bash
 nah --root /opt/nah contract show com.example.myapp
 ```
 
-Contract output:
+NAH returns:
 ```
-Application: com.example.myapp v1.0.0
-NAK: com.example.sdk v2.1.0
 Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
 CWD: /opt/nah/apps/com.example.myapp-1.0.0
-Library Paths: /opt/nah/naks/com.example.sdk/2.1.0/lib
+Library Paths: /opt/nah/naks/vendor-sdk/2.1.0/lib
+Environment:
+  NAH_APP_ID=com.example.myapp
+  NAH_NAK_ROOT=/opt/nah/naks/vendor-sdk/2.1.0
 ```
 
-## Multiple SDK Versions
+No documentation to read. No install script to debug. The contract is computed from declarations.
 
-NAKs are installed by ID and version. Multiple versions coexist:
+## How It Works
 
-```
-/opt/nah/naks/
-├── com.vendor.runtime/1.0.0/
-├── com.vendor.runtime/2.1.0/
-└── com.other.framework/3.2.0/
-```
+Three parties, each declaring only what they own:
 
-Apps declare version requirements (e.g., `>=2.0.0 <3.0.0`). NAH selects the highest compatible version at install time.
+- **App developers** embed a manifest: "I am app X, I need SDK Y version >=2.0"
+- **SDK developers** package their SDK: "I am SDK Y version 2.1, here are my libraries"
+- **Host operators** set policy: "I allow SDK Y versions 2.x, install apps here"
+
+NAH composes these into a launch contract. If the app needs SDK 2.x and the host has 2.1 installed, the contract resolves the paths. If the SDK is missing, NAH reports it.
+
+Multiple SDK versions coexist. Legacy apps get old versions. New apps get new versions. The host doesn't coordinate this manually.
 
 ## Installation
 
-**Pre-built binaries:**
 ```bash
 # Linux
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-linux-x64.tar.gz | tar xz
@@ -64,19 +54,16 @@ sudo mv nah /usr/local/bin/
 # macOS
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-arm64.tar.gz | tar xz
 sudo mv nah /usr/local/bin/
-```
 
-**From source:**
-```bash
+# From source
 git clone https://github.com/rtorr/nah.git && cd nah
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 sudo cmake --install build
 ```
 
-Requirements: CMake 3.21+, C++17 compiler
-
 ## Library Integration
+
+NAH can be used as a C++ library for programmatic contract composition:
 
 ```cmake
 include(FetchContent)
@@ -85,19 +72,14 @@ FetchContent_MakeAvailable(nah)
 target_link_libraries(your_target PRIVATE nahhost)
 ```
 
-Conan: `nah/1.0.0`
-
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Concepts](docs/concepts.md) | NAK, NAP, Host Profile, Launch Contract |
-| [Getting Started: Host](docs/getting-started-host.md) | Deploy NAH and manage apps |
-| [Getting Started: NAK](docs/getting-started-nak.md) | Build an SDK package |
-| [Getting Started: App](docs/getting-started-app.md) | Build an app with manifest |
-| [CLI Reference](docs/cli.md) | Command documentation |
-| [API Reference](https://nah.rtorr.com/) | Library documentation |
-| [Specification](SPEC.md) | Normative specification |
+- [Concepts](docs/concepts.md) - Terminology and architecture
+- [Getting Started: Host](docs/getting-started-host.md) - Deploy and manage applications
+- [Getting Started: SDK](docs/getting-started-nak.md) - Package an SDK for NAH
+- [Getting Started: App](docs/getting-started-app.md) - Build an app with a manifest
+- [CLI Reference](docs/cli.md) - Command documentation
+- [Specification](SPEC.md) - Normative specification
 
 ## License
 

@@ -8,6 +8,7 @@
 #include <nah/warnings.hpp>
 #include <nah/semver.hpp>
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 
@@ -901,11 +902,11 @@ TEST_CASE("compose_contract: arguments order: prepend, template, manifest, appen
     REQUIRE(args.size() >= 3);
     
     // Find positions
-    ssize_t prepend_pos = -1, manifest_pos = -1, append_pos = -1;
+    std::ptrdiff_t prepend_pos = -1, manifest_pos = -1, append_pos = -1;
     for (size_t i = 0; i < args.size(); i++) {
-        if (args[i] == "--prepend-arg") prepend_pos = static_cast<ssize_t>(i);
-        if (args[i] == "--manifest-arg") manifest_pos = static_cast<ssize_t>(i);
-        if (args[i] == "--append-arg") append_pos = static_cast<ssize_t>(i);
+        if (args[i] == "--prepend-arg") prepend_pos = static_cast<std::ptrdiff_t>(i);
+        if (args[i] == "--manifest-arg") manifest_pos = static_cast<std::ptrdiff_t>(i);
+        if (args[i] == "--append-arg") append_pos = static_cast<std::ptrdiff_t>(i);
     }
     
     CHECK(prepend_pos >= 0);

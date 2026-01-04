@@ -1,5 +1,6 @@
 #include "nah/path_utils.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -23,12 +24,20 @@ std::vector<std::string> split(const std::string& s, char delim) {
     return parts;
 }
 
+// Convert path to use forward slashes (portable format)
+std::string to_forward_slashes(const std::string& path) {
+    std::string result = path;
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
+}
+
 std::string join_components(const std::string& root, const std::vector<std::string>& comps) {
     std::filesystem::path p(root);
     for (const auto& c : comps) {
         p /= c;
     }
-    return p.lexically_normal().string();
+    // Always use forward slashes for portable paths
+    return to_forward_slashes(p.lexically_normal().string());
 }
 
 } // namespace

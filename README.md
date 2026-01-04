@@ -98,81 +98,6 @@ nah validate profile host-profile.toml
 
 Run `nah --help` or `nah <command> --help` for full usage information.
 
-## On-Disk Layout
-
-```
-/nah/
-├── apps/
-│   └── <id>-<version>/          # Installed app payloads
-├── naks/
-│   └── <nak_id>/<version>/      # Installed NAKs
-├── host/
-│   ├── profiles/
-│   │   └── default.toml         # Host profile (policy/bindings)
-│   └── profile.current          # Symlink to active profile
-└── registry/
-    ├── installs/                # App install records
-    └── naks/                    # NAK install records
-```
-
-## App Manifest
-
-Applications declare their requirements in a TLV binary manifest:
-
-```cpp
-#include <nah/manifest.h>
-
-NAH_APP_MANIFEST(
-    NAH_FIELD_ID("com.example.myapp")
-    NAH_FIELD_VERSION("1.0.0")
-    NAH_FIELD_NAK_ID("com.example.sdk")
-    NAH_FIELD_NAK_VERSION_REQ(">=1.0.0 <2.0.0")
-    NAH_FIELD_ENTRYPOINT("bin/myapp")
-    NAH_FIELD_LIB_DIR("lib")
-)
-```
-
-## Host Profile
-
-Hosts control NAK selection, warning policy, and capability mapping:
-
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-allow_versions = ["1.*", "2.*"]
-
-[environment]
-NAH_HOST_VERSION = "1.0"
-
-[warnings]
-nak_not_found = "error"
-trust_state_failed = "error"
-
-[capabilities]
-"filesystem.read" = "sandbox.fs.readonly"
-```
-
-## Examples
-
-The `examples/` directory contains working demonstrations:
-
-```bash
-cd examples
-
-# Build all NAKs and apps
-./scripts/build_all.sh
-
-# Set up a demo host
-./scripts/setup_host.sh
-
-# Run apps
-./scripts/run_apps.sh
-```
-
-See [examples/README.md](examples/README.md) for details.
-
 ## Using NAH as a Library
 
 NAH can be integrated into your C++ project as a library for programmatic contract composition.
@@ -255,6 +180,83 @@ auto range = nah::parse_range(">=1.0.0 <2.0.0");
 bool ok = nah::satisfies(version, range);
 ```
 
+## Examples
+
+The `examples/` directory contains working demonstrations:
+
+```bash
+cd examples
+
+# Build all NAKs and apps
+./scripts/build_all.sh
+
+# Set up a demo host
+./scripts/setup_host.sh
+
+# Run apps
+./scripts/run_apps.sh
+```
+
+See [examples/README.md](examples/README.md) for details.
+
+## Reference
+
+### On-Disk Layout
+
+```
+/nah/
+├── apps/
+│   └── <id>-<version>/          # Installed app payloads
+├── naks/
+│   └── <nak_id>/<version>/      # Installed NAKs
+├── host/
+│   ├── profiles/
+│   │   └── default.toml         # Host profile (policy/bindings)
+│   └── profile.current          # Symlink to active profile
+└── registry/
+    ├── installs/                # App install records
+    └── naks/                    # NAK install records
+```
+
+### App Manifest
+
+Applications declare their requirements in a TLV binary manifest:
+
+```cpp
+#include <nah/manifest.h>
+
+NAH_APP_MANIFEST(
+    NAH_FIELD_ID("com.example.myapp")
+    NAH_FIELD_VERSION("1.0.0")
+    NAH_FIELD_NAK_ID("com.example.sdk")
+    NAH_FIELD_NAK_VERSION_REQ(">=1.0.0 <2.0.0")
+    NAH_FIELD_ENTRYPOINT("bin/myapp")
+    NAH_FIELD_LIB_DIR("lib")
+)
+```
+
+### Host Profile
+
+Hosts control NAK selection, warning policy, and capability mapping:
+
+```toml
+schema = "nah.host.profile.v1"
+
+[nak]
+binding_mode = "canonical"
+allow_versions = ["1.*", "2.*"]
+
+[environment]
+NAH_HOST_VERSION = "1.0"
+
+[warnings]
+nak_not_found = "error"
+trust_state_failed = "error"
+
+[capabilities]
+"filesystem.read" = "sandbox.fs.readonly"
+```
+
 ## Design Principles
 
 1. **Minimal mechanism** - NAH composes and reports; hosts enforce
@@ -288,24 +290,17 @@ ctest --test-dir build --output-on-failure
 
 ### Creating a Release
 
-Releases are automated via GitHub Actions. To create a new release:
+Use the release script to bump versions and create a tag:
 
 ```bash
-# Create and push a version tag
-git tag v1.0.0
-git push origin v1.0.0
+./scripts/release.sh 1.1.0
 ```
 
-This triggers the release workflow which:
+This updates the VERSION file, commits, tags, and pushes. GitHub Actions then:
 
 1. Builds binaries for Linux (x64), macOS (x64, ARM64), and Windows (x64)
 2. Creates a GitHub Release with the binaries
 3. Auto-generates release notes from commits
-
-**Version format:**
-
-- `v1.0.0` - stable release
-- `v1.0.0-beta.1` - pre-release (marked as such on GitHub)
 
 ## Specification
 

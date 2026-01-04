@@ -173,6 +173,88 @@ cd examples
 
 See [examples/README.md](examples/README.md) for details.
 
+## Using NAH as a Library
+
+NAH can be integrated into your C++ project as a library for programmatic contract composition.
+
+### CMake FetchContent
+
+```cmake
+include(FetchContent)
+
+FetchContent_Declare(
+    nah
+    GIT_REPOSITORY https://github.com/rtorr/nah.git
+    GIT_TAG        v1.0.0
+)
+FetchContent_MakeAvailable(nah)
+
+target_link_libraries(your_target PRIVATE nahhost)
+```
+
+### Conan 2
+
+Add to your `conanfile.txt`:
+
+```ini
+[requires]
+nah/1.0.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+```
+
+Or in `conanfile.py`:
+
+```python
+def requirements(self):
+    self.requires("nah/1.0.0")
+```
+
+Then in CMake:
+
+```cmake
+find_package(nah REQUIRED)
+target_link_libraries(your_target PRIVATE nah::nahhost)
+```
+
+Build with:
+
+```bash
+conan install . --build=missing
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake
+cmake --build build
+```
+
+### Library Components
+
+| Target           | Description                              |
+| ---------------- | ---------------------------------------- |
+| `nahhost`        | Main library - contract composition      |
+| `nah_manifest`   | Manifest parsing and TLV encoding        |
+| `nah_contract`   | Contract composition and NAK selection   |
+| `nah_config`     | Host profile and registry loading        |
+| `nah_packaging`  | NAP/NAK package handling                 |
+| `nah_platform`   | Platform abstraction (paths, I/O)        |
+
+### Example Usage
+
+```cpp
+#include <nah/nahhost.hpp>
+#include <nah/manifest.hpp>
+#include <nah/semver.hpp>
+
+// Parse a semantic version
+auto version = nah::parse_version("1.2.3");
+
+// Parse a version range (SemVer 2.0.0 syntax)
+auto range = nah::parse_range(">=1.0.0 <2.0.0");
+
+// Check if version satisfies range
+bool ok = nah::satisfies(version, range);
+```
+
 ## Design Principles
 
 1. **Minimal mechanism** - NAH composes and reports; hosts enforce

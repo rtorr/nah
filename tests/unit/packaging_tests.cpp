@@ -2,6 +2,7 @@
 #include <nah/packaging.hpp>
 #include <nah/platform.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 

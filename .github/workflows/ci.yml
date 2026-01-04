@@ -39,9 +39,11 @@ jobs:
         run: |
           brew install ninja
 
-      - name: Install Ninja (Windows)
+      - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
-        run: choco install ninja
+        run: |
+          choco install ninja
+          vcpkg install zlib:x64-windows
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
@@ -57,7 +59,7 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         run: cmake --build build

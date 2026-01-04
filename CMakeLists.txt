@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
-project(nah VERSION 1.0.0 LANGUAGES CXX)
+
+# Read version from VERSION file
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" NAH_VERSION_RAW)
+string(STRIP "${NAH_VERSION_RAW}" NAH_VERSION)
+# Extract just MAJOR.MINOR.PATCH for CMake (ignore prerelease/build metadata)
+string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" NAH_VERSION_CMAKE "${NAH_VERSION}")
+
+project(nah VERSION ${NAH_VERSION_CMAKE} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -9,11 +9,12 @@ OUTPUT_DIRECTORY       = build/docs
 CREATE_SUBDIRS         = NO
 
 # Input
-INPUT                  = ../include/nah
+INPUT                  = mainpage.md ../include/nah
 INPUT_ENCODING         = UTF-8
-FILE_PATTERNS          = *.hpp *.h
+FILE_PATTERNS          = *.hpp *.h *.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */detail/*
+USE_MDFILE_AS_MAINPAGE = mainpage.md
 
 # Extraction
 EXTRACT_ALL            = YES
@@ -39,6 +40,8 @@ HTML_COLORSTYLE        = LIGHT
 GENERATE_TREEVIEW      = YES
 TREEVIEW_WIDTH         = 250
 SEARCHENGINE           = YES
+HTML_EXTRA_STYLESHEET  = doxygen-awesome.css
+HTML_EXTRA_FILES       =
 
 # Disable other outputs
 GENERATE_LATEX         = NO

@@ -34,6 +34,10 @@ jobs:
       - name: Update Doxyfile version
         run: sed -i "s/PROJECT_NUMBER.*/PROJECT_NUMBER = ${{ steps.version.outputs.version }}/" docs/Doxyfile
 
+      - name: Download doxygen-awesome theme
+        run: |
+          curl -L https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/main/doxygen-awesome.css -o docs/doxygen-awesome.css
+
       - name: Generate API docs
         run: |
           mkdir -p docs/build/docs

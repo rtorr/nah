@@ -22,17 +22,17 @@
   },
   "homepage": "https://github.com/rtorr/nah#readme",
   "bin": {
-    "nah": "bin/nah"
+    "nah": "npm-bin/nah"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node npm-scripts/install.js"
   },
   "engines": {
     "node": ">=14"
   },
   "files": [
-    "bin",
-    "scripts"
+    "npm-bin",
+    "npm-scripts"
   ],
   "os": [
     "darwin",

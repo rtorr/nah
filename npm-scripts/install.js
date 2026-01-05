@@ -41,13 +41,19 @@ function downloadFile(url) {
 
       https
         .get(url, (response) => {
-          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          if (
+            response.statusCode >= 300 &&
+            response.statusCode < 400 &&
+            response.headers.location
+          ) {
             follow(response.headers.location, redirects + 1);
             return;
           }
 
           if (response.statusCode !== 200) {
-            reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+            reject(
+              new Error(`Failed to download: HTTP ${response.statusCode}`),
+            );
             return;
           }
 
@@ -95,8 +101,16 @@ function extractTar(tarData, destDir) {
     }
 
     // Parse header
-    const name = header.slice(0, 100).toString("utf8").replace(/\0/g, "").trim();
-    const sizeOctal = header.slice(124, 136).toString("utf8").replace(/\0/g, "").trim();
+    const name = header
+      .slice(0, 100)
+      .toString("utf8")
+      .replace(/\0/g, "")
+      .trim();
+    const sizeOctal = header
+      .slice(124, 136)
+      .toString("utf8")
+      .replace(/\0/g, "")
+      .trim();
     const size = parseInt(sizeOctal, 8) || 0;
     const typeFlag = header[156];
 
@@ -130,11 +144,13 @@ async function main() {
 
   if (!supportedPlatform) {
     console.error(`Unsupported platform: ${platformKey}`);
-    console.error(`Supported platforms: ${Object.keys(PLATFORM_MAP).join(", ")}`);
+    console.error(
+      `Supported platforms: ${Object.keys(PLATFORM_MAP).join(", ")}`,
+    );
     process.exit(1);
   }
 
-  const binDir = path.join(__dirname, "..", "bin");
+  const binDir = path.join(__dirname, "..", "npm-bin");
   const binaryPath = path.join(binDir, getBinaryName());
 
   // Check if binary already exists

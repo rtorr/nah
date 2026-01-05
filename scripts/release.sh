@@ -79,15 +79,15 @@ update_conan() {
     info "Updated conanfile.py"
 }
 
-# Update npm/package.json
+# Update package.json
 update_npm() {
     local version="$1"
-    local npm_file="$ROOT_DIR/npm/package.json"
+    local npm_file="$ROOT_DIR/package.json"
 
     if [[ -f "$npm_file" ]]; then
         sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$version\"/" "$npm_file"
         rm -f "$npm_file.bak"
-        info "Updated npm/package.json"
+        info "Updated package.json"
     fi
 }
 
@@ -167,7 +167,7 @@ main() {
 
     # Commit
     info "Committing version bump..."
-    git -C "$ROOT_DIR" add VERSION CMakeLists.txt conanfile.py npm/package.json
+    git -C "$ROOT_DIR" add VERSION CMakeLists.txt conanfile.py package.json
     git -C "$ROOT_DIR" commit -m "Release v$new_version"
 
     # Tag

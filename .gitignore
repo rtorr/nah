@@ -26,3 +26,4 @@ examples/host/nah_root/
 examples/*/build/
 examples/*/*/build/
 examples/compile_commands.json
+CMakeUserPresets.json

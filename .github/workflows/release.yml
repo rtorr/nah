@@ -31,22 +31,19 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install conan ninja
+          brew install conan
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y build-essential
           pip install conan
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install ninja -y
           pip install conan
-          # Refresh environment
-          refreshenv
 
       # MSVC must be set up BEFORE Conan profile detect
       - name: Setup MSVC (Windows)
@@ -68,55 +65,26 @@ jobs:
         run: |
           conan install . --output-folder=build --build=missing -s build_type=Release -s compiler.cppstd=17 -s compiler.version=193
 
-      - name: Verify toolchain file exists
-        shell: bash
+      - name: Configure
         run: |
-          # cmake_layout() puts generators in build/build/generators/
-          if [ ! -f build/build/generators/conan_toolchain.cmake ]; then
-            echo "ERROR: Conan toolchain file not generated!"
-            find build -name "*.cmake" 2>/dev/null || echo "No cmake files found"
-            ls -laR build/ || echo "build/ directory does not exist"
-            exit 1
-          fi
-          echo "Toolchain file found:"
-          ls -la build/build/generators/conan_toolchain.cmake
+          cmake --preset conan-release -DNAH_ENABLE_TESTS=OFF
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=build/build/generators/conan_toolchain.cmake \
-            -DNAH_ENABLE_TESTS=OFF
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          cmake --preset conan-default -DNAH_ENABLE_TESTS=OFF
-        working-directory: ${{ github.workspace }}
-
-      - name: Build (Unix)
-        if: runner.os != 'Windows'
-        run: cmake --build build --config Release
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
+      - name: Build
         run: |
           cmake --build --preset conan-release
 
       - name: Create tarball (Unix)
         if: runner.os != 'Windows'
         run: |
-          cd build/tools/nah
-          tar -czvf ../../../nah-${{ matrix.platform }}.tar.gz nah
+          cd build/build/Release/tools/nah
+          tar -czvf ../../../../../nah-${{ matrix.platform }}.tar.gz nah
 
       - name: Create zip (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          cd build/tools/nah
-          Compress-Archive -Path nah.exe -DestinationPath ../../../nah-${{ matrix.platform }}.zip
+          cd build/build/Release/tools/nah
+          Compress-Archive -Path nah.exe -DestinationPath ../../../../../nah-${{ matrix.platform }}.zip
 
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'

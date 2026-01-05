@@ -105,6 +105,7 @@ target_link_libraries(your_target PRIVATE nahhost)
 | [Getting Started: App](docs/getting-started-app.md) | Build an application with a manifest |
 | [CLI Reference](docs/cli.md) | Command-line interface documentation |
 | [Specification](SPEC.md) | Normative specification |
+| [Contributing](CONTRIBUTING.md) | Development setup and releasing |
 
 ## License
 

@@ -1,42 +1,35 @@
 # Android Support (Planned)
 
-NAH is a **query system** - it tells you **where** things are and **how** to launch them. The host platform does the actual work.
+NAH **prepares** Android builds. At build time, NAH resolves SDK dependencies and stages the correct native libraries so they can be bundled into the APK. Once prepared, Android uses its normal mechanisms - the APK contains everything, and there's no NAH at runtime.
 
-On Android, NAH would provide the same contract it provides on Linux or macOS. The Android integrator (platform team, OEM, or app developer) decides how to use that contract.
+This means developers get the NAH experience (version resolution, contract satisfaction, reproducible builds) while Android gets a standard APK with bundled native code.
 
-## What NAH Provides
+## Build-Time Flow
 
-Given an app with an embedded manifest, NAH returns:
+1. SDK developer packages native libs as a NAK
+2. App developer declares SDK dependency in manifest
+3. Build system uses NAH to:
+   - Resolve correct SDK version
+   - Copy `.so` files into APK's `jniLibs/`
+   - Embed manifest for auditing
+4. APK ships with everything bundled
 
-```json
-{
-  "nak": {
-    "id": "com.vendor.sdk",
-    "version": "2.0.0",
-    "root": "/data/nah/naks/com.vendor.sdk/2.0.0"
-  },
-  "environment": {
-    "NAH_NAK_ROOT": "/data/nah/naks/com.vendor.sdk/2.0.0",
-    "ASSET_PATH": "/data/nah/naks/com.vendor.sdk/2.0.0/assets"
-  }
-}
 ```
-
-The app uses these paths however it needs.
-
-## What the Android Integrator Decides
-
-NAH doesn't prescribe Android-specific details. The integrator decides:
-
-- Where NAKs are stored (`/data/nah/`, external storage, etc.)
-- How NAKs are distributed (APK, ADB, download)
-- Security model (permissions, signing, sandboxing)
-- Service architecture (Binder, content provider, embedded)
-- Cleanup policy for unused NAK versions
+Build Machine                          APK Output
+┌─────────────────────┐               ┌─────────────────────┐
+│ NAH Root            │               │ app.apk             │
+│ └── naks/           │               │ ├── lib/            │
+│     └── com.sdk/    │  ──build──▶   │ │   ├── arm64-v8a/  │
+│         └── 2.0.0/  │               │ │   │   ├── libapp.so
+│             └── lib/│               │ │   │   └── libsdk.so
+│                     │               │ │   └── armeabi-v7a/│
+└─────────────────────┘               │ └── assets/         │
+                                      └─────────────────────┘
+```
 
 ## NAK Contents
 
-NAKs contain native libraries and assets - the same as on Linux/macOS:
+NAKs contain native libraries organized by Android ABI:
 
 ```
 com.vendor.sdk-2.0.0.nak
@@ -50,27 +43,46 @@ com.vendor.sdk-2.0.0.nak
 └── config/
 ```
 
-The APK contains the app's native code, which links against the SDK libraries at the paths NAH provides.
+## Build Integration
 
-## Example Usage
+Gradle plugin or CMake integration would:
 
-```kotlin
-// Query NAH for the contract
-val contract = NahClient(context).getContract()
-
-// Pass paths to native code
-nativeInit(contract.nak.root, contract.environment["ASSET_PATH"])
+```groovy
+// build.gradle
+nah {
+    root = "/path/to/nah"
+    // Reads manifest from native code, resolves SDK, copies libs
+}
 ```
 
-## Testing via ADB
-
-The existing CLI works on Android via ADB:
+Or via command line in CI:
 
 ```bash
-adb push nah /data/local/bin/
-adb shell /data/local/bin/nah --root /data/local/nah nak install my-sdk.nak
-adb shell /data/local/bin/nah --root /data/local/nah contract show com.example.myapp --json
+# Resolve and copy SDK libs into jniLibs
+nah --root ./nah-root app pack ./src -o build/app.nap
+cp build/staged/lib/* app/src/main/jniLibs/
 ```
+
+## What Gets Embedded
+
+The APK contains:
+- App's native code (`libapp.so`)
+- SDK's native code (`libsdk.so`) copied from NAK
+- Embedded manifest (for auditing: "this APK was built with SDK v2.0.3")
+
+## Runtime
+
+At runtime, there is no NAH. Android loads all `.so` files from the APK using its standard mechanism. The app just works - exactly as if the developer had manually copied the libraries into place.
+
+NAH's job is done at build time. It prepared Android with the right dependencies, and Android takes it from there.
+
+## What the Android Integrator Decides
+
+NAH prepares the build. The integrator decides:
+
+- How NAKs are distributed to build machines
+- Build system integration (Gradle, CMake, Bazel)
+- Which ABIs to support
 
 ## Status
 

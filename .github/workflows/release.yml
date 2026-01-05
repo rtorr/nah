@@ -12,56 +12,83 @@ jobs:
         include:
           - os: macos-14
             platform: darwin-arm64
-          - os: macos-13
+          - os: macos-latest
             platform: darwin-x64
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             platform: linux-x64
-          - os: ubuntu-22.04-arm
+          - os: ubuntu-24.04-arm
             platform: linux-arm64
+          - os: windows-latest
+            platform: windows-x64
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install conan cmake
+          brew install ninja
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libssl-dev libcurl4-openssl-dev
-          pip install conan
+          sudo apt-get install -y ninja-build libcurl4-openssl-dev
 
-      - name: Setup Conan profile
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
         run: |
-          conan profile detect --force
+          choco install ninja
+          vcpkg install zlib:x64-windows curl:x64-windows
 
-      - name: Install Conan dependencies
-        run: |
-          conan install . --output-folder=build --build=missing -s build_type=Release
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure CMake
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNAH_ENABLE_TESTS=OFF
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=OFF "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: |
-          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        run: cmake --build build --config Release
 
-      - name: Create tarball
+      - name: Create tarball (Unix)
+        if: runner.os != 'Windows'
         run: |
           cd build/tools/nah
           tar -czvf ../../../nah-${{ matrix.platform }}.tar.gz nah
 
-      - name: Upload artifact
+      - name: Create zip (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd build/tools/nah
+          Compress-Archive -Path nah.exe -DestinationPath ../../../nah-${{ matrix.platform }}.zip
+
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: nah-${{ matrix.platform }}
           path: nah-${{ matrix.platform }}.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nah-${{ matrix.platform }}
+          path: nah-${{ matrix.platform }}.zip
 
   release:
     needs: build
@@ -78,7 +105,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/*/nah-*.tar.gz
+          files: |
+            artifacts/*/nah-*.tar.gz
+            artifacts/*/nah-*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

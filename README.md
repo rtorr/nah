@@ -20,8 +20,15 @@ NAH eliminates this by making applications self-describing. Apps declare what th
 ## Example
 
 ```bash
+# Install from local files
 nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
 nah --root /opt/nah app install myapp-1.0.0.nap
+
+# Or install directly from URLs (with SHA-256 verification)
+nah --root /opt/nah nak install 'https://example.com/vendor-sdk-2.1.0.nak#sha256=abc123...'
+nah --root /opt/nah app install 'https://example.com/myapp-1.0.0.nap#sha256=def456...'
+
+# Query the launch contract
 nah --root /opt/nah contract show com.example.myapp
 ```
 
@@ -60,11 +67,14 @@ NAH is designed for environments where:
 ## Installation
 
 ```bash
-# Linux
+# npm (recommended)
+npm install -g @rtorr/nah
+
+# Linux (manual)
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-linux-x64.tar.gz | tar xz
 sudo mv nah /usr/local/bin/
 
-# macOS
+# macOS (manual)
 curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-arm64.tar.gz | tar xz
 sudo mv nah /usr/local/bin/
 

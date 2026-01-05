@@ -108,14 +108,34 @@ check_tag_exists() {
 
 # Main
 main() {
-    if [[ $# -ne 1 ]]; then
-        echo "Usage: $0 <version>"
+    local skip_confirm=false
+    local new_version=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -y|--yes)
+                skip_confirm=true
+                shift
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+            *)
+                new_version="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$new_version" ]]; then
+        echo "Usage: $0 [-y|--yes] <version>"
         echo "Example: $0 1.2.0"
-        echo "         $0 2.0.0-beta.1"
+        echo "         $0 --yes 2.0.0-beta.1"
         exit 1
     fi
 
-    local new_version="$1"
     local current_version
     current_version=$(get_current_version)
 
@@ -130,11 +150,13 @@ main() {
     check_tag_exists "$new_version"
 
     # Confirm
-    read -p "Proceed with release v$new_version? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        info "Aborted"
-        exit 0
+    if [[ "$skip_confirm" != "true" ]]; then
+        read -p "Proceed with release v$new_version? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Aborted"
+            exit 0
+        fi
     fi
 
     # Update files

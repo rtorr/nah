@@ -65,13 +65,25 @@ jobs:
         run: |
           conan install . --output-folder=build --build=missing -s build_type=Release -s compiler.cppstd=17 -s compiler.version=193
 
-      - name: Configure
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
         run: |
           cmake --preset conan-release -DNAH_ENABLE_TESTS=OFF
 
-      - name: Build
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake --preset conan-default -DNAH_ENABLE_TESTS=OFF
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         run: |
           cmake --build --preset conan-release
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake --build build/build --config Release
 
       - name: Create tarball (Unix)
         if: runner.os != 'Windows'
@@ -83,7 +95,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd build/build/Release/tools/nah
+          cd build/build/tools/nah/Release
           Compress-Archive -Path nah.exe -DestinationPath ../../../../../nah-${{ matrix.platform }}.zip
 
       - name: Upload artifact (Unix)

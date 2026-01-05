@@ -161,10 +161,8 @@ jobs:
       - name: Update package version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          cd npm
           npm version $VERSION --no-git-tag-version --allow-same-version
 
       - name: Publish to npm
         run: |
-          cd npm
           npm publish --access public --provenance

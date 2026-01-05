@@ -96,8 +96,15 @@ jobs:
           cmake --preset conan-default -DNAH_ENABLE_TESTS=OFF
         working-directory: ${{ github.workspace }}
 
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         run: cmake --build build --config Release
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cmake --build --preset conan-release
 
       - name: Create tarball (Unix)
         if: runner.os != 'Windows'

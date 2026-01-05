@@ -23,7 +23,7 @@ function getPlatformKey() {
 }
 
 function getBinaryName() {
-  return process.platform === "win32" ? "nah.exe" : "nah";
+  return process.platform === "win32" ? "nah-bin.exe" : "nah-bin";
 }
 
 function getDownloadUrl(platformKey) {
@@ -123,13 +123,19 @@ function extractTar(tarData, destDir) {
 
     // Type: '0' or '\0' = regular file, '5' = directory
     if (typeFlag === 48 || typeFlag === 0) {
-      // Regular file
-      const filePath = path.join(destDir, path.basename(name));
+      // Regular file - rename nah to nah-bin to avoid conflict with wrapper script
+      let fileName = path.basename(name);
+      if (fileName === "nah") {
+        fileName = "nah-bin";
+      } else if (fileName === "nah.exe") {
+        fileName = "nah-bin.exe";
+      }
+      const filePath = path.join(destDir, fileName);
       const fileData = tarData.slice(offset, offset + size);
       fs.writeFileSync(filePath, fileData);
 
       // Make executable if it's the nah binary
-      if (path.basename(name) === "nah") {
+      if (fileName === "nah-bin") {
         fs.chmodSync(filePath, 0o755);
       }
     }

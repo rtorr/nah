@@ -67,19 +67,8 @@ class NahConan(ConanFile):
     def layout(self):
         cmake_layout(self)
 
-    def generate(self):
-        tc = CMakeToolchain(self)
-        tc.variables["NAH_ENABLE_TESTS"] = False
-        tc.variables["NAH_ENABLE_TOOLS"] = False
-        tc.variables["NAH_INSTALL"] = False
-        # Pass shared option to CMake
-        tc.variables["NAH_BUILD_SHARED"] = bool(self.options.shared)
-        # Ensure fPIC is set for shared libraries on non-Windows
-        if self.settings.os != "Windows":
-            tc.variables["CMAKE_POSITION_INDEPENDENT_CODE"] = bool(
-                self.options.get_safe("fPIC", True) or self.options.shared
-            )
-        tc.generate()
+    # Note: generate() removed - using generators attribute instead
+    # CMakeToolchain and CMakeDeps are declared via generators = "CMakeToolchain", "CMakeDeps"
 
     def build(self):
         cmake = CMake(self)

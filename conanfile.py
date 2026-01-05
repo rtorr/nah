@@ -24,6 +24,7 @@ class NahConan(ConanFile):
     topics = ("native", "application", "host", "launch", "contract", "manifest")
 
     settings = "os", "compiler", "build_type", "arch"
+    generators = "CMakeToolchain", "CMakeDeps"
     options = {
         "shared": [True, False],
         "fPIC": [True, False],

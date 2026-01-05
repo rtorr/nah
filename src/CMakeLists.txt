@@ -34,6 +34,7 @@ set(NAH_ALL_SOURCES
     contract/capabilities.cpp
     contract/nak_selection.cpp
     packaging/packaging.cpp
+    materializer/materializer.cpp
     nahhost/nahhost.cpp
 )
 
@@ -110,6 +111,20 @@ target_link_libraries(nah_packaging PUBLIC
     ZLIB::ZLIB
 )
 
+add_library(nah_materializer STATIC
+    materializer/materializer.cpp
+)
+target_include_directories(nah_materializer PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_link_libraries(nah_materializer PUBLIC
+    nah_packaging
+    nah_platform
+    OpenSSL::Crypto
+    CURL::libcurl
+)
+
 add_library(nahhost STATIC
     nahhost/nahhost.cpp
 )
@@ -122,6 +137,7 @@ target_link_libraries(nahhost PUBLIC
     nah_config
     nah_platform
     nah_packaging
+    nah_materializer
 )
 
 # On Windows, rename static lib to avoid conflict with DLL import lib
@@ -167,6 +183,8 @@ if(NAH_BUILD_SHARED)
         tomlplusplus::tomlplusplus
         semver
         ZLIB::ZLIB
+        OpenSSL::Crypto
+        CURL::libcurl
     )
 
     # Define macros for DLL export/import

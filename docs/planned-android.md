@@ -34,17 +34,23 @@ NAH doesn't prescribe Android-specific details. The integrator decides:
 - Service architecture (Binder, content provider, embedded)
 - Cleanup policy for unused NAK versions
 
-## Typical NAK Contents
+## NAK Contents
 
-On Android, NAKs would typically contain data/assets rather than native code (native libs stay in the APK):
+NAKs contain native libraries and assets - the same as on Linux/macOS:
 
 ```
 com.vendor.sdk-2.0.0.nak
 ├── META/nak.toml
+├── lib/
+│   ├── arm64-v8a/
+│   │   └── libsdk.so
+│   └── armeabi-v7a/
+│       └── libsdk.so
 ├── assets/
-├── shaders/
 └── config/
 ```
+
+The APK contains the app's native code, which links against the SDK libraries at the paths NAH provides.
 
 ## Example Usage
 

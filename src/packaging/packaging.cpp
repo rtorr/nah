@@ -1483,7 +1483,7 @@ static AppInstallResult install_app_from_bytes(
     if (!options.source.empty() || !package_hash.empty()) {
         record << "\n[provenance]\n";
         if (!options.source.empty()) {
-            record << "source = \"" << options.source << "\"\n";
+            record << "source = \"" << to_portable_path(options.source) << "\"\n";
         }
         if (!package_hash.empty()) {
             record << "package_hash = \"" << package_hash << "\"\n";
@@ -1725,7 +1725,7 @@ static NakInstallResult install_nak_from_bytes(
     if (!options.source.empty() || !package_hash.empty()) {
         record << "\n[provenance]\n";
         if (!options.source.empty()) {
-            record << "source = \"" << options.source << "\"\n";
+            record << "source = \"" << to_portable_path(options.source) << "\"\n";
         }
         if (!package_hash.empty()) {
             record << "package_hash = \"sha256:" << package_hash << "\"\n";

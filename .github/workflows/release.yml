@@ -31,35 +31,45 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install ninja
+          brew install conan ninja
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libcurl4-openssl-dev
+          sudo apt-get install -y ninja-build
+          pip install conan
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install ninja
-          vcpkg install zlib:x64-windows curl:x64-windows
+          pip install conan
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Conan profile
+        run: |
+          conan profile detect --force
+
+      - name: Install Conan dependencies
+        run: |
+          conan install . --output-folder=build --build=missing -s build_type=Release
 
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
             -DNAH_ENABLE_TESTS=OFF
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=OFF "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DNAH_ENABLE_TESTS=OFF
 
       - name: Build
         run: cmake --build build --config Release

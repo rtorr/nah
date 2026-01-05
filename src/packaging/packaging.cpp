@@ -1528,15 +1528,9 @@ AppInstallResult install_app(const std::string& source,
             expected_digest = options.expected_hash;
         }
         
-        // HTTPS requires SHA-256 verification
-        if (expected_digest.empty()) {
-            result.error = "HTTPS URL requires SHA-256 hash: use #sha256=... fragment or --sha256 option";
-            return result;
-        }
-        
-        // Extract URL
+        // Extract URL (strip hash fragment if present)
         std::string url = ref.type == ReferenceType::Invalid ? source : ref.path_or_url;
-        if (ref.type == ReferenceType::Invalid && !options.expected_hash.empty()) {
+        if (ref.type == ReferenceType::Invalid) {
             auto hash_pos = source.find('#');
             url = (hash_pos != std::string::npos) ? source.substr(0, hash_pos) : source;
         }
@@ -1550,14 +1544,20 @@ AppInstallResult install_app(const std::string& source,
         
         archive_data = std::move(fetch_result.data);
         
-        // Verify SHA-256
-        auto verify_result = verify_sha256(archive_data, expected_digest);
-        if (!verify_result.ok) {
-            result.error = verify_result.error;
-            return result;
+        // Compute hash
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
         }
         
-        package_hash = verify_result.actual_digest;
+        // Verify SHA-256 if provided (optional for HTTPS)
+        if (!expected_digest.empty()) {
+            auto verify_result = verify_sha256(archive_data, expected_digest);
+            if (!verify_result.ok) {
+                result.error = verify_result.error;
+                return result;
+            }
+        }
         
     } else if (source.rfind("file:", 0) == 0) {
         // file: URL - extract path and read
@@ -1802,16 +1802,9 @@ NakInstallResult install_nak(const std::string& source,
             expected_digest = options.expected_hash;
         }
         
-        // HTTPS requires SHA-256 verification
-        if (expected_digest.empty()) {
-            result.error = "HTTPS URL requires SHA-256 hash: use #sha256=... fragment or --sha256 option";
-            return result;
-        }
-        
-        // Extract URL (may or may not have fragment)
+        // Extract URL (strip hash fragment if present)
         std::string url = ref.type == ReferenceType::Invalid ? source : ref.path_or_url;
-        // If we got invalid due to missing hash but have expected_hash, extract URL ourselves
-        if (ref.type == ReferenceType::Invalid && !options.expected_hash.empty()) {
+        if (ref.type == ReferenceType::Invalid) {
             auto hash_pos = source.find('#');
             url = (hash_pos != std::string::npos) ? source.substr(0, hash_pos) : source;
         }
@@ -1825,14 +1818,20 @@ NakInstallResult install_nak(const std::string& source,
         
         archive_data = std::move(fetch_result.data);
         
-        // Verify SHA-256
-        auto verify_result = verify_sha256(archive_data, expected_digest);
-        if (!verify_result.ok) {
-            result.error = verify_result.error;
-            return result;
+        // Compute hash
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
         }
         
-        package_hash = verify_result.actual_digest;
+        // Verify SHA-256 if provided (optional for HTTPS)
+        if (!expected_digest.empty()) {
+            auto verify_result = verify_sha256(archive_data, expected_digest);
+            if (!verify_result.ok) {
+                result.error = verify_result.error;
+                return result;
+            }
+        }
         
     } else if (source.rfind("file:", 0) == 0) {
         // file: URL - extract path and read

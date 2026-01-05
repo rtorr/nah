@@ -75,10 +75,12 @@ TEST_CASE("parse_artifact_reference normalizes sha256 to lowercase") {
     CHECK(ref.sha256_digest == "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
 }
 
-TEST_CASE("parse_artifact_reference rejects https without sha256") {
+TEST_CASE("parse_artifact_reference accepts https without sha256") {
     auto ref = parse_artifact_reference("https://example.com/pack.nak");
-    CHECK(ref.type == ReferenceType::Invalid);
-    CHECK(ref.error.find("sha256") != std::string::npos);
+    CHECK(ref.type == ReferenceType::Https);
+    CHECK(ref.path_or_url == "https://example.com/pack.nak");
+    CHECK(ref.sha256_digest.empty());
+    CHECK(ref.error.empty());
 }
 
 TEST_CASE("parse_artifact_reference rejects https with wrong fragment") {

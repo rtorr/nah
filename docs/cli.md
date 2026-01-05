@@ -44,15 +44,9 @@ Install an application from a `.nap` package. Source can be a local file path or
 # From local file
 nah --root ./my-nah app install myapp-1.0.0.nap
 
-# From URL with SHA-256 hash fragment (recommended)
-nah --root ./my-nah app install 'https://example.com/myapp-1.0.0.nap#sha256=abc123...'
-
-# From URL with separate --sha256 option
-nah --root ./my-nah app install https://example.com/myapp-1.0.0.nap --sha256 abc123...
+# From URL
+nah --root ./my-nah app install https://example.com/myapp-1.0.0.nap
 ```
-
-Options:
-- `--sha256 <HASH>` - Expected SHA-256 hash (required for HTTPS URLs without hash fragment)
 
 #### `nah app uninstall <APP_ID>`
 
@@ -117,15 +111,9 @@ Install a NAK from a `.nak` pack. Source can be a local file path or an HTTPS UR
 # From local file
 nah --root ./my-nah nak install mysdk-1.0.0.nak
 
-# From URL with SHA-256 hash fragment (recommended)
-nah --root ./my-nah nak install 'https://example.com/mysdk-1.0.0.nak#sha256=abc123...'
-
-# From URL with separate --sha256 option
-nah --root ./my-nah nak install https://example.com/mysdk-1.0.0.nak --sha256 abc123...
+# From URL
+nah --root ./my-nah nak install https://example.com/mysdk-1.0.0.nak
 ```
-
-Options:
-- `--sha256 <HASH>` - Expected SHA-256 hash (required for HTTPS URLs without hash fragment)
 
 #### `nah nak path <NAK_ID@VERSION>`
 
@@ -299,18 +287,6 @@ nah format host-profile.toml
 Options:
 - `--check` - Check formatting without modifying
 - `--diff` - Show diff of changes
-
-#### `nah hash <FILE>`
-
-Compute the SHA-256 hash of a file. Useful for generating hash fragments for remote install URLs.
-
-```bash
-nah hash myapp-1.0.0.nap
-# Output: sha256=abc123def456...
-
-# Use with a URL for remote install
-nah app install "https://example.com/myapp-1.0.0.nap#$(nah hash myapp-1.0.0.nap)"
-```
 
 ---
 

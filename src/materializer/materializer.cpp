@@ -45,11 +45,11 @@ ParsedReference parse_artifact_reference(const std::string& reference) {
     if (reference.rfind("https://", 0) == 0) {
         result.type = ReferenceType::Https;
         
-        // Find the fragment (#sha256=...)
+        // Find the optional fragment (#sha256=...)
         auto hash_pos = reference.find('#');
         if (hash_pos == std::string::npos) {
-            result.type = ReferenceType::Invalid;
-            result.error = "HTTPS reference must include #sha256=<hex> digest";
+            // No fragment - URL without hash verification
+            result.path_or_url = reference;
             return result;
         }
         

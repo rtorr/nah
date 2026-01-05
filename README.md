@@ -24,9 +24,9 @@ NAH eliminates this by making applications self-describing. Apps declare what th
 nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
 nah --root /opt/nah app install myapp-1.0.0.nap
 
-# Or install directly from URLs (with SHA-256 verification)
-nah --root /opt/nah nak install 'https://example.com/vendor-sdk-2.1.0.nak#sha256=abc123...'
-nah --root /opt/nah app install 'https://example.com/myapp-1.0.0.nap#sha256=def456...'
+# Or install directly from URLs
+nah --root /opt/nah nak install https://example.com/vendor-sdk-2.1.0.nak
+nah --root /opt/nah app install https://example.com/myapp-1.0.0.nap
 
 # Query the launch contract
 nah --root /opt/nah contract show com.example.myapp

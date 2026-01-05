@@ -69,7 +69,7 @@ jobs:
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DNAH_ENABLE_TESTS=OFF
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake" -DNAH_ENABLE_TESTS=OFF
 
       - name: Build
         run: cmake --build build --config Release

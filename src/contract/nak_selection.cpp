@@ -150,7 +150,7 @@ PinnedNakLoadResult load_pinned_nak(
     }
     
     // Construct path to NAK record
-    std::string record_path = nah_root + "/registry/naks/" + pin.record_ref;
+    std::string record_path = (fs::path(nah_root) / "registry" / "naks" / pin.record_ref).string();
     
     // Read and parse the record
     std::string toml_content = read_file(record_path);
@@ -248,7 +248,7 @@ PinnedNakLoadResult load_pinned_nak(
 std::vector<NakRegistryEntry> scan_nak_registry(const std::string& nah_root) {
     std::vector<NakRegistryEntry> entries;
     
-    std::string registry_path = nah_root + "/registry/naks";
+    fs::path registry_path = fs::path(nah_root) / "registry" / "naks";
     
     if (!fs::exists(registry_path) || !fs::is_directory(registry_path)) {
         return entries;

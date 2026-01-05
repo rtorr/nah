@@ -1281,7 +1281,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
     record << "version = \"" << selected_nak_pin.version << "\"\n";
     record << "record_ref = \"" << selected_nak_pin.record_ref << "\"\n\n";
     record << "[paths]\n";
-    record << "install_root = \"" << final_dir << "\"\n\n";
+    record << "install_root = \"" << to_portable_path(final_dir) << "\"\n\n";
     record << "[trust]\n";
     record << "state = \"verified\"\n";
     record << "source = \"install\"\n";
@@ -1473,7 +1473,7 @@ static AppInstallResult install_app_from_bytes(
     record << "version = \"" << selected_nak_pin.version << "\"\n";
     record << "record_ref = \"" << selected_nak_pin.record_ref << "\"\n\n";
     record << "[paths]\n";
-    record << "install_root = \"" << final_dir << "\"\n\n";
+    record << "install_root = \"" << to_portable_path(final_dir) << "\"\n\n";
     record << "[trust]\n";
     record << "state = \"verified\"\n";
     record << "source = \"install\"\n";
@@ -1698,18 +1698,18 @@ static NakInstallResult install_nak_from_bytes(
     record << "id = \"" << pack_info.nak_id << "\"\n";
     record << "version = \"" << pack_info.nak_version << "\"\n\n";
     record << "[paths]\n";
-    record << "root = \"" << final_dir << "\"\n";
-    record << "resource_root = \"" << abs_resource_root << "\"\n";
+    record << "root = \"" << to_portable_path(final_dir) << "\"\n";
+    record << "resource_root = \"" << to_portable_path(abs_resource_root) << "\"\n";
     record << "lib_dirs = [";
     for (size_t i = 0; i < abs_lib_dirs.size(); ++i) {
         if (i > 0) record << ", ";
-        record << "\"" << abs_lib_dirs[i] << "\"";
+        record << "\"" << to_portable_path(abs_lib_dirs[i]) << "\"";
     }
     record << "]\n";
     
     if (pack_info.has_loader) {
         record << "\n[loader]\n";
-        record << "exec_path = \"" << abs_loader_path << "\"\n";
+        record << "exec_path = \"" << to_portable_path(abs_loader_path) << "\"\n";
         record << "args_template = [";
         for (size_t i = 0; i < pack_info.loader_args_template.size(); ++i) {
             if (i > 0) record << ", ";
@@ -1719,7 +1719,7 @@ static NakInstallResult install_nak_from_bytes(
     }
     
     record << "\n[execution]\n";
-    record << "cwd = \"" << pack_info.execution_cwd << "\"\n";
+    record << "cwd = \"" << to_portable_path(pack_info.execution_cwd) << "\"\n";
     
     // Add provenance section if source is provided
     if (!options.source.empty() || !package_hash.empty()) {

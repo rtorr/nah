@@ -24,6 +24,12 @@ Choose based on your role:
 | [API Reference](https://nah.rtorr.com/) | Library documentation (Doxygen)  |
 | [SPEC.md](../SPEC.md)                   | Complete normative specification |
 
+## Planned
+
+| Document | Description |
+| -------- | ----------- |
+| [Android Support](planned-android.md) | How NAH could work on Android |
+
 ## Examples
 
 See [examples/](../examples/) for working code:

@@ -30,7 +30,7 @@ std::unique_ptr<NahHost> NahHost::create(const std::string& root_path) {
 std::vector<AppInfo> NahHost::listApplications() const {
     std::vector<AppInfo> apps;
     
-    std::string registry_path = root_ + "/registry/installs";
+    fs::path registry_path = fs::path(root_) / "registry" / "installs";
     
     if (!fs::exists(registry_path) || !fs::is_directory(registry_path)) {
         return apps;
@@ -99,9 +99,9 @@ Result<HostProfile> NahHost::getActiveHostProfile() const {
 }
 
 Result<void> NahHost::setActiveHostProfile(const std::string& name) {
-    std::string link_path = root_ + "/host/profile.current";
+    fs::path link_path = fs::path(root_) / "host" / "profile.current";
     std::string target = "profiles/" + name + ".toml";
-    std::string profile_path = root_ + "/host/profiles/" + name + ".toml";
+    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".toml");
     
     // Verify profile exists
     if (!fs::exists(profile_path)) {
@@ -110,10 +110,10 @@ Result<void> NahHost::setActiveHostProfile(const std::string& name) {
     }
     
     // Create parent directory if needed
-    create_directories(root_ + "/host");
+    create_directories((fs::path(root_) / "host").string());
     
     // Update symlink atomically
-    auto result = atomic_update_symlink(link_path, target);
+    auto result = atomic_update_symlink(link_path.string(), target);
     if (!result.ok) {
         return Result<void>::err(Error(ErrorCode::IO_ERROR, result.error));
     }
@@ -124,7 +124,7 @@ Result<void> NahHost::setActiveHostProfile(const std::string& name) {
 std::vector<std::string> NahHost::listProfiles() const {
     std::vector<std::string> profiles;
     
-    std::string profiles_path = root_ + "/host/profiles";
+    fs::path profiles_path = fs::path(root_) / "host" / "profiles";
     
     if (!fs::exists(profiles_path) || !fs::is_directory(profiles_path)) {
         return profiles;
@@ -144,15 +144,15 @@ std::vector<std::string> NahHost::listProfiles() const {
 }
 
 Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
-    std::string profile_path = root_ + "/host/profiles/" + name + ".toml";
+    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".toml");
     
-    std::string content = read_file(profile_path);
+    std::string content = read_file(profile_path.string());
     if (content.empty()) {
         return Result<HostProfile>::err(Error(ErrorCode::PROFILE_MISSING,
                                               "profile not found: " + name));
     }
     
-    auto parse_result = parse_host_profile_full(content, profile_path);
+    auto parse_result = parse_host_profile_full(content, profile_path.string());
     if (!parse_result.ok) {
         return Result<HostProfile>::err(Error(ErrorCode::PROFILE_PARSE_ERROR,
                                               parse_result.error));
@@ -182,19 +182,19 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
     }
     
     // 2. Check profile.current symlink
-    std::string link_path = root_ + "/host/profile.current";
+    fs::path link_path = fs::path(root_) / "host" / "profile.current";
     if (fs::exists(link_path)) {
         if (!fs::is_symlink(link_path)) {
             // profile.current exists but is not a symlink - emit profile_invalid, fall back
         } else {
-            auto target = read_symlink(link_path);
+            auto target = read_symlink(link_path.string());
             if (target) {
                 // Resolve relative to profiles directory
-                std::string profile_path = root_ + "/host/" + *target;
-                std::string content = read_file(profile_path);
+                fs::path profile_path = fs::path(root_) / "host" / *target;
+                std::string content = read_file(profile_path.string());
                 
                 if (!content.empty()) {
-                    auto parse_result = parse_host_profile_full(content, profile_path);
+                    auto parse_result = parse_host_profile_full(content, profile_path.string());
                     if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v1") {
                         return Result<HostProfile>::ok(parse_result.profile);
                     }
@@ -204,11 +204,11 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
     }
     
     // 3. Fall back to default.toml
-    std::string default_path = root_ + "/host/profiles/default.toml";
-    std::string content = read_file(default_path);
+    fs::path default_path = fs::path(root_) / "host" / "profiles" / "default.toml";
+    std::string content = read_file(default_path.string());
     
     if (!content.empty()) {
-        auto parse_result = parse_host_profile_full(content, default_path);
+        auto parse_result = parse_host_profile_full(content, default_path.string());
         if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v1") {
             return Result<HostProfile>::ok(parse_result.profile);
         }
@@ -246,7 +246,7 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
     }
     
     // Load manifest from app
-    std::string manifest_path = app_info.install_root + "/manifest.nah";
+    fs::path manifest_path = fs::path(app_info.install_root) / "manifest.nah";
     Manifest manifest;
     bool manifest_loaded = false;
     
@@ -266,7 +266,7 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
     
     // Try to find binary with embedded manifest
     if (!manifest_loaded) {
-        std::string bin_dir = app_info.install_root + "/bin";
+        fs::path bin_dir = fs::path(app_info.install_root) / "bin";
         if (fs::exists(bin_dir) && fs::is_directory(bin_dir)) {
             for (const auto& entry : fs::directory_iterator(bin_dir)) {
                 if (!entry.is_regular_file()) continue;

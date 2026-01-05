@@ -68,8 +68,6 @@ class NahConan(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        deps = CMakeDeps(self)
-        deps.generate()
         tc = CMakeToolchain(self)
         tc.variables["NAH_ENABLE_TESTS"] = False
         tc.variables["NAH_ENABLE_TOOLS"] = False

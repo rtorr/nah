@@ -172,6 +172,11 @@ struct AppInstallOptions {
     std::string profile_name;           // Optional: profile for NAK selection
     bool force = false;                 // Overwrite existing installation
     bool skip_verification = false;     // Skip signature verification
+    
+    // Provenance (for remote materialization)
+    std::string source;                 // Original source (URL or path), recorded in install record
+    std::string installed_by;           // Who installed this (e.g., "ci-pipeline")
+    std::string expected_hash;          // Expected SHA-256 hash (required for HTTPS)
 };
 
 struct AppInstallResult {
@@ -182,9 +187,12 @@ struct AppInstallResult {
     std::string instance_id;
     std::string nak_id;
     std::string nak_version;
+    std::string app_id;
+    std::string app_version;
+    std::string package_hash;           // SHA-256 of the package
 };
 
-// Install a NAP package
+// Install a NAP package from a local file path
 // Per SPEC:
 //   1. Extract to staging directory
 //   2. Validate manifest and structure
@@ -194,9 +202,24 @@ struct AppInstallResult {
 AppInstallResult install_nap_package(const std::string& package_path,
                                       const AppInstallOptions& options);
 
+// Install a NAP package from any source
+// Accepts:
+//   - Local file path (e.g., "./app.nap", "/path/to/app.nap")
+//   - file: URL (e.g., "file:./app.nap")
+//   - https: URL with SHA-256 (e.g., "https://example.com/app.nap#sha256=abc...")
+// For HTTPS sources, SHA-256 verification is mandatory.
+// Provenance is automatically recorded in the App Install Record.
+AppInstallResult install_app(const std::string& source,
+                              const AppInstallOptions& options);
+
 struct NakInstallOptions {
     std::string nah_root = "/nah";
     bool force = false;                 // Overwrite existing installation
+    
+    // Provenance (for remote materialization)
+    std::string source;                 // Original source (URL or path), recorded in install record
+    std::string installed_by;           // Who installed this (e.g., "ci-pipeline")
+    std::string expected_hash;          // Expected SHA-256 hash (required for HTTPS)
 };
 
 struct NakInstallResult {
@@ -204,9 +227,12 @@ struct NakInstallResult {
     std::string error;
     std::string install_root;           // e.g., /nah/naks/com.example.nak/1.0.0
     std::string record_path;            // e.g., /nah/registry/naks/com.example.nak@1.0.0.toml
+    std::string nak_id;
+    std::string nak_version;
+    std::string package_hash;           // SHA-256 of the package
 };
 
-// Install a NAK pack
+// Install a NAK pack from a local file path
 // Per SPEC:
 //   1. Extract to staging directory
 //   2. Validate META/nak.toml schema and required fields
@@ -214,6 +240,16 @@ struct NakInstallResult {
 //   4. Write NAK Install Record atomically with resolved absolute paths
 NakInstallResult install_nak_pack(const std::string& pack_path,
                                    const NakInstallOptions& options);
+
+// Install a NAK pack from any source
+// Accepts:
+//   - Local file path (e.g., "./sdk.nak", "/path/to/sdk.nak")
+//   - file: URL (e.g., "file:./sdk.nak")
+//   - https: URL with SHA-256 (e.g., "https://example.com/sdk.nak#sha256=abc...")
+// For HTTPS sources, SHA-256 verification is mandatory.
+// Provenance is automatically recorded in the NAK Install Record.
+NakInstallResult install_nak(const std::string& source,
+                              const NakInstallOptions& options);
 
 // ============================================================================
 // Uninstallation Operations

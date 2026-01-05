@@ -45,6 +45,8 @@ class NahConan(ConanFile):
         self.requires("nlohmann_json/3.11.3")
         self.requires("tomlplusplus/3.4.0")
         self.requires("zlib/1.3.1")
+        self.requires("openssl/3.2.1")
+        self.requires("libcurl/8.6.0")
         # cpp-semver is fetched via FetchContent (not in ConanCenter)
 
     def build_requirements(self):
@@ -172,6 +174,15 @@ class NahConan(ConanFile):
                 "nah_config",
                 "nah_platform",
                 "nah_packaging",
+                "nah_materializer",
+            ]
+
+            self.cpp_info.components["nah_materializer"].libs = ["nah_materializer"]
+            self.cpp_info.components["nah_materializer"].requires = [
+                "nah_packaging",
+                "nah_platform",
+                "openssl::crypto",
+                "libcurl::libcurl",
             ]
 
             self.cpp_info.components["nah_contract"].libs = ["nah_contract"]

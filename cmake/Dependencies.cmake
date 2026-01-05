@@ -3,6 +3,12 @@ include(FetchContent)
 # ZLIB for gzip compression
 find_package(ZLIB REQUIRED)
 
+# OpenSSL for SHA-256 hashing (used by materializer)
+find_package(OpenSSL REQUIRED)
+
+# libcurl for HTTP fetching (used by materializer)
+find_package(CURL REQUIRED)
+
 # cpp-semver for Semantic Versioning 2.0.0
 # https://github.com/z4kn4fein/cpp-semver
 # Always fetched - not available in package managers

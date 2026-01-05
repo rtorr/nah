@@ -5,123 +5,106 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 jobs:
   build:
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            name: linux-x64
-            artifact_name: nah
-            asset_name: nah-linux-x64
-          - os: macos-latest
-            name: macos-arm64
-            artifact_name: nah
-            asset_name: nah-macos-arm64
+          - os: macos-14
+            platform: darwin-arm64
           - os: macos-13
-            name: macos-x64
-            artifact_name: nah
-            asset_name: nah-macos-x64
-          - os: windows-latest
-            name: windows-x64
-            artifact_name: nah.exe
-            asset_name: nah-windows-x64.exe
+            platform: darwin-x64
+          - os: ubuntu-22.04
+            platform: linux-x64
+          - os: ubuntu-22.04-arm
+            platform: linux-arm64
 
-    name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install conan cmake
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y cmake libssl-dev libcurl4-openssl-dev
+          pip install conan
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+      - name: Setup Conan profile
         run: |
-          brew install ninja
+          conan profile detect --force
 
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
+      - name: Install Conan dependencies
         run: |
-          choco install ninja
-          vcpkg install zlib:x64-windows
+          conan install . --output-folder=build --build=missing -s build_type=Release
 
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure CMake
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DNAH_ENABLE_TESTS=OFF \
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake
 
       - name: Build
-        run: cmake --build build
+        run: |
+          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
-      - name: Create tarball (Unix)
-        if: runner.os != 'Windows'
+      - name: Create tarball
         run: |
           cd build/tools/nah
-          tar -czvf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
-          mv ${{ matrix.asset_name }}.tar.gz ../../../
-
-      - name: Create zip (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cd build/tools/nah
-          Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}.zip
-          Move-Item ${{ matrix.asset_name }}.zip ../../../
+          tar -czvf ../../../nah-${{ matrix.platform }}.tar.gz nah
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: |
-            ${{ matrix.asset_name }}.tar.gz
-            ${{ matrix.asset_name }}.zip
-          if-no-files-found: ignore
+          name: nah-${{ matrix.platform }}
+          path: nah-${{ matrix.platform }}.tar.gz
 
   release:
-    name: Create Release
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: find artifacts -type f
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          draft: false
-          prerelease: ${{ contains(github.ref, '-') }}
+          files: artifacts/*/nah-*.tar.gz
           generate_release_notes: true
-          files: |
-            artifacts/**/*.tar.gz
-            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npm:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update package version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cd npm
+          npm version $VERSION --no-git-tag-version
+
+      - name: Publish to npm
+        run: |
+          cd npm
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

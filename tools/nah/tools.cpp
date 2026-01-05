@@ -9,6 +9,7 @@
 #include "nah/contract.hpp"
 #include "nah/packaging.hpp"
 #include "nah/nak_selection.hpp"
+#include "nah/materializer.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -364,14 +365,19 @@ int cmd_app_show(const GlobalOptions& opts, const std::string& target) {
     return 0;
 }
 
-int cmd_app_install(const GlobalOptions& opts, const std::string& package_path,
-                     bool force) {
+int cmd_app_install(const GlobalOptions& opts, const std::string& source,
+                     bool force, const std::string& expected_hash) {
     nah::AppInstallOptions install_opts;
     install_opts.nah_root = opts.root;
     install_opts.profile_name = opts.profile;
     install_opts.force = force;
+    install_opts.installed_by = "nah-cli";
+    if (!expected_hash.empty()) {
+        install_opts.expected_hash = expected_hash;
+    }
     
-    auto result = nah::install_nap_package(package_path, install_opts);
+    // Use unified install_app which handles file paths, file: URLs, and https:// URLs
+    auto result = nah::install_app(source, install_opts);
     
     if (!result.ok) {
         print_error(result.error, opts.json);
@@ -381,17 +387,28 @@ int cmd_app_install(const GlobalOptions& opts, const std::string& package_path,
     if (opts.json) {
         nlohmann::json j;
         j["success"] = true;
+        j["app_id"] = result.app_id;
+        j["app_version"] = result.app_version;
         j["install_root"] = result.install_root;
         j["record_path"] = result.record_path;
         j["instance_id"] = result.instance_id;
-        j["nak_id"] = result.nak_id;
-        j["nak_version"] = result.nak_version;
+        if (!result.nak_id.empty()) {
+            j["nak_id"] = result.nak_id;
+            j["nak_version"] = result.nak_version;
+        }
+        if (!result.package_hash.empty()) {
+            j["package_hash"] = result.package_hash;
+        }
         std::cout << j.dump(2) << std::endl;
     } else if (!opts.quiet) {
-        std::cout << "Installed to: " << result.install_root << std::endl;
-        std::cout << "Instance ID: " << result.instance_id << std::endl;
+        std::cout << "Installed: " << result.app_id << "@" << result.app_version << std::endl;
+        std::cout << "  Path: " << result.install_root << std::endl;
+        std::cout << "  Instance: " << result.instance_id << std::endl;
         if (!result.nak_id.empty()) {
-            std::cout << "NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+            std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+        }
+        if (!result.package_hash.empty()) {
+            std::cout << "  Hash: " << result.package_hash << std::endl;
         }
     }
     
@@ -646,13 +663,18 @@ int cmd_nak_show(const GlobalOptions& opts, const std::string& target) {
     return 1;
 }
 
-int cmd_nak_install(const GlobalOptions& opts, const std::string& pack_path,
-                     bool force) {
+int cmd_nak_install(const GlobalOptions& opts, const std::string& source,
+                     bool force, const std::string& expected_hash) {
     nah::NakInstallOptions install_opts;
     install_opts.nah_root = opts.root;
     install_opts.force = force;
+    install_opts.installed_by = "nah-cli";
+    if (!expected_hash.empty()) {
+        install_opts.expected_hash = expected_hash;
+    }
     
-    auto result = nah::install_nak_pack(pack_path, install_opts);
+    // Use unified install_nak which handles file paths, file: URLs, and https:// URLs
+    auto result = nah::install_nak(source, install_opts);
     
     if (!result.ok) {
         print_error(result.error, opts.json);
@@ -662,11 +684,20 @@ int cmd_nak_install(const GlobalOptions& opts, const std::string& pack_path,
     if (opts.json) {
         nlohmann::json j;
         j["success"] = true;
+        j["nak_id"] = result.nak_id;
+        j["nak_version"] = result.nak_version;
         j["install_root"] = result.install_root;
         j["record_path"] = result.record_path;
+        if (!result.package_hash.empty()) {
+            j["package_hash"] = result.package_hash;
+        }
         std::cout << j.dump(2) << std::endl;
     } else if (!opts.quiet) {
-        std::cout << "Installed to: " << result.install_root << std::endl;
+        std::cout << "Installed: " << result.nak_id << "@" << result.nak_version << std::endl;
+        std::cout << "  Path: " << result.install_root << std::endl;
+        if (!result.package_hash.empty()) {
+            std::cout << "  Hash: " << result.package_hash << std::endl;
+        }
     }
     
     return 0;
@@ -1829,6 +1860,30 @@ int cmd_doctor(const GlobalOptions& opts, const std::string& target, bool fix) {
 }
 
 // ============================================================================
+// Hash Command
+// ============================================================================
+
+int cmd_hash(const GlobalOptions& opts, const std::string& path) {
+    auto result = nah::compute_sha256(path);
+    
+    if (!result.ok) {
+        print_error(result.error, opts.json);
+        return 1;
+    }
+    
+    if (opts.json) {
+        nlohmann::json j;
+        j["path"] = path;
+        j["sha256"] = result.hex_digest;
+        std::cout << j.dump(2) << std::endl;
+    } else {
+        std::cout << result.hex_digest << "  " << path << std::endl;
+    }
+    
+    return 0;
+}
+
+// ============================================================================
 // Validate Command
 // ============================================================================
 
@@ -2097,14 +2152,26 @@ int main(int argc, char** argv) {
         "Examples: com.example.myapp, com.example.myapp@1.0.0")->required();
     app_show->callback([&]() { std::exit(cmd_app_show(opts, app_target)); });
     
-    std::string package_path;
+    std::string app_source;
+    std::string app_expected_hash;
     bool app_force = false;
-    auto app_install = app_cmd->add_subcommand("install", "Install an application from a .nap package");
-    app_install->add_option("package", package_path, 
-        "Path to the .nap package file")->required()->check(CLI::ExistingFile);
+    auto app_install = app_cmd->add_subcommand("install", "Install an application from a file or URL");
+    app_install->add_option("source", app_source, 
+        "Source to install from:\n"
+        "  - Local file path: ./myapp-1.0.0.nap\n"
+        "  - file: URL: file:./myapp-1.0.0.nap\n"
+        "  - https: URL: https://example.com/app.nap#sha256=...")->required();
+    app_install->add_option("--sha256", app_expected_hash,
+        "Expected SHA-256 hash (required for https:// without fragment)");
     app_install->add_flag("-f,--force", app_force, 
         "Overwrite existing installation if present");
-    app_install->callback([&]() { std::exit(cmd_app_install(opts, package_path, app_force)); });
+    app_install->footer("\nExamples:\n"
+                        "  nah app install ./myapp-1.0.0.nap\n"
+                        "  nah app install file:/path/to/app.nap\n"
+                        "  nah app install 'https://releases.example.com/app.nap#sha256=abc123...'\n"
+                        "\nFor HTTPS URLs, SHA-256 verification is mandatory.\n"
+                        "Provide the hash via #sha256=... in the URL or --sha256 option.");
+    app_install->callback([&]() { std::exit(cmd_app_install(opts, app_source, app_force, app_expected_hash)); });
     
     auto app_uninstall = app_cmd->add_subcommand("uninstall", "Remove an installed application");
     app_uninstall->add_option("target", app_target, 
@@ -2153,14 +2220,26 @@ int main(int argc, char** argv) {
         "NAK identifier with version (e.g., com.example.sdk@1.0.0)")->required();
     nak_show->callback([&]() { std::exit(cmd_nak_show(opts, nak_target)); });
     
-    std::string nak_pack_path;
+    std::string nak_source;
+    std::string nak_expected_hash;
     bool nak_force = false;
-    auto nak_install = nak_cmd->add_subcommand("install", "Install a NAK from a .nak pack");
-    nak_install->add_option("pack", nak_pack_path, 
-        "Path to the .nak pack file")->required()->check(CLI::ExistingFile);
+    auto nak_install = nak_cmd->add_subcommand("install", "Install a NAK from a file or URL");
+    nak_install->add_option("source", nak_source, 
+        "Source to install from:\n"
+        "  - Local file path: ./sdk-1.0.0.nak\n"
+        "  - file: URL: file:./sdk-1.0.0.nak\n"
+        "  - https: URL: https://example.com/sdk.nak#sha256=...")->required();
+    nak_install->add_option("--sha256", nak_expected_hash,
+        "Expected SHA-256 hash (required for https:// without fragment)");
     nak_install->add_flag("-f,--force", nak_force, 
         "Overwrite existing version if present");
-    nak_install->callback([&]() { std::exit(cmd_nak_install(opts, nak_pack_path, nak_force)); });
+    nak_install->footer("\nExamples:\n"
+                        "  nah nak install ./sdk-1.0.0.nak\n"
+                        "  nah nak install file:/path/to/sdk.nak\n"
+                        "  nah nak install 'https://releases.example.com/sdk.nak#sha256=abc123...'\n"
+                        "\nFor HTTPS URLs, SHA-256 verification is mandatory.\n"
+                        "Provide the hash via #sha256=... in the URL or --sha256 option.");
+    nak_install->callback([&]() { std::exit(cmd_nak_install(opts, nak_source, nak_force, nak_expected_hash)); });
     
     auto nak_path = nak_cmd->add_subcommand("path", "Print the installation path of a NAK");
     nak_path->add_option("target", nak_target, 
@@ -2327,6 +2406,18 @@ int main(int argc, char** argv) {
         "Check if file needs formatting (exit 1 if changes needed)");
     format_cmd->footer("\nUseful in CI to enforce consistent formatting.");
     format_cmd->callback([&]() { std::exit(cmd_format(opts, format_path, format_check)); });
+    
+    // ========== Hash Command ==========
+    std::string hash_path;
+    auto hash_cmd = app.add_subcommand("hash", "Compute SHA-256 hash of a file");
+    hash_cmd->add_option("path", hash_path, 
+        "Path to file to hash")->required()->check(CLI::ExistingFile);
+    hash_cmd->footer("\nComputes the SHA-256 hash of a file.\n"
+                     "Useful for generating the #sha256=... fragment for HTTPS URLs.\n"
+                     "\nExample:\n"
+                     "  nah hash ./sdk-1.0.0.nak\n"
+                     "  # Output: abc123...  ./sdk-1.0.0.nak");
+    hash_cmd->callback([&]() { std::exit(cmd_hash(opts, hash_path)); });
     
     // Custom failure handler for better error messages
     app.failure_message([](const CLI::App* failed_app, const CLI::Error& e) {

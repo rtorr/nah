@@ -67,7 +67,7 @@ if(NAH_INSTALL)
     endif()
 
     # Install static libraries
-    install(TARGETS nahhost nah_contract nah_config nah_platform nah_manifest nah_packaging
+    install(TARGETS nahhost nah_contract nah_config nah_platform nah_manifest nah_packaging nah_materializer
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )

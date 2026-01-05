@@ -6,6 +6,7 @@
 #include "nah/nak_selection.hpp"
 #include "nah/host_profile.hpp"
 #include "nah/warnings.hpp"
+#include "nah/materializer.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -1300,32 +1301,339 @@ AppInstallResult install_nap_package(const std::string& package_path,
     result.instance_id = instance_id;
     result.nak_id = selected_nak_pin.id;
     result.nak_version = selected_nak_pin.version;
+    result.app_id = manifest.id;
+    result.app_version = manifest.version;
     
     return result;
 }
 
-NakInstallResult install_nak_pack(const std::string& pack_path,
-                                   const NakInstallOptions& options) {
+// Internal helper: install app from bytes with provenance
+static AppInstallResult install_app_from_bytes(
+    const std::vector<uint8_t>& archive_data,
+    const std::string& package_hash,
+    const AppInstallOptions& options) {
+    
+    AppInstallResult result;
+    result.package_hash = package_hash;
+    
+    // Create staging directory
+    std::string staging_dir = join_path(options.nah_root, ".staging-" + generate_uuid());
+    
+    // Extract to staging
+    auto extract_result = extract_archive_safe(archive_data, staging_dir);
+    if (!extract_result.ok) {
+        result.error = extract_result.error;
+        return result;
+    }
+    
+    // Find and parse manifest
+    std::string manifest_path = join_path(staging_dir, "manifest.nah");
+    std::vector<uint8_t> manifest_data;
+    std::string manifest_source;
+    
+    if (path_exists(manifest_path)) {
+        std::ifstream mf(manifest_path, std::ios::binary);
+        manifest_data = std::vector<uint8_t>(
+            (std::istreambuf_iterator<char>(mf)),
+            std::istreambuf_iterator<char>());
+        manifest_source = "file:manifest.nah";
+    } else {
+        // Try to find embedded manifest in binaries
+        std::string bin_dir = join_path(staging_dir, "bin");
+        if (is_directory(bin_dir)) {
+            for (const auto& entry : list_directory(bin_dir)) {
+                std::string bin_path = join_path(bin_dir, entry);
+                if (is_regular_file(bin_path)) {
+                    auto section_result = read_manifest_section(bin_path);
+                    if (section_result.ok) {
+                        manifest_data = section_result.data;
+                        manifest_source = "embedded:" + entry;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (manifest_data.empty()) {
+        remove_directory(staging_dir);
+        result.error = "no manifest found in package";
+        return result;
+    }
+    
+    auto manifest_result = parse_manifest(manifest_data);
+    if (manifest_result.critical_missing) {
+        remove_directory(staging_dir);
+        result.error = "invalid manifest: " + manifest_result.error;
+        return result;
+    }
+    
+    const auto& manifest = manifest_result.manifest;
+    result.app_id = manifest.id;
+    result.app_version = manifest.version;
+    
+    // Perform NAK selection at install time
+    NakPin selected_nak_pin;
+    
+    if (!manifest.nak_id.empty()) {
+        std::string profile_path;
+        if (!options.profile_name.empty()) {
+            profile_path = join_path(options.nah_root, 
+                "host/profiles/" + options.profile_name + ".toml");
+        } else {
+            std::string current_link = join_path(options.nah_root, "host/profile.current");
+            std::error_code ec;
+            if (std::filesystem::is_symlink(current_link, ec)) {
+                auto target = std::filesystem::read_symlink(current_link, ec);
+                if (!ec) {
+                    profile_path = join_path(options.nah_root, "host/" + target.string());
+                }
+            }
+            if (profile_path.empty() || !path_exists(profile_path)) {
+                profile_path = join_path(options.nah_root, "host/profiles/default.toml");
+            }
+        }
+        
+        std::ifstream pf(profile_path);
+        if (!pf) {
+            remove_directory(staging_dir);
+            result.error = "failed to load host profile: " + profile_path;
+            return result;
+        }
+        std::string profile_toml((std::istreambuf_iterator<char>(pf)),
+                                  std::istreambuf_iterator<char>());
+        auto profile_result = parse_host_profile_full(profile_toml, profile_path);
+        if (!profile_result.ok) {
+            remove_directory(staging_dir);
+            result.error = "invalid host profile: " + profile_result.error;
+            return result;
+        }
+        
+        auto registry = scan_nak_registry(options.nah_root);
+        WarningCollector warnings;
+        auto selection = select_nak_for_install(
+            manifest, profile_result.profile, registry, warnings);
+        
+        if (selection.resolved) {
+            selected_nak_pin = selection.pin;
+        } else if (!manifest.nak_id.empty()) {
+            remove_directory(staging_dir);
+            result.error = "NAK selection failed: no matching NAK found for " + manifest.nak_id;
+            return result;
+        }
+    }
+    
+    // Determine final install location
+    std::string app_dir_name = manifest.id + "-" + manifest.version;
+    std::string final_dir = join_path(options.nah_root, "apps/" + app_dir_name);
+    
+    // Check for existing installation
+    if (path_exists(final_dir)) {
+        if (!options.force) {
+            remove_directory(staging_dir);
+            result.error = "application already installed: " + app_dir_name;
+            return result;
+        }
+        remove_directory(final_dir);
+    }
+    
+    // Create apps directory if needed
+    create_directories(join_path(options.nah_root, "apps"));
+    
+    // Atomic rename from staging to final location
+    std::error_code ec;
+    fs::rename(staging_dir, final_dir, ec);
+    if (ec) {
+        remove_directory(staging_dir);
+        result.error = "failed to install application: " + ec.message();
+        return result;
+    }
+    
+    // Generate instance ID
+    std::string instance_id = generate_uuid();
+    
+    // Write App Install Record
+    std::string record_dir = join_path(options.nah_root, "registry/installs");
+    create_directories(record_dir);
+    
+    std::string record_path = join_path(record_dir, 
+        manifest.id + "-" + manifest.version + "-" + instance_id + ".toml");
+    
+    std::ostringstream record;
+    record << "schema = \"nah.app.install.v1\"\n\n";
+    record << "[install]\n";
+    record << "installed_at = \"" << get_current_timestamp() << "\"\n";
+    record << "instance_id = \"" << instance_id << "\"\n";
+    record << "manifest_source = \"" << manifest_source << "\"\n\n";
+    record << "[app]\n";
+    record << "id = \"" << manifest.id << "\"\n";
+    record << "version = \"" << manifest.version << "\"\n\n";
+    record << "[nak]\n";
+    record << "id = \"" << selected_nak_pin.id << "\"\n";
+    record << "version = \"" << selected_nak_pin.version << "\"\n";
+    record << "record_ref = \"" << selected_nak_pin.record_ref << "\"\n\n";
+    record << "[paths]\n";
+    record << "install_root = \"" << final_dir << "\"\n\n";
+    record << "[trust]\n";
+    record << "state = \"verified\"\n";
+    record << "source = \"install\"\n";
+    record << "evaluated_at = \"" << get_current_timestamp() << "\"\n";
+    
+    // Add provenance section if source was provided
+    if (!options.source.empty() || !package_hash.empty()) {
+        record << "\n[provenance]\n";
+        if (!options.source.empty()) {
+            record << "source = \"" << options.source << "\"\n";
+        }
+        if (!package_hash.empty()) {
+            record << "package_hash = \"" << package_hash << "\"\n";
+        }
+        record << "installed_at = \"" << get_current_timestamp() << "\"\n";
+        if (!options.installed_by.empty()) {
+            record << "installed_by = \"" << options.installed_by << "\"\n";
+        }
+    }
+    
+    auto write_result = atomic_write_file(record_path, record.str());
+    if (!write_result.ok) {
+        remove_directory(final_dir);
+        result.error = "failed to write install record: " + write_result.error;
+        return result;
+    }
+    
+    result.ok = true;
+    result.install_root = final_dir;
+    result.record_path = record_path;
+    result.instance_id = instance_id;
+    result.nak_id = selected_nak_pin.id;
+    result.nak_version = selected_nak_pin.version;
+    
+    return result;
+}
+
+AppInstallResult install_app(const std::string& source,
+                              const AppInstallOptions& options) {
+    AppInstallResult result;
+    
+    std::vector<uint8_t> archive_data;
+    std::string package_hash;
+    
+    if (source.rfind("https://", 0) == 0) {
+        // HTTPS URL - parse and fetch
+        auto ref = parse_artifact_reference(source);
+        
+        // If URL doesn't have hash fragment, use expected_hash from options
+        std::string expected_digest = ref.sha256_digest;
+        if (expected_digest.empty()) {
+            expected_digest = options.expected_hash;
+        }
+        
+        // HTTPS requires SHA-256 verification
+        if (expected_digest.empty()) {
+            result.error = "HTTPS URL requires SHA-256 hash: use #sha256=... fragment or --sha256 option";
+            return result;
+        }
+        
+        // Extract URL
+        std::string url = ref.type == ReferenceType::Invalid ? source : ref.path_or_url;
+        if (ref.type == ReferenceType::Invalid && !options.expected_hash.empty()) {
+            auto hash_pos = source.find('#');
+            url = (hash_pos != std::string::npos) ? source.substr(0, hash_pos) : source;
+        }
+        
+        // Fetch from remote
+        auto fetch_result = fetch_https(url);
+        if (!fetch_result.ok) {
+            result.error = "fetch failed: " + fetch_result.error;
+            return result;
+        }
+        
+        archive_data = std::move(fetch_result.data);
+        
+        // Verify SHA-256
+        auto verify_result = verify_sha256(archive_data, expected_digest);
+        if (!verify_result.ok) {
+            result.error = verify_result.error;
+            return result;
+        }
+        
+        package_hash = verify_result.actual_digest;
+        
+    } else if (source.rfind("file:", 0) == 0) {
+        // file: URL - extract path and read
+        std::string file_path = source.substr(5);
+        
+        std::ifstream file(file_path, std::ios::binary);
+        if (!file) {
+            result.error = "failed to open file: " + file_path;
+            return result;
+        }
+        
+        archive_data = std::vector<uint8_t>(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+        file.close();
+        
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
+        }
+        
+    } else {
+        // Plain file path
+        std::ifstream file(source, std::ios::binary);
+        if (!file) {
+            result.error = "failed to open file: " + source;
+            return result;
+        }
+        
+        archive_data = std::vector<uint8_t>(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+        file.close();
+        
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
+        }
+    }
+    
+    // Verify expected hash if provided
+    if (!options.expected_hash.empty() && source.rfind("https://", 0) != 0) {
+        auto verify_result = verify_sha256(archive_data, options.expected_hash);
+        if (!verify_result.ok) {
+            result.error = verify_result.error;
+            return result;
+        }
+    }
+    
+    // Set up options with source for provenance
+    AppInstallOptions opts = options;
+    if (opts.source.empty()) {
+        opts.source = source;
+    }
+    
+    return install_app_from_bytes(archive_data, package_hash, opts);
+}
+
+// Internal helper: install NAK from bytes with full options
+static NakInstallResult install_nak_from_bytes(
+    const std::vector<uint8_t>& archive_data,
+    const std::string& package_hash,
+    const NakInstallOptions& options) {
+    
     NakInstallResult result;
     
-    // Inspect pack first
-    auto pack_info = inspect_nak_pack(pack_path);
+    // Inspect pack
+    auto pack_info = inspect_nak_pack(archive_data);
     if (!pack_info.ok) {
         result.error = pack_info.error;
         return result;
     }
     
-    // Read pack
-    std::ifstream file(pack_path, std::ios::binary);
-    if (!file) {
-        result.error = "failed to open pack: " + pack_path;
-        return result;
-    }
-    
-    std::vector<uint8_t> archive_data(
-        (std::istreambuf_iterator<char>(file)),
-        std::istreambuf_iterator<char>());
-    file.close();
+    result.nak_id = pack_info.nak_id;
+    result.nak_version = pack_info.nak_version;
+    result.package_hash = package_hash;
     
     // Create staging directory
     std::string staging_dir = join_path(options.nah_root, ".staging-" + generate_uuid());
@@ -1413,6 +1721,21 @@ NakInstallResult install_nak_pack(const std::string& pack_path,
     record << "\n[execution]\n";
     record << "cwd = \"" << pack_info.execution_cwd << "\"\n";
     
+    // Add provenance section if source is provided
+    if (!options.source.empty() || !package_hash.empty()) {
+        record << "\n[provenance]\n";
+        if (!options.source.empty()) {
+            record << "source = \"" << options.source << "\"\n";
+        }
+        if (!package_hash.empty()) {
+            record << "package_hash = \"sha256:" << package_hash << "\"\n";
+        }
+        record << "installed_at = \"" << get_current_timestamp() << "\"\n";
+        if (!options.installed_by.empty()) {
+            record << "installed_by = \"" << options.installed_by << "\"\n";
+        }
+    }
+    
     auto write_result = atomic_write_file(record_path, record.str());
     if (!write_result.ok) {
         remove_directory(final_dir);
@@ -1425,6 +1748,149 @@ NakInstallResult install_nak_pack(const std::string& pack_path,
     result.record_path = record_path;
     
     return result;
+}
+
+NakInstallResult install_nak_pack(const std::string& pack_path,
+                                   const NakInstallOptions& options) {
+    NakInstallResult result;
+    
+    // Read pack
+    std::ifstream file(pack_path, std::ios::binary);
+    if (!file) {
+        result.error = "failed to open pack: " + pack_path;
+        return result;
+    }
+    
+    std::vector<uint8_t> archive_data(
+        (std::istreambuf_iterator<char>(file)),
+        std::istreambuf_iterator<char>());
+    file.close();
+    
+    // Compute hash
+    auto hash_result = compute_sha256(archive_data);
+    std::string package_hash = hash_result.ok ? hash_result.hex_digest : "";
+    
+    // Use source from options or default to file path
+    NakInstallOptions opts = options;
+    if (opts.source.empty()) {
+        opts.source = pack_path;
+    }
+    
+    return install_nak_from_bytes(archive_data, package_hash, opts);
+}
+
+NakInstallResult install_nak(const std::string& source,
+                              const NakInstallOptions& options) {
+    NakInstallResult result;
+    
+    // Determine source type
+    // 1. https:// URL (requires #sha256=...)
+    // 2. file: URL
+    // 3. Plain file path
+    
+    std::vector<uint8_t> archive_data;
+    std::string package_hash;
+    std::string resolved_source = source;
+    
+    if (source.rfind("https://", 0) == 0) {
+        // HTTPS URL - parse and fetch
+        auto ref = parse_artifact_reference(source);
+        
+        // If URL doesn't have hash fragment, use expected_hash from options
+        std::string expected_digest = ref.sha256_digest;
+        if (expected_digest.empty()) {
+            expected_digest = options.expected_hash;
+        }
+        
+        // HTTPS requires SHA-256 verification
+        if (expected_digest.empty()) {
+            result.error = "HTTPS URL requires SHA-256 hash: use #sha256=... fragment or --sha256 option";
+            return result;
+        }
+        
+        // Extract URL (may or may not have fragment)
+        std::string url = ref.type == ReferenceType::Invalid ? source : ref.path_or_url;
+        // If we got invalid due to missing hash but have expected_hash, extract URL ourselves
+        if (ref.type == ReferenceType::Invalid && !options.expected_hash.empty()) {
+            auto hash_pos = source.find('#');
+            url = (hash_pos != std::string::npos) ? source.substr(0, hash_pos) : source;
+        }
+        
+        // Fetch from remote
+        auto fetch_result = fetch_https(url);
+        if (!fetch_result.ok) {
+            result.error = "fetch failed: " + fetch_result.error;
+            return result;
+        }
+        
+        archive_data = std::move(fetch_result.data);
+        
+        // Verify SHA-256
+        auto verify_result = verify_sha256(archive_data, expected_digest);
+        if (!verify_result.ok) {
+            result.error = verify_result.error;
+            return result;
+        }
+        
+        package_hash = verify_result.actual_digest;
+        
+    } else if (source.rfind("file:", 0) == 0) {
+        // file: URL - extract path and read
+        std::string file_path = source.substr(5);
+        
+        std::ifstream file(file_path, std::ios::binary);
+        if (!file) {
+            result.error = "failed to open file: " + file_path;
+            return result;
+        }
+        
+        archive_data = std::vector<uint8_t>(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+        file.close();
+        
+        // Compute hash
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
+        }
+        
+    } else {
+        // Plain file path
+        std::ifstream file(source, std::ios::binary);
+        if (!file) {
+            result.error = "failed to open file: " + source;
+            return result;
+        }
+        
+        archive_data = std::vector<uint8_t>(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+        file.close();
+        
+        // Compute hash
+        auto hash_result = compute_sha256(archive_data);
+        if (hash_result.ok) {
+            package_hash = hash_result.hex_digest;
+        }
+    }
+    
+    // Verify expected hash if provided
+    if (!options.expected_hash.empty()) {
+        auto verify_result = verify_sha256(archive_data, options.expected_hash);
+        if (!verify_result.ok) {
+            result.error = verify_result.error;
+            return result;
+        }
+    }
+    
+    // Set up options with source for provenance
+    NakInstallOptions opts = options;
+    if (opts.source.empty()) {
+        opts.source = source;
+    }
+    
+    return install_nak_from_bytes(archive_data, package_hash, opts);
 }
 
 // ============================================================================

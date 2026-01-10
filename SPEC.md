@@ -1935,6 +1935,91 @@ Semantics:
 nah manifest show <binary|id[@version]> [--json]
 ```
 
+#### Manifest generation
+
+```
+nah manifest generate <input.toml> -o <manifest.nah> [--json]
+nah manifest generate --stdin -o <manifest.nah> [--json]
+```
+
+Semantics:
+
+- `nah manifest generate` MUST produce a valid TLV-encoded `manifest.nah` file from a TOML input.
+- The input TOML MUST conform to the Manifest Input Format (Normative) defined below.
+- The output MUST be a valid TLV binary manifest per the Binary Manifest Format specification.
+- If `-o` is omitted, the output MUST be written to `manifest.nah` in the current directory.
+- `--stdin` MUST read TOML input from standard input instead of a file.
+- `--json` MUST output a JSON object with `ok`, `path`, and `warnings` fields instead of human-readable output.
+- On validation failure, `nah manifest generate` MUST exit with code 1 and MUST NOT write any output file.
+- On success, `nah manifest generate` MUST exit with code 0.
+
+**Manifest Input Format (Normative):**
+
+The input TOML file MUST have the following structure:
+
+```toml
+schema = "nah.manifest.input.v1"
+
+[app]
+id = "com.example.myapp"                    # REQUIRED
+version = "1.0.0"                           # REQUIRED
+nak_id = "com.example.runtime"              # REQUIRED
+nak_version_req = ">=2.0.0"                 # REQUIRED
+entrypoint = "bundle.js"                    # REQUIRED, relative path
+
+# Optional fields
+entrypoint_args = ["--mode", "production"]
+description = "My application"
+author = "Developer Name"
+license = "MIT"
+homepage = "https://example.com"
+
+# Optional layout
+lib_dirs = ["lib", "vendor/lib"]
+asset_dirs = ["assets", "share"]
+
+# Optional asset exports
+[[app.exports]]
+id = "config"
+path = "share/config.json"
+type = "application/json"
+
+# Optional environment defaults
+[app.environment]
+LOG_LEVEL = "info"
+NODE_ENV = "production"
+
+# Optional permissions (empty by default for bundle apps)
+[app.permissions]
+filesystem = ["read:app://assets/*"]
+network = ["connect:https://api.example.com:443"]
+```
+
+**Required fields (Normative):** `schema`, `[app].id`, `[app].version`, `[app].nak_id`, `[app].nak_version_req`, and `[app].entrypoint` MUST be present. Missing required fields MUST cause validation failure.
+
+**Schema field (Normative):** The `schema` field MUST equal `nah.manifest.input.v1`. Missing or mismatched schema MUST cause validation failure.
+
+**Path validation (Normative):**
+
+- `entrypoint`, `lib_dirs`, `asset_dirs`, and `exports[*].path` MUST be relative paths.
+- Absolute paths MUST cause validation failure.
+- Paths containing `..` MUST cause validation failure.
+
+**Permission format (Normative):**
+
+- `permissions.filesystem` entries MUST be strings of the form `<operation>:<selector>` where `<operation>` is one of `read`, `write`, `execute`.
+- `permissions.network` entries MUST be strings of the form `<operation>:<selector>` where `<operation>` is one of `connect`, `listen`, `bind`.
+- Invalid permission formats MUST cause validation failure.
+
+**TLV Generation (Normative):**
+
+- Fields MUST be encoded in ascending tag order per TLV Encoding Rules.
+- SCHEMA_VERSION (tag 1) MUST be emitted with value 1.
+- Repeated fields (entrypoint_args, lib_dirs, asset_dirs, exports, environment, permissions) MUST emit one TLV entry per item.
+- ENV_VAR entries MUST be encoded as `KEY=VALUE` strings.
+- ASSET_EXPORT entries MUST be encoded as `<id>:<path>[:<type>]` strings.
+- The CRC32 MUST be computed over the TLV payload bytes only (excluding header).
+
 #### Doctor
 
 ```
@@ -2328,6 +2413,134 @@ nah contract show data-processor@2.1.0 --json
 
 # Run application (host-dependent)
 ```
+
+### Bundle Application Developer Flow
+
+Bundle applications (JavaScript, Python, or other interpreted code) use a file-based manifest instead of embedding the manifest in a native binary. The NAK provides the runtime/loader that executes the bundle.
+
+#### 1. Create Manifest Input File
+
+```toml
+# manifest.toml
+schema = "nah.manifest.input.v1"
+
+[app]
+id = "com.example.my-rn-app"
+version = "1.0.0"
+nak_id = "com.mycompany.rn-runtime"
+nak_version_req = ">=2.0.0"
+entrypoint = "bundle.js"
+
+# Optional metadata
+description = "My React Native Application"
+author = "Mobile Team"
+
+# Optional asset exports
+[[app.exports]]
+id = "splash"
+path = "assets/splash.png"
+type = "image/png"
+
+# Environment defaults (optional)
+[app.environment]
+NODE_ENV = "production"
+
+# Permissions are typically empty for bundle apps - the NAK runtime
+# defines the sandbox boundary. Only declare permissions if your
+# runtime supports per-app capability escalation.
+# [app.permissions]
+# filesystem = []
+# network = []
+```
+
+#### 2. Generate Manifest and Package
+
+```bash
+# Generate TLV manifest from TOML input
+nah manifest generate manifest.toml -o manifest.nah
+
+# Verify the generated manifest
+nah manifest show manifest.nah
+
+# Create package structure
+mkdir -p package/assets
+cp bundle.js package/
+cp manifest.nah package/
+cp -r assets/* package/assets/
+
+# Create NAP package
+nah app pack package -o my-rn-app-1.0.0.nap
+```
+
+#### 3. NAK Runtime Setup (Host/SDK Team)
+
+The NAK provides the runtime that loads and executes bundles:
+
+```toml
+# META/nak.toml for the RN runtime NAK pack
+schema = "nah.nak.pack.v1"
+
+[nak]
+id = "com.mycompany.rn-runtime"
+version = "2.0.0"
+
+[paths]
+lib_dirs = ["lib"]
+resource_root = "resources"
+
+[loader]
+exec_path = "bin/rn-loader"
+args_template = [
+  "--bundle", "{NAH_APP_ENTRY}",
+  "--assets", "{NAH_APP_ROOT}/assets",
+  "--nak-resources", "{NAH_NAK_ROOT}/resources"
+]
+
+[execution]
+cwd = "{NAH_APP_ROOT}"
+
+[environment]
+RN_RUNTIME_VERSION = "2.0.0"
+```
+
+#### 4. Installation and Launch
+
+```bash
+# Install the NAK (done once by host/platform)
+nah nak install rn-runtime-2.0.0.nak
+
+# Install the bundle app
+nah app install my-rn-app-1.0.0.nap
+
+# View the launch contract
+nah contract show my-rn-app@1.0.0 --json
+
+# The launch contract will show:
+# - execution.binary = /nah/naks/com.mycompany.rn-runtime/2.0.0/bin/rn-loader
+# - execution.arguments = ["--bundle", "/nah/apps/.../bundle.js", ...]
+# - execution.cwd = /nah/apps/com.example.my-rn-app-1.0.0
+```
+
+#### Key Differences from Native Apps
+
+| Aspect | Native App | Bundle App |
+|--------|------------|------------|
+| Manifest storage | Embedded in binary | `manifest.nah` file |
+| Manifest creation | C++ macro at compile time | `nah manifest generate` |
+| Entrypoint | Native executable | Script/bundle file |
+| Execution | Direct execution | NAK loader invokes runtime |
+| Permissions | Declared per-app | Typically inherited from NAK sandbox |
+
+#### Security Model for Bundle Apps
+
+Bundle apps run inside the NAK runtime's sandbox. The trust model is:
+
+1. **NAK is the trust boundary** - The runtime defines what the bundle can access
+2. **Bundle permissions are advisory** - The runtime enforces its own sandbox
+3. **Package signature covers the bundle** - Tampering is detected at install time
+4. **Host profile controls the NAK** - Host policy governs what the runtime can do
+
+This mirrors how React Native apps work on iOS/Android: the JS bundle runs inside a native container that defines the security boundary.
 
 ### Host Integrator Flow
 

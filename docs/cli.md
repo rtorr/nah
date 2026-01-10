@@ -239,11 +239,82 @@ nah --root ./my-nah manifest show com.example.myapp
 
 #### `nah manifest generate <TOML_FILE> -o <OUTPUT>`
 
-Generate binary manifest from TOML.
+Generate a binary TLV manifest from a TOML input file. This is used for bundle applications (JavaScript, Python, etc.) that cannot embed a manifest in a native binary.
 
 ```bash
 nah manifest generate manifest.toml -o manifest.nah
 ```
+
+Options:
+- `-o, --output` - Output file path (required)
+- `--json` - Output result as JSON
+
+**Input Format**
+
+The input file must use the `nah.manifest.input.v1` schema:
+
+```toml
+schema = "nah.manifest.input.v1"
+
+[app]
+id = "com.example.myapp"              # Required: unique identifier
+version = "1.0.0"                     # Required: SemVer version
+nak_id = "com.example.runtime"        # Required: NAK dependency
+nak_version_req = ">=2.0.0"           # Required: version requirement
+entrypoint = "bundle.js"              # Required: relative path to entry
+
+# Optional metadata
+description = "My application"
+author = "Developer Name"
+license = "MIT"
+homepage = "https://example.com"
+
+# Optional entrypoint arguments
+entrypoint_args = ["--mode", "production"]
+
+# Optional layout directories (relative paths)
+lib_dirs = ["lib"]
+asset_dirs = ["assets"]
+
+# Optional asset exports
+[[app.exports]]
+id = "config"
+path = "share/config.json"
+type = "application/json"
+
+# Optional environment defaults
+[app.environment]
+NODE_ENV = "production"
+
+# Optional permissions (typically empty for bundle apps)
+[app.permissions]
+filesystem = ["read:app://assets/*"]
+network = ["connect:https://api.example.com:443"]
+```
+
+**Required Fields**
+
+| Field | Description |
+|-------|-------------|
+| `schema` | Must be `nah.manifest.input.v1` |
+| `app.id` | Unique identifier (reverse domain notation) |
+| `app.version` | SemVer version string |
+| `app.nak_id` | NAK this app depends on |
+| `app.nak_version_req` | Version requirement (SemVer range) |
+| `app.entrypoint` | Relative path to entry file |
+
+**Path Validation**
+
+- All paths (`entrypoint`, `lib_dirs`, `asset_dirs`, `exports.path`) must be relative
+- Absolute paths cause validation failure
+- Paths containing `..` cause validation failure
+
+**Permission Format**
+
+- Filesystem: `<operation>:<selector>` where operation is `read`, `write`, or `execute`
+- Network: `<operation>:<selector>` where operation is `connect`, `listen`, or `bind`
+
+See [Getting Started: Bundle Apps](getting-started-bundle.md) for a complete workflow.
 
 ---
 

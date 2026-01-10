@@ -31,6 +31,10 @@ constexpr uint16_t MANIFEST_TAG_ASSET_DIR = 41;
 constexpr uint16_t MANIFEST_TAG_ASSET_EXPORT = 42;
 constexpr uint16_t MANIFEST_TAG_PERMISSION_FILESYSTEM = 50;
 constexpr uint16_t MANIFEST_TAG_PERMISSION_NETWORK = 51;
+constexpr uint16_t MANIFEST_TAG_DESCRIPTION = 60;
+constexpr uint16_t MANIFEST_TAG_AUTHOR = 61;
+constexpr uint16_t MANIFEST_TAG_LICENSE = 62;
+constexpr uint16_t MANIFEST_TAG_HOMEPAGE = 63;
 
 uint32_t read_le32(const uint8_t* p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
@@ -191,6 +195,18 @@ ManifestFieldsResult parse_manifest(const std::vector<uint8_t>& blob) {
                 break;
             case MANIFEST_TAG_PERMISSION_NETWORK:
                 manifest.permissions_network.push_back(e.value);
+                break;
+            case MANIFEST_TAG_DESCRIPTION:
+                if (manifest.description.empty()) manifest.description = e.value;
+                break;
+            case MANIFEST_TAG_AUTHOR:
+                if (manifest.author.empty()) manifest.author = e.value;
+                break;
+            case MANIFEST_TAG_LICENSE:
+                if (manifest.license.empty()) manifest.license = e.value;
+                break;
+            case MANIFEST_TAG_HOMEPAGE:
+                if (manifest.homepage.empty()) manifest.homepage = e.value;
                 break;
             default:
                 break;

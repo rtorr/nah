@@ -5,6 +5,7 @@
 #include "nah/nahhost.hpp"
 #include "nah/manifest.hpp"
 #include "nah/manifest_builder.hpp"
+#include "nah/manifest_generate.hpp"
 #include "nah/platform.hpp"
 #include "nah/contract.hpp"
 #include "nah/packaging.hpp"
@@ -1469,112 +1470,22 @@ int cmd_manifest_generate(const GlobalOptions& opts, const std::string& input_pa
         return 1;
     }
     
-    // Parse TOML
-    toml::table tbl;
-    try {
-        tbl = toml::parse(toml_content);
-    } catch (const toml::parse_error& e) {
-        print_error("TOML parse error: " + std::string(e.what()), opts.json);
+    // Use the manifest generation library (expects nah.manifest.input.v1 schema)
+    auto result = nah::generate_manifest(toml_content);
+    
+    if (!result.ok) {
+        ErrorContext ctx;
+        ctx.file_path = input_path;
+        ctx.hint = "The input file must use schema = \"nah.manifest.input.v1\" with an [app] section.\n"
+                   "       See 'nah manifest generate --help' for the expected format.";
+        print_error(result.error, opts.json, ctx);
         return 1;
     }
     
-    // Build manifest using ManifestBuilder
-    nah::ManifestBuilder builder;
-    
-    // Required fields
-    if (auto id = tbl["id"].value<std::string>()) {
-        builder.id(*id);
-    } else {
-        print_error("missing required field: id", opts.json);
-        return 1;
+    // Print any warnings
+    for (const auto& warning : result.warnings) {
+        print_warning(warning, opts.json);
     }
-    
-    if (auto version = tbl["version"].value<std::string>()) {
-        builder.version(*version);
-    } else {
-        print_error("missing required field: version", opts.json);
-        return 1;
-    }
-    
-    // Optional fields
-    if (auto nak_id = tbl["nak_id"].value<std::string>()) {
-        builder.nak_id(*nak_id);
-    }
-    if (auto nak_ver = tbl["nak_version_req"].value<std::string>()) {
-        builder.nak_version_req(*nak_ver);
-    }
-    if (auto entry = tbl["entrypoint"].value<std::string>()) {
-        builder.entrypoint(*entry);
-    }
-    
-    // Arrays
-    if (auto args = tbl["entrypoint_args"].as_array()) {
-        for (const auto& arg : *args) {
-            if (auto s = arg.value<std::string>()) {
-                builder.entrypoint_arg(*s);
-            }
-        }
-    }
-    
-    if (auto libs = tbl["lib_dirs"].as_array()) {
-        for (const auto& lib : *libs) {
-            if (auto s = lib.value<std::string>()) {
-                builder.lib_dir(*s);
-            }
-        }
-    }
-    
-    if (auto assets = tbl["asset_dirs"].as_array()) {
-        for (const auto& asset : *assets) {
-            if (auto s = asset.value<std::string>()) {
-                builder.asset_dir(*s);
-            }
-        }
-    }
-    
-    // Permissions table
-    if (auto perms = tbl["permissions"].as_table()) {
-        if (auto fs = perms->get_as<toml::array>("filesystem")) {
-            for (const auto& p : *fs) {
-                if (auto s = p.value<std::string>()) {
-                    builder.filesystem_permission(*s);
-                }
-            }
-        }
-        if (auto net = perms->get_as<toml::array>("network")) {
-            for (const auto& p : *net) {
-                if (auto s = p.value<std::string>()) {
-                    builder.network_permission(*s);
-                }
-            }
-        }
-    }
-    
-    // Environment table
-    if (auto env = tbl["environment"].as_table()) {
-        for (const auto& [key, val] : *env) {
-            if (auto s = val.value<std::string>()) {
-                builder.env(std::string(key.str()), *s);
-            }
-        }
-    }
-    
-    // Metadata
-    if (auto desc = tbl["description"].value<std::string>()) {
-        builder.description(*desc);
-    }
-    if (auto author = tbl["author"].value<std::string>()) {
-        builder.author(*author);
-    }
-    if (auto license = tbl["license"].value<std::string>()) {
-        builder.license(*license);
-    }
-    if (auto homepage = tbl["homepage"].value<std::string>()) {
-        builder.homepage(*homepage);
-    }
-    
-    // Build binary manifest
-    std::vector<uint8_t> manifest_data = builder.build();
     
     // Write output
     std::ofstream out(output_path, std::ios::binary);
@@ -1583,8 +1494,8 @@ int cmd_manifest_generate(const GlobalOptions& opts, const std::string& input_pa
         return 1;
     }
     
-    out.write(reinterpret_cast<const char*>(manifest_data.data()),
-              static_cast<std::streamsize>(manifest_data.size()));
+    out.write(reinterpret_cast<const char*>(result.manifest_bytes.data()),
+              static_cast<std::streamsize>(result.manifest_bytes.size()));
     out.close();
     
     if (opts.json) {
@@ -1592,10 +1503,13 @@ int cmd_manifest_generate(const GlobalOptions& opts, const std::string& input_pa
         j["success"] = true;
         j["input"] = input_path;
         j["output"] = output_path;
-        j["size"] = manifest_data.size();
+        j["size"] = result.manifest_bytes.size();
+        if (!result.warnings.empty()) {
+            j["warnings"] = result.warnings;
+        }
         std::cout << j.dump(2) << std::endl;
     } else if (!opts.quiet) {
-        std::cout << "Generated: " << output_path << " (" << manifest_data.size() << " bytes)" << std::endl;
+        std::cout << "Generated: " << output_path << " (" << result.manifest_bytes.size() << " bytes)" << std::endl;
     }
     
     return 0;
@@ -2314,9 +2228,30 @@ int main(int argc, char** argv) {
     std::string manifest_input, manifest_output;
     auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from TOML");
     manifest_generate->add_option("input", manifest_input, 
-        "Input TOML file with manifest definition")->required()->check(CLI::ExistingFile);
+        "Input TOML file with manifest definition\n"
+        "Must use schema = \"nah.manifest.input.v1\"")->required()->check(CLI::ExistingFile);
     manifest_generate->add_option("-o,--output", manifest_output, 
         "Output binary manifest file (.nah)")->required();
+    manifest_generate->footer("\nInput file format (nah.manifest.input.v1):\n"
+                               "  schema = \"nah.manifest.input.v1\"\n"
+                               "  \n"
+                               "  [app]\n"
+                               "  id = \"com.example.myapp\"\n"
+                               "  version = \"1.0.0\"\n"
+                               "  nak_id = \"com.example.sdk\"\n"
+                               "  nak_version_req = \"^1.0.0\"\n"
+                               "  entrypoint = \"bundle.js\"  # relative path\n"
+                               "  \n"
+                               "  # Optional fields:\n"
+                               "  # description = \"My application\"\n"
+                               "  # author = \"Developer Name\"\n"
+                               "  # lib_dirs = [\"lib\"]\n"
+                               "  # asset_dirs = [\"assets\"]\n"
+                               "  # [app.permissions]\n"
+                               "  # filesystem = [\"read:assets/*\"]\n"
+                               "  # network = [\"connect:*.example.com:443\"]\n"
+                               "\nExample:\n"
+                               "  nah manifest generate manifest.toml -o manifest.nah");
     manifest_generate->callback([&]() { std::exit(cmd_manifest_generate(opts, manifest_input, manifest_output)); });
     
     // ========== Doctor Command ==========

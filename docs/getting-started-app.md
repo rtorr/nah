@@ -90,6 +90,9 @@ nah --root /path/to/nah contract show com.yourcompany.myapp
 Instead of embedding, use a separate `manifest.toml`:
 
 ```toml
+schema = "nah.manifest.input.v1"
+
+[app]
 id = "com.yourcompany.myapp"
 version = "1.0.0"
 nak_id = "com.example.sdk"
@@ -105,6 +108,8 @@ nah manifest generate manifest.toml -o manifest.nah
 ```
 
 Include `manifest.nah` in your package root.
+
+For non-native applications (JavaScript, Python, etc.), see [Getting Started: Bundle Apps](getting-started-bundle.md).
 
 ## Next Steps
 

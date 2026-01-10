@@ -37,37 +37,44 @@ This host requires:
 
 ```
 host/
-├── host.toml           # Host manifest - declares required packages
+├── host.json           # Host manifest - declares required packages
 ├── setup.sh            # Install packages into NAH root
 ├── run.sh              # Run apps or show contracts
 ├── profiles/           # Host profiles (policy/bindings)
-│   ├── default.toml
-│   ├── production.toml
-│   └── canary.toml
+│   ├── default.json
+│   ├── production.json
+│   └── canary.json
 ├── src/                # Host integration examples (C++)
 └── nah_root/           # Generated NAH root (after setup)
 ```
 
-## Host Manifest (host.toml)
+## Host Manifest (host.json)
 
 Declares which packages to install:
 
-```toml
-[host]
-name = "example-host"
-nah_root = "./nah_root"
-default_profile = "default"
-
-[[naks]]
-id = "com.example.sdk"
-version = "1.2.3"
-package = "../sdk/build/com.example.sdk-1.2.3.nak"
-
-[[apps]]
-id = "com.example.app"
-version = "1.0.0"
-package = "../apps/app/build/com.example.app-1.0.0.nap"
-nak = "com.example.sdk"
+```json
+{
+  "host": {
+    "name": "example-host",
+    "nah_root": "./nah_root",
+    "default_profile": "default"
+  },
+  "naks": [
+    {
+      "id": "com.example.sdk",
+      "version": "1.2.3",
+      "package": "../sdk/build/com.example.sdk-1.2.3.nak"
+    }
+  ],
+  "apps": [
+    {
+      "id": "com.example.app",
+      "version": "1.0.0",
+      "package": "../apps/app/build/com.example.app-1.0.0.nap",
+      "nak": "com.example.sdk"
+    }
+  ]
+}
 ```
 
 ## Profiles
@@ -76,9 +83,9 @@ Profiles control NAK selection and policy:
 
 | Profile | Mode | Description |
 |---------|------|-------------|
-| default.toml | canonical | Use highest compatible NAK version |
-| production.toml | mapped | Pin specific NAK versions |
-| canary.toml | canonical | Testing with relaxed warnings |
+| default.json | canonical | Use highest compatible NAK version |
+| production.json | mapped | Pin specific NAK versions |
+| canary.json | canonical | Testing with relaxed warnings |
 
 Switch profiles:
 ```bash

@@ -178,32 +178,34 @@ TEST_CASE("parse_overrides_file rejects malformed JSON") {
     CHECK(result.error == "parse_failure");
 }
 
-TEST_CASE("parse_overrides_file accepts valid TOML") {
-    std::string toml = R"(
-        [environment]
-        MY_VAR = "value1"
-        
-        [warnings]
-        nak_not_found = "ignore"
-    )";
+TEST_CASE("parse_overrides_file accepts valid JSON with all sections") {
+    std::string json = R"({
+        "environment": {
+            "MY_VAR": "value1"
+        },
+        "warnings": {
+            "nak_not_found": "ignore"
+        }
+    })";
     
-    auto result = parse_overrides_file(toml, "test.toml");
+    auto result = parse_overrides_file(json, "test.json");
     
     CHECK(result.ok);
     CHECK(result.overrides.environment["MY_VAR"] == "value1");
     CHECK(result.overrides.warnings["nak_not_found"] == "ignore");
 }
 
-TEST_CASE("parse_overrides_file rejects TOML with invalid top-level keys") {
-    std::string toml = R"(
-        [environment]
-        VAR = "val"
-        
-        [invalid_section]
-        foo = "bar"
-    )";
+TEST_CASE("parse_overrides_file rejects JSON with invalid top-level keys") {
+    std::string json = R"({
+        "environment": {
+            "VAR": "val"
+        },
+        "invalid_section": {
+            "foo": "bar"
+        }
+    })";
     
-    auto result = parse_overrides_file(toml, "test.toml");
+    auto result = parse_overrides_file(json, "test.json");
     
     CHECK_FALSE(result.ok);
     CHECK(result.error == "invalid_shape");

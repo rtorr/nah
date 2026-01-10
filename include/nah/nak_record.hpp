@@ -65,8 +65,8 @@ struct NakInstallRecordParseResult {
     std::vector<std::string> warnings;
 };
 
-// Parse a NAK Install Record from TOML string
-NakInstallRecordParseResult parse_nak_install_record_full(const std::string& toml_str,
+// Parse a NAK Install Record from JSON string
+NakInstallRecordParseResult parse_nak_install_record_full(const std::string& json_str,
                                                            const std::string& source_path = "");
 
 // ============================================================================
@@ -115,8 +115,8 @@ struct NakPackManifestParseResult {
     std::vector<std::string> warnings;
 };
 
-// Parse a NAK pack manifest from TOML string
-NakPackManifestParseResult parse_nak_pack_manifest(const std::string& toml_str);
+// Parse a NAK pack manifest from JSON string
+NakPackManifestParseResult parse_nak_pack_manifest(const std::string& json_str);
 
 // ============================================================================
 // Legacy API for backward compatibility
@@ -127,6 +127,6 @@ struct NakInstallValidation {
     std::string error;
 };
 
-NakInstallValidation parse_nak_install_record(const std::string& toml, NakInstallRecord& out);
+NakInstallValidation parse_nak_install_record(const std::string& json, NakInstallRecord& out);
 
 } // namespace nah

@@ -15,7 +15,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOST_MANIFEST="$SCRIPT_DIR/host.toml"
+HOST_MANIFEST="$SCRIPT_DIR/host.json"
 
 # Colors
 RED='\033[0;31m'
@@ -28,12 +28,14 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Read NAH root from host.toml
-get_toml_value() {
-    grep "^${2}[[:space:]]*=" "$1" 2>/dev/null | sed 's/.*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/' | head -1
+# Read NAH root from host.json
+get_json_value() {
+    local file="$1"
+    local key="$2"
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null | sed 's/.*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1
 }
 
-NAH_ROOT_REL=$(get_toml_value "$HOST_MANIFEST" "nah_root")
+NAH_ROOT_REL=$(get_json_value "$HOST_MANIFEST" "nah_root")
 if [[ "$NAH_ROOT_REL" == /* ]]; then
     NAH_ROOT="$NAH_ROOT_REL"
 else

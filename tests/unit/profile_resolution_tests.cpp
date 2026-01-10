@@ -5,41 +5,41 @@
 
 using namespace nah;
 
-const char* VALID_PROFILE = R"(
-schema = "nah.host.profile.v1"
+const char* VALID_PROFILE = R"({
+    "$schema": "nah.host.profile.v2",
+    "nak": {
+        "binding_mode": "canonical"
+    },
+    "environment": {
+        "TEST_VAR": "test_value"
+    }
+})";
 
-[nak]
-binding_mode = "canonical"
-
-[environment]
-TEST_VAR = "test_value"
-)";
-
-const char* DEVELOPMENT_PROFILE = R"(
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "mapped"
-
-[environment]
-NAH_MODE = "development"
-)";
+const char* DEVELOPMENT_PROFILE = R"({
+    "$schema": "nah.host.profile.v2",
+    "nak": {
+        "binding_mode": "mapped"
+    },
+    "environment": {
+        "NAH_MODE": "development"
+    }
+})";
 
 // ============================================================================
 // Active Host Profile Resolution Tests (per SPEC L597-L612)
 // ============================================================================
 
 TEST_CASE("profile resolution: valid profile parses successfully") {
-    // Per SPEC L599: Load profile from TOML
-    auto result = parse_host_profile_full(VALID_PROFILE, "/test/profile.toml");
+    // Per SPEC L599: Load profile from JSON
+    auto result = parse_host_profile_full(VALID_PROFILE, "/test/profile.json");
     
     CHECK(result.ok);
-    CHECK(result.profile.schema == "nah.host.profile.v1");
+    CHECK(result.profile.schema == "nah.host.profile.v2");
     CHECK(result.profile.nak.binding_mode == BindingMode::Canonical);
 }
 
 TEST_CASE("profile resolution: profile with mapped mode parses correctly") {
-    auto result = parse_host_profile_full(DEVELOPMENT_PROFILE, "/test/dev.toml");
+    auto result = parse_host_profile_full(DEVELOPMENT_PROFILE, "/test/dev.json");
     
     CHECK(result.ok);
     CHECK(result.profile.nak.binding_mode == BindingMode::Mapped);
@@ -48,10 +48,11 @@ TEST_CASE("profile resolution: profile with mapped mode parses correctly") {
 
 TEST_CASE("profile resolution: missing schema fails") {
     // Per SPEC L605-L606
-    const char* no_schema = R"(
-        [nak]
-        binding_mode = "canonical"
-    )";
+    const char* no_schema = R"({
+        "nak": {
+            "binding_mode": "canonical"
+        }
+    })";
     
     auto result = parse_host_profile_full(no_schema);
     
@@ -61,9 +62,9 @@ TEST_CASE("profile resolution: missing schema fails") {
 
 TEST_CASE("profile resolution: parse error returns error") {
     // Per SPEC L607-L608
-    const char* invalid_toml = "this is not valid TOML { [ }";
+    const char* invalid_json = "this is not valid JSON { [ }";
     
-    auto result = parse_host_profile_full(invalid_toml);
+    auto result = parse_host_profile_full(invalid_json);
     
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("parse") != std::string::npos);
@@ -71,11 +72,12 @@ TEST_CASE("profile resolution: parse error returns error") {
 
 TEST_CASE("profile resolution: schema mismatch fails") {
     // Per SPEC L609-L610
-    const char* wrong_schema = R"(
-        schema = "nah.host.profile.v2"
-        [nak]
-        binding_mode = "canonical"
-    )";
+    const char* wrong_schema = R"({
+        "$schema": "nah.host.profile.v1",
+        "nak": {
+            "binding_mode": "canonical"
+        }
+    })";
     
     auto result = parse_host_profile_full(wrong_schema);
     
@@ -90,7 +92,7 @@ TEST_CASE("profile resolution: schema mismatch fails") {
 TEST_CASE("built-in empty profile has correct schema") {
     // Per SPEC L617
     HostProfile empty = get_builtin_empty_profile();
-    CHECK(empty.schema == "nah.host.profile.v1");
+    CHECK(empty.schema == "nah.host.profile.v2");
 }
 
 TEST_CASE("built-in empty profile has canonical binding_mode") {
@@ -142,45 +144,45 @@ TEST_CASE("binding_mode_to_string returns correct strings") {
 // ============================================================================
 
 TEST_CASE("host profile parses all sections") {
-    const char* full_profile = R"(
-        schema = "nah.host.profile.v1"
-        
-        [nak]
-        binding_mode = "mapped"
-        allow_versions = ["3.*"]
-        deny_versions = ["3.0.0"]
-        
-        [nak.map]
-        "3.0" = "com.example.nak@3.0.7.toml"
-        "3.1" = "com.example.nak@3.1.2.toml"
-        
-        [environment]
-        NAH_HOST_VERSION = "1.0"
-        NAH_MODE = "production"
-        
-        [warnings]
-        nak_not_found = "error"
-        profile_missing = "ignore"
-        
-        [capabilities]
-        "filesystem.read" = "sandbox.readonly"
-        
-        [overrides]
-        mode = "allowlist"
-        allow_keys = ["ENVIRONMENT", "WARNINGS_*"]
-    )";
+    const char* full_profile = R"({
+        "$schema": "nah.host.profile.v2",
+        "nak": {
+            "binding_mode": "mapped",
+            "allow_versions": ["3.*"],
+            "deny_versions": ["3.0.0"],
+            "map": {
+                "3.0": "com.example.nak@3.0.7.json",
+                "3.1": "com.example.nak@3.1.2.json"
+            }
+        },
+        "environment": {
+            "NAH_HOST_VERSION": "1.0",
+            "NAH_MODE": "production"
+        },
+        "warnings": {
+            "nak_not_found": "error",
+            "profile_missing": "ignore"
+        },
+        "capabilities": {
+            "filesystem.read": "sandbox.readonly"
+        },
+        "overrides": {
+            "mode": "allowlist",
+            "allow_keys": ["ENVIRONMENT", "WARNINGS_*"]
+        }
+    })";
     
     auto result = parse_host_profile_full(full_profile);
     
     CHECK(result.ok);
-    CHECK(result.profile.schema == "nah.host.profile.v1");
+    CHECK(result.profile.schema == "nah.host.profile.v2");
     CHECK(result.profile.nak.binding_mode == BindingMode::Mapped);
     CHECK(result.profile.nak.allow_versions.size() == 1);
     CHECK(result.profile.nak.allow_versions[0] == "3.*");
     CHECK(result.profile.nak.deny_versions.size() == 1);
     CHECK(result.profile.nak.deny_versions[0] == "3.0.0");
     CHECK(result.profile.nak.map.size() == 2);
-    CHECK(result.profile.nak.map["3.0"] == "com.example.nak@3.0.7.toml");
+    CHECK(result.profile.nak.map["3.0"] == "com.example.nak@3.0.7.json");
     CHECK(result.profile.environment.size() == 2);
     CHECK(result.profile.environment["NAH_HOST_VERSION"] == "1.0");
     CHECK(result.profile.warnings.size() == 2);

@@ -205,16 +205,21 @@ std::vector<uint8_t> create_test_nak_pack(const std::string& nak_id, const std::
     fs::create_directories(pack_dir.path() + "/META");
     fs::create_directories(pack_dir.path() + "/lib");
     
-    std::ofstream(pack_dir.path() + "/META/nak.toml") << 
-        "schema = \"nah.nak.pack.v1\"\n"
-        "[nak]\n"
-        "id = \"" << nak_id << "\"\n"
-        "version = \"" << version << "\"\n"
-        "[paths]\n"
-        "resource_root = \".\"\n"
-        "lib_dirs = [\"lib\"]\n"
-        "[execution]\n"
-        "cwd = \"{NAH_APP_ROOT}\"\n";
+    std::ofstream(pack_dir.path() + "/META/nak.json") << 
+        "{\n"
+        "  \"$schema\": \"nah.nak.pack.v2\",\n"
+        "  \"nak\": {\n"
+        "    \"id\": \"" << nak_id << "\",\n"
+        "    \"version\": \"" << version << "\"\n"
+        "  },\n"
+        "  \"paths\": {\n"
+        "    \"resource_root\": \".\",\n"
+        "    \"lib_dirs\": [\"lib\"]\n"
+        "  },\n"
+        "  \"execution\": {\n"
+        "    \"cwd\": \"{NAH_APP_ROOT}\"\n"
+        "  }\n"
+        "}\n";
     
     std::ofstream(pack_dir.path() + "/lib/libtest.so") << "fake library";
     
@@ -268,8 +273,8 @@ TEST_CASE("install_nak from file: reference succeeds") {
     std::string record_content((std::istreambuf_iterator<char>(record_file)),
                                 std::istreambuf_iterator<char>());
     
-    CHECK(record_content.find("[provenance]") != std::string::npos);
-    CHECK(record_content.find("installed_by = \"test-runner\"") != std::string::npos);
+    CHECK(record_content.find("\"provenance\"") != std::string::npos);
+    CHECK(record_content.find("\"installed_by\": \"test-runner\"") != std::string::npos);
 }
 
 TEST_CASE("install_nak from plain file path succeeds") {
@@ -478,8 +483,8 @@ TEST_CASE("install_nak records complete provenance") {
     CHECK(record_result.ok);
     
     // Check provenance section
-    CHECK(content.find("[provenance]") != std::string::npos);
-    CHECK(content.find("installed_by = \"ci-pipeline\"") != std::string::npos);
-    CHECK(content.find("package_hash =") != std::string::npos);
-    CHECK(content.find("installed_at =") != std::string::npos);
+    CHECK(content.find("\"provenance\"") != std::string::npos);
+    CHECK(content.find("\"installed_by\": \"ci-pipeline\"") != std::string::npos);
+    CHECK(content.find("\"package_hash\":") != std::string::npos);
+    CHECK(content.find("\"installed_at\":") != std::string::npos);
 }

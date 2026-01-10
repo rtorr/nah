@@ -242,28 +242,29 @@ TEST_CASE("extract_archive_safe extracts to staging directory") {
     CHECK(content == "hello");
 }
 
-TEST_CASE("pack_nak validates META/nak.toml presence") {
+TEST_CASE("pack_nak validates META/nak.json presence") {
     TempDir temp;
     
-    // Directory without META/nak.toml
+    // Directory without META/nak.json
     auto result = pack_nak(temp.path());
     
     CHECK_FALSE(result.ok);
-    CHECK(result.error.find("META/nak.toml") != std::string::npos);
+    CHECK(result.error.find("META/nak.json") != std::string::npos);
 }
 
-TEST_CASE("pack_nak validates schema in META/nak.toml") {
+TEST_CASE("pack_nak validates schema in META/nak.json") {
     TempDir temp;
     
     fs::create_directories(temp.path() + "/META");
     
     // Invalid schema
-    std::ofstream(temp.path() + "/META/nak.toml") << R"(
-        schema = "nah.nak.pack.v2"
-        [nak]
-        id = "com.example.nak"
-        version = "1.0.0"
-    )";
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v1",
+        "nak": {
+            "id": "com.example.nak",
+            "version": "1.0.0"
+        }
+    })";
     
     auto result = pack_nak(temp.path());
     
@@ -277,17 +278,20 @@ TEST_CASE("pack_nak succeeds with valid structure") {
     fs::create_directories(temp.path() + "/META");
     fs::create_directories(temp.path() + "/lib");
     
-    std::ofstream(temp.path() + "/META/nak.toml") << R"(
-        schema = "nah.nak.pack.v1"
-        [nak]
-        id = "com.example.nak"
-        version = "1.0.0"
-        [paths]
-        resource_root = "."
-        lib_dirs = ["lib"]
-        [execution]
-        cwd = "{NAH_APP_ROOT}"
-    )";
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v2",
+        "nak": {
+            "id": "com.example.nak",
+            "version": "1.0.0"
+        },
+        "paths": {
+            "resource_root": ".",
+            "lib_dirs": ["lib"]
+        },
+        "execution": {
+            "cwd": "{NAH_APP_ROOT}"
+        }
+    })";
     
     std::ofstream(temp.path() + "/lib/lib.so") << "library";
     
@@ -302,17 +306,20 @@ TEST_CASE("inspect_nak_pack extracts metadata") {
     
     fs::create_directories(temp.path() + "/META");
     
-    std::ofstream(temp.path() + "/META/nak.toml") << R"(
-        schema = "nah.nak.pack.v1"
-        [nak]
-        id = "com.example.nak"
-        version = "2.1.0"
-        [paths]
-        resource_root = "resources"
-        lib_dirs = ["lib"]
-        [execution]
-        cwd = "{NAH_APP_ROOT}"
-    )";
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v2",
+        "nak": {
+            "id": "com.example.nak",
+            "version": "2.1.0"
+        },
+        "paths": {
+            "resource_root": "resources",
+            "lib_dirs": ["lib"]
+        },
+        "execution": {
+            "cwd": "{NAH_APP_ROOT}"
+        }
+    })";
     
     auto pack_result = pack_directory(temp.path());
     REQUIRE(pack_result.ok);
@@ -320,7 +327,7 @@ TEST_CASE("inspect_nak_pack extracts metadata") {
     auto info = inspect_nak_pack(pack_result.archive_data);
     
     CHECK(info.ok);
-    CHECK(info.schema == "nah.nak.pack.v1");
+    CHECK(info.schema == "nah.nak.pack.v2");
     CHECK(info.nak_id == "com.example.nak");
     CHECK(info.nak_version == "2.1.0");
     CHECK(info.resource_root == "resources");
@@ -483,9 +490,9 @@ TEST_CASE("deterministic archive executable files have mode 0755") {
 
 TEST_CASE("validate_extraction_path handles ./ prefix") {
     // After stripping ./ prefix, path should still be valid
-    auto result = validate_extraction_path("META/nak.toml", "/extract");
+    auto result = validate_extraction_path("META/nak.json", "/extract");
     CHECK(result.safe);
-    CHECK(result.normalized_path == "META/nak.toml");
+    CHECK(result.normalized_path == "META/nak.json");
 }
 
 TEST_CASE("extract_archive_safe handles archives with ./ prefix entries") {
@@ -498,7 +505,7 @@ TEST_CASE("extract_archive_safe handles archives with ./ prefix entries") {
     entries.push_back(dir);
     
     TarEntry file;
-    file.path = "./META/nak.toml";
+    file.path = "./META/nak.json";
     file.type = TarEntryType::RegularFile;
     file.data = {'t', 'e', 's', 't'};
     entries.push_back(file);
@@ -511,7 +518,7 @@ TEST_CASE("extract_archive_safe handles archives with ./ prefix entries") {
     auto extract_result = extract_archive_safe(pack_result.archive_data, staging);
     
     CHECK(extract_result.ok);
-    CHECK(fs::exists(staging + "/META/nak.toml"));
+    CHECK(fs::exists(staging + "/META/nak.json"));
 }
 
 TEST_CASE("inspect_nak_pack handles ./ prefix in archive entries") {
@@ -521,15 +528,17 @@ TEST_CASE("inspect_nak_pack handles ./ prefix in archive entries") {
     fs::create_directories(temp.path() + "/META");
     fs::create_directories(temp.path() + "/lib");
     
-    std::ofstream(temp.path() + "/META/nak.toml") << R"(
-schema = "nah.nak.pack.v1"
-[nak]
-id = "com.example.dotprefix"
-version = "1.0.0"
-[paths]
-resource_root = "resources"
-lib_dirs = ["lib"]
-)";
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.example.dotprefix",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  }
+})";
     
     // pack_nak creates archives with ./ prefix (via CMake tar)
     auto pack_result = pack_nak(temp.path());

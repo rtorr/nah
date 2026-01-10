@@ -5,69 +5,77 @@ using nah::parse_app_install_record;
 using nah::AppInstallRecord;
 
 TEST_CASE("app install record valid schema and required fields") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
-    CHECK(rec.schema == "nah.app.install.v1");
+    CHECK(rec.schema == "nah.app.install.v2");
     CHECK(rec.install.instance_id == "uuid-123");
     CHECK(rec.paths.install_root == "/nah/apps/app-1.0");
 }
 
 TEST_CASE("app install record missing schema invalid") {
-    const char* toml = R"(
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-    )";
+    const char* json = R"({
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK_FALSE(v.ok);
 }
 
 TEST_CASE("app install record schema mismatch invalid") {
-    const char* toml = R"(
-        schema = "nah.app.install.v2"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v1",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK_FALSE(v.ok);
 }
 
 TEST_CASE("app install record missing required fields invalid") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        # missing instance_id
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {},
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK_FALSE(v.ok);
 }
 
 TEST_CASE("app install record empty required field invalid") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = ""
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": ""
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK_FALSE(v.ok);
 }
 
@@ -76,35 +84,38 @@ TEST_CASE("app install record empty required field invalid") {
 // ============================================================================
 
 TEST_CASE("app install record nak.record_ref MAY be absent") {
-    // Per SPEC L377: [nak].record_ref MAY be absent
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        # No [nak] section at all - should be valid
-    )";
+    // Per SPEC L377: nak.record_ref MAY be absent
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.nak.record_ref.empty());
 }
 
 TEST_CASE("app install record with nak section but no record_ref is valid") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        [nak]
-        id = "com.example.nak"
-        version = "3.0.0"
-        # record_ref absent - should still be valid
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        },
+        "nak": {
+            "id": "com.example.nak",
+            "version": "3.0.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.nak.id == "com.example.nak");
     CHECK(rec.nak.version == "3.0.0");
@@ -112,87 +123,99 @@ TEST_CASE("app install record with nak section but no record_ref is valid") {
 }
 
 TEST_CASE("app install record with full nak section parses correctly") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        [nak]
-        id = "com.example.nak"
-        version = "3.0.0"
-        record_ref = "com.example.nak@3.0.0.toml"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        },
+        "nak": {
+            "id": "com.example.nak",
+            "version": "3.0.0",
+            "record_ref": "com.example.nak@3.0.0.json"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.nak.id == "com.example.nak");
     CHECK(rec.nak.version == "3.0.0");
-    CHECK(rec.nak.record_ref == "com.example.nak@3.0.0.toml");
+    CHECK(rec.nak.record_ref == "com.example.nak@3.0.0.json");
 }
 
 TEST_CASE("app install record trust section is optional") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        # No [trust] section - should be valid
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     // Trust defaults to Unknown when section is absent
 }
 
 TEST_CASE("app install record with trust section parses correctly") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        [trust]
-        state = "verified"
-        source = "test-host"
-        evaluated_at = "2025-01-01T00:00:00Z"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        },
+        "trust": {
+            "state": "verified",
+            "source": "test-host",
+            "evaluated_at": "2025-01-01T00:00:00Z"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.trust.source == "test-host");
 }
 
 TEST_CASE("app install record overrides section is optional") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        # No [overrides] section - should be valid
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.overrides.environment.empty());
 }
 
 TEST_CASE("app install record with overrides section parses correctly") {
-    const char* toml = R"(
-        schema = "nah.app.install.v1"
-        [install]
-        instance_id = "uuid-123"
-        [paths]
-        install_root = "/nah/apps/app-1.0"
-        [overrides.environment]
-        MY_VAR = "my_value"
-    )";
+    const char* json = R"({
+        "$schema": "nah.app.install.v2",
+        "install": {
+            "instance_id": "uuid-123"
+        },
+        "paths": {
+            "install_root": "/nah/apps/app-1.0"
+        },
+        "overrides": {
+            "environment": {
+                "MY_VAR": "my_value"
+            }
+        }
+    })";
     AppInstallRecord rec;
-    auto v = parse_app_install_record(toml, rec);
+    auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.overrides.environment.size() == 1);
     CHECK(rec.overrides.environment.at("MY_VAR") == "my_value");
 }
-

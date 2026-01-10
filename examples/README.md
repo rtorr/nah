@@ -154,9 +154,9 @@ demo_nah_root/
 │   └── com.example.mygame-1.0.0/    # Uses gameengine
 └── registry/
     ├── installs/
-    │   └── com.example.app-1.0.0-<uuid>.toml
+    │   └── com.example.app-1.0.0-<uuid>.json
     └── naks/
-        └── com.example.sdk@1.2.3.toml
+        └── com.example.sdk@1.2.3.json
 ```
 
 ## Troubleshooting

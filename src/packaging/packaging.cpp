@@ -939,9 +939,9 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
         return result;
     }
     
-    // Scan for META/nak.toml
+    // Scan for META/nak.json
     size_t offset = 0;
-    std::string nak_toml_content;
+    std::string nak_json_content;
     
     while (offset + TAR_BLOCK_SIZE <= tar_data.size()) {
         const TarHeader* header = reinterpret_cast<const TarHeader*>(tar_data.data() + offset);
@@ -988,9 +988,9 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
                 result.binaries.push_back(path);
             }
             
-            // Check for nak.toml
-            if (path == "META/nak.toml" && offset + size <= tar_data.size()) {
-                nak_toml_content.assign(
+            // Check for nak.json
+            if (path == "META/nak.json" && offset + size <= tar_data.size()) {
+                nak_json_content.assign(
                     reinterpret_cast<const char*>(tar_data.data() + offset),
                     size);
             }
@@ -1000,13 +1000,13 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
         }
     }
     
-    if (nak_toml_content.empty()) {
-        result.error = "META/nak.toml not found in pack";
+    if (nak_json_content.empty()) {
+        result.error = "META/nak.json not found in pack";
         return result;
     }
     
-    // Parse nak.toml
-    auto pack_result = parse_nak_pack_manifest(nak_toml_content);
+    // Parse nak.json
+    auto pack_result = parse_nak_pack_manifest(nak_json_content);
     if (!pack_result.ok) {
         result.error = pack_result.error;
         return result;
@@ -1015,8 +1015,8 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
     const auto& pack = pack_result.manifest;
     
     // Validate schema
-    if (pack.schema != "nah.nak.pack.v1") {
-        result.error = "invalid schema: expected nah.nak.pack.v1, got " + pack.schema;
+    if (pack.schema != "nah.nak.pack.v2") {
+        result.error = "invalid schema: expected nah.nak.pack.v2, got " + pack.schema;
         return result;
     }
     
@@ -1052,17 +1052,17 @@ NakPackInfo inspect_nak_pack(const std::string& pack_path) {
 PackResult pack_nak(const std::string& dir_path) {
     PackResult result;
     
-    // Validate META/nak.toml exists
-    std::string nak_toml_path = join_path(dir_path, "META/nak.toml");
-    if (!path_exists(nak_toml_path)) {
-        result.error = "META/nak.toml not found";
+    // Validate META/nak.json exists
+    std::string nak_json_path = join_path(dir_path, "META/nak.json");
+    if (!path_exists(nak_json_path)) {
+        result.error = "META/nak.json not found";
         return result;
     }
     
-    // Read and validate nak.toml
-    std::ifstream file(nak_toml_path);
+    // Read and validate nak.json
+    std::ifstream file(nak_json_path);
     if (!file) {
-        result.error = "failed to read META/nak.toml";
+        result.error = "failed to read META/nak.json";
         return result;
     }
     
@@ -1072,12 +1072,12 @@ PackResult pack_nak(const std::string& dir_path) {
     
     auto pack_result = parse_nak_pack_manifest(content);
     if (!pack_result.ok) {
-        result.error = "invalid META/nak.toml: " + pack_result.error;
+        result.error = "invalid META/nak.json: " + pack_result.error;
         return result;
     }
     
-    if (pack_result.manifest.schema != "nah.nak.pack.v1") {
-        result.error = "invalid schema: expected nah.nak.pack.v1";
+    if (pack_result.manifest.schema != "nah.nak.pack.v2") {
+        result.error = "invalid schema: expected nah.nak.pack.v2";
         return result;
     }
     
@@ -1167,11 +1167,11 @@ AppInstallResult install_nap_package(const std::string& package_path,
         // Per SPEC L599-L606: resolve profile in order:
         // 1. Explicit profile name if provided
         // 2. profile.current symlink if exists
-        // 3. default.toml
+        // 3. default.json
         std::string profile_path;
         if (!options.profile_name.empty()) {
             profile_path = join_path(options.nah_root, 
-                "host/profiles/" + options.profile_name + ".toml");
+                "host/profiles/" + options.profile_name + ".json");
         } else {
             // Check for profile.current symlink
             std::string current_link = join_path(options.nah_root, "host/profile.current");
@@ -1183,9 +1183,9 @@ AppInstallResult install_nap_package(const std::string& package_path,
                     profile_path = join_path(options.nah_root, "host/" + target.string());
                 }
             }
-            // Fall back to default.toml
+            // Fall back to default.json
             if (profile_path.empty() || !path_exists(profile_path)) {
-                profile_path = join_path(options.nah_root, "host/profiles/default.toml");
+                profile_path = join_path(options.nah_root, "host/profiles/default.json");
             }
         }
         
@@ -1195,9 +1195,9 @@ AppInstallResult install_nap_package(const std::string& package_path,
             result.error = "failed to load host profile: " + profile_path;
             return result;
         }
-        std::string profile_toml((std::istreambuf_iterator<char>(pf)),
+        std::string profile_json((std::istreambuf_iterator<char>(pf)),
                                   std::istreambuf_iterator<char>());
-        auto profile_result = parse_host_profile_full(profile_toml, profile_path);
+        auto profile_result = parse_host_profile_full(profile_json, profile_path);
         if (!profile_result.ok) {
             remove_directory(staging_dir);
             result.error = "invalid host profile: " + profile_result.error;
@@ -1263,29 +1263,36 @@ AppInstallResult install_nap_package(const std::string& package_path,
     std::string record_dir = join_path(options.nah_root, "registry/installs");
     create_directories(record_dir);
     
-    // SPEC: registry/installs/<id>-<version>-<instance_id>.toml
+    // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     std::string record_path = join_path(record_dir, 
-        manifest.id + "-" + manifest.version + "-" + instance_id + ".toml");
+        manifest.id + "-" + manifest.version + "-" + instance_id + ".json");
     
     std::ostringstream record;
-    record << "schema = \"nah.app.install.v1\"\n\n";
-    record << "[install]\n";
-    record << "installed_at = \"" << get_current_timestamp() << "\"\n";
-    record << "instance_id = \"" << instance_id << "\"\n";
-    record << "manifest_source = \"" << manifest_source << "\"\n\n";
-    record << "[app]\n";
-    record << "id = \"" << manifest.id << "\"\n";
-    record << "version = \"" << manifest.version << "\"\n\n";
-    record << "[nak]\n";
-    record << "id = \"" << selected_nak_pin.id << "\"\n";
-    record << "version = \"" << selected_nak_pin.version << "\"\n";
-    record << "record_ref = \"" << selected_nak_pin.record_ref << "\"\n\n";
-    record << "[paths]\n";
-    record << "install_root = \"" << to_portable_path(final_dir) << "\"\n\n";
-    record << "[trust]\n";
-    record << "state = \"verified\"\n";
-    record << "source = \"install\"\n";
-    record << "evaluated_at = \"" << get_current_timestamp() << "\"\n";
+    record << "{\n";
+    record << "  \"$schema\": \"nah.app.install.v2\",\n";
+    record << "  \"install\": {\n";
+    record << "    \"installed_at\": \"" << get_current_timestamp() << "\",\n";
+    record << "    \"instance_id\": \"" << instance_id << "\",\n";
+    record << "    \"manifest_source\": \"" << manifest_source << "\"\n";
+    record << "  },\n";
+    record << "  \"app\": {\n";
+    record << "    \"id\": \"" << manifest.id << "\",\n";
+    record << "    \"version\": \"" << manifest.version << "\"\n";
+    record << "  },\n";
+    record << "  \"nak\": {\n";
+    record << "    \"id\": \"" << selected_nak_pin.id << "\",\n";
+    record << "    \"version\": \"" << selected_nak_pin.version << "\",\n";
+    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"\n";
+    record << "  },\n";
+    record << "  \"paths\": {\n";
+    record << "    \"install_root\": \"" << to_portable_path(final_dir) << "\"\n";
+    record << "  },\n";
+    record << "  \"trust\": {\n";
+    record << "    \"state\": \"verified\",\n";
+    record << "    \"source\": \"install\",\n";
+    record << "    \"evaluated_at\": \"" << get_current_timestamp() << "\"\n";
+    record << "  }\n";
+    record << "}\n";
     
     auto write_result = atomic_write_file(record_path, record.str());
     if (!write_result.ok) {
@@ -1379,7 +1386,7 @@ static AppInstallResult install_app_from_bytes(
         std::string profile_path;
         if (!options.profile_name.empty()) {
             profile_path = join_path(options.nah_root, 
-                "host/profiles/" + options.profile_name + ".toml");
+                "host/profiles/" + options.profile_name + ".json");
         } else {
             std::string current_link = join_path(options.nah_root, "host/profile.current");
             std::error_code ec;
@@ -1390,7 +1397,7 @@ static AppInstallResult install_app_from_bytes(
                 }
             }
             if (profile_path.empty() || !path_exists(profile_path)) {
-                profile_path = join_path(options.nah_root, "host/profiles/default.toml");
+                profile_path = join_path(options.nah_root, "host/profiles/default.json");
             }
         }
         
@@ -1400,9 +1407,9 @@ static AppInstallResult install_app_from_bytes(
             result.error = "failed to load host profile: " + profile_path;
             return result;
         }
-        std::string profile_toml((std::istreambuf_iterator<char>(pf)),
+        std::string profile_json((std::istreambuf_iterator<char>(pf)),
                                   std::istreambuf_iterator<char>());
-        auto profile_result = parse_host_profile_full(profile_toml, profile_path);
+        auto profile_result = parse_host_profile_full(profile_json, profile_path);
         if (!profile_result.ok) {
             remove_directory(staging_dir);
             result.error = "invalid host profile: " + profile_result.error;
@@ -1457,42 +1464,55 @@ static AppInstallResult install_app_from_bytes(
     create_directories(record_dir);
     
     std::string record_path = join_path(record_dir, 
-        manifest.id + "-" + manifest.version + "-" + instance_id + ".toml");
+        manifest.id + "-" + manifest.version + "-" + instance_id + ".json");
     
     std::ostringstream record;
-    record << "schema = \"nah.app.install.v1\"\n\n";
-    record << "[install]\n";
-    record << "installed_at = \"" << get_current_timestamp() << "\"\n";
-    record << "instance_id = \"" << instance_id << "\"\n";
-    record << "manifest_source = \"" << manifest_source << "\"\n\n";
-    record << "[app]\n";
-    record << "id = \"" << manifest.id << "\"\n";
-    record << "version = \"" << manifest.version << "\"\n\n";
-    record << "[nak]\n";
-    record << "id = \"" << selected_nak_pin.id << "\"\n";
-    record << "version = \"" << selected_nak_pin.version << "\"\n";
-    record << "record_ref = \"" << selected_nak_pin.record_ref << "\"\n\n";
-    record << "[paths]\n";
-    record << "install_root = \"" << to_portable_path(final_dir) << "\"\n\n";
-    record << "[trust]\n";
-    record << "state = \"verified\"\n";
-    record << "source = \"install\"\n";
-    record << "evaluated_at = \"" << get_current_timestamp() << "\"\n";
+    record << "{\n";
+    record << "  \"$schema\": \"nah.app.install.v2\",\n";
+    record << "  \"install\": {\n";
+    record << "    \"installed_at\": \"" << get_current_timestamp() << "\",\n";
+    record << "    \"instance_id\": \"" << instance_id << "\",\n";
+    record << "    \"manifest_source\": \"" << manifest_source << "\"\n";
+    record << "  },\n";
+    record << "  \"app\": {\n";
+    record << "    \"id\": \"" << manifest.id << "\",\n";
+    record << "    \"version\": \"" << manifest.version << "\"\n";
+    record << "  },\n";
+    record << "  \"nak\": {\n";
+    record << "    \"id\": \"" << selected_nak_pin.id << "\",\n";
+    record << "    \"version\": \"" << selected_nak_pin.version << "\",\n";
+    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"\n";
+    record << "  },\n";
+    record << "  \"paths\": {\n";
+    record << "    \"install_root\": \"" << to_portable_path(final_dir) << "\"\n";
+    record << "  },\n";
+    record << "  \"trust\": {\n";
+    record << "    \"state\": \"verified\",\n";
+    record << "    \"source\": \"install\",\n";
+    record << "    \"evaluated_at\": \"" << get_current_timestamp() << "\"\n";
+    record << "  }";
     
     // Add provenance section if source was provided
     if (!options.source.empty() || !package_hash.empty()) {
-        record << "\n[provenance]\n";
+        record << ",\n  \"provenance\": {\n";
+        bool first = true;
         if (!options.source.empty()) {
-            record << "source = \"" << to_portable_path(options.source) << "\"\n";
+            record << "    \"source\": \"" << to_portable_path(options.source) << "\"";
+            first = false;
         }
         if (!package_hash.empty()) {
-            record << "package_hash = \"" << package_hash << "\"\n";
+            if (!first) record << ",\n";
+            record << "    \"package_hash\": \"" << package_hash << "\"";
+            first = false;
         }
-        record << "installed_at = \"" << get_current_timestamp() << "\"\n";
+        if (!first) record << ",\n";
+        record << "    \"installed_at\": \"" << get_current_timestamp() << "\"";
         if (!options.installed_by.empty()) {
-            record << "installed_by = \"" << options.installed_by << "\"\n";
+            record << ",\n    \"installed_by\": \"" << options.installed_by << "\"";
         }
+        record << "\n  }";
     }
+    record << "\n}\n";
     
     auto write_result = atomic_write_file(record_path, record.str());
     if (!write_result.ok) {
@@ -1690,51 +1710,63 @@ static NakInstallResult install_nak_from_bytes(
     create_directories(record_dir);
     
     std::string record_path = join_path(record_dir,
-        pack_info.nak_id + "@" + pack_info.nak_version + ".toml");
+        pack_info.nak_id + "@" + pack_info.nak_version + ".json");
     
     std::ostringstream record;
-    record << "schema = \"nah.nak.install.v1\"\n\n";
-    record << "[nak]\n";
-    record << "id = \"" << pack_info.nak_id << "\"\n";
-    record << "version = \"" << pack_info.nak_version << "\"\n\n";
-    record << "[paths]\n";
-    record << "root = \"" << to_portable_path(final_dir) << "\"\n";
-    record << "resource_root = \"" << to_portable_path(abs_resource_root) << "\"\n";
-    record << "lib_dirs = [";
+    record << "{\n";
+    record << "  \"$schema\": \"nah.nak.install.v2\",\n";
+    record << "  \"nak\": {\n";
+    record << "    \"id\": \"" << pack_info.nak_id << "\",\n";
+    record << "    \"version\": \"" << pack_info.nak_version << "\"\n";
+    record << "  },\n";
+    record << "  \"paths\": {\n";
+    record << "    \"root\": \"" << to_portable_path(final_dir) << "\",\n";
+    record << "    \"resource_root\": \"" << to_portable_path(abs_resource_root) << "\",\n";
+    record << "    \"lib_dirs\": [";
     for (size_t i = 0; i < abs_lib_dirs.size(); ++i) {
         if (i > 0) record << ", ";
         record << "\"" << to_portable_path(abs_lib_dirs[i]) << "\"";
     }
     record << "]\n";
+    record << "  },\n";
     
     if (pack_info.has_loader) {
-        record << "\n[loader]\n";
-        record << "exec_path = \"" << to_portable_path(abs_loader_path) << "\"\n";
-        record << "args_template = [";
+        record << "  \"loader\": {\n";
+        record << "    \"exec_path\": \"" << to_portable_path(abs_loader_path) << "\",\n";
+        record << "    \"args_template\": [";
         for (size_t i = 0; i < pack_info.loader_args_template.size(); ++i) {
             if (i > 0) record << ", ";
             record << "\"" << pack_info.loader_args_template[i] << "\"";
         }
         record << "]\n";
+        record << "  },\n";
     }
     
-    record << "\n[execution]\n";
-    record << "cwd = \"" << to_portable_path(pack_info.execution_cwd) << "\"\n";
+    record << "  \"execution\": {\n";
+    record << "    \"cwd\": \"" << to_portable_path(pack_info.execution_cwd) << "\"\n";
+    record << "  }";
     
     // Add provenance section if source is provided
     if (!options.source.empty() || !package_hash.empty()) {
-        record << "\n[provenance]\n";
+        record << ",\n  \"provenance\": {\n";
+        bool first = true;
         if (!options.source.empty()) {
-            record << "source = \"" << to_portable_path(options.source) << "\"\n";
+            record << "    \"source\": \"" << to_portable_path(options.source) << "\"";
+            first = false;
         }
         if (!package_hash.empty()) {
-            record << "package_hash = \"sha256:" << package_hash << "\"\n";
+            if (!first) record << ",\n";
+            record << "    \"package_hash\": \"sha256:" << package_hash << "\"";
+            first = false;
         }
-        record << "installed_at = \"" << get_current_timestamp() << "\"\n";
+        if (!first) record << ",\n";
+        record << "    \"installed_at\": \"" << get_current_timestamp() << "\"";
         if (!options.installed_by.empty()) {
-            record << "installed_by = \"" << options.installed_by << "\"\n";
+            record << ",\n    \"installed_by\": \"" << options.installed_by << "\"";
         }
+        record << "\n  }";
     }
+    record << "\n}\n";
     
     auto write_result = atomic_write_file(record_path, record.str());
     if (!write_result.ok) {
@@ -1902,7 +1934,7 @@ UninstallResult uninstall_app(const std::string& nah_root,
     UninstallResult result;
     
     // Find the app install record
-    // SPEC: registry/installs/<id>-<version>-<instance_id>.toml
+    // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     std::string record_dir = join_path(nah_root, "registry/installs");
     std::string version_to_remove = version;
     std::string record_path;
@@ -1911,8 +1943,8 @@ UninstallResult uninstall_app(const std::string& nah_root,
         std::string prefix = app_id + "-";
         for (const auto& entry : list_directory(record_dir)) {
             if (entry.rfind(prefix, 0) == 0 && entry.size() > 5 &&
-                entry.substr(entry.size() - 5) == ".toml") {
-                // Filename format: <id>-<version>-<instance_id>.toml
+                entry.substr(entry.size() - 5) == ".json") {
+                // Filename format: <id>-<version>-<instance_id>.json
                 // Parse to extract version
                 std::string without_ext = entry.substr(0, entry.size() - 5);
                 size_t first_dash = without_ext.find('-');
@@ -1966,11 +1998,11 @@ UninstallResult uninstall_nak(const std::string& nah_root,
     UninstallResult result;
     
     // Check if any apps reference this NAK version
-    // SPEC: registry/installs/<id>-<version>-<instance_id>.toml
+    // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     std::string app_record_dir = join_path(nah_root, "registry/installs");
     if (is_directory(app_record_dir)) {
         for (const auto& entry : list_directory(app_record_dir)) {
-            if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".toml") {
+            if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
                 std::string record_path = join_path(app_record_dir, entry);
                 std::ifstream file(record_path);
                 if (file) {
@@ -1990,7 +2022,7 @@ UninstallResult uninstall_nak(const std::string& nah_root,
         }
     }
     
-    std::string record_path = join_path(nah_root, "registry/naks/" + nak_id + "@" + version + ".toml");
+    std::string record_path = join_path(nah_root, "registry/naks/" + nak_id + "@" + version + ".json");
     std::string nak_dir = join_path(nah_root, "naks/" + nak_id + "/" + version);
     
     // Remove NAK directory
@@ -2028,8 +2060,8 @@ VerifyResult verify_app(const std::string& nah_root,
                          const std::string& version) {
     VerifyResult result;
     
-    // Find the app install record by scanning all .toml files and checking contents
-    // SPEC: registry/installs/<id>-<version>-<instance_id>.toml
+    // Find the app install record by scanning all .json files and checking contents
+    // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     // Note: We parse the file contents rather than the filename because
     // all three components (id, version, instance_id) can contain dashes
     std::string record_dir = join_path(nah_root, "registry/installs");
@@ -2038,7 +2070,7 @@ VerifyResult verify_app(const std::string& nah_root,
     
     if (is_directory(record_dir)) {
         for (const auto& entry : list_directory(record_dir)) {
-            if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".toml") {
+            if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
                 std::string candidate_path = join_path(record_dir, entry);
                 std::ifstream file(candidate_path);
                 if (file) {
@@ -2145,7 +2177,7 @@ VerifyResult verify_app(const std::string& nah_root,
             auto record_result = parse_app_install_record_full(ss.str(), record_path);
             if (record_result.ok && !record_result.record.nak.id.empty()) {
                 std::string nak_record = join_path(nah_root, "registry/naks/" + 
-                    record_result.record.nak.id + "@" + record_result.record.nak.version + ".toml");
+                    record_result.record.nak.id + "@" + record_result.record.nak.version + ".json");
                 
                 if (path_exists(nak_record)) {
                     result.nak_available = true;

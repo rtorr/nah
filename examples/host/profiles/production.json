@@ -1,0 +1,21 @@
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "mapped",
+    "map": {
+      "1.2": "com.example.sdk@1.2.3.json"
+    }
+  },
+  "environment": {
+    "NAH_PROFILE": "production",
+    "NAH_ENV": "prod"
+  },
+  "capabilities": {
+    "filesystem.read": "sandbox.readonly",
+    "filesystem.write": "sandbox.readwrite",
+    "network.connect": "network.outbound"
+  },
+  "trust": {
+    "default_state": "verified"
+  }
+}

@@ -32,7 +32,7 @@ NakRegistryEntry make_registry_entry(const std::string& id, const std::string& v
     NakRegistryEntry e;
     e.id = id;
     e.version = version;
-    e.record_ref = id + "@" + version + ".toml";
+    e.record_ref = id + "@" + version + ".json";
     e.record_path = "/nah/registry/naks/" + e.record_ref;
     return e;
 }
@@ -126,7 +126,7 @@ TEST_CASE("select_nak_for_install: mapped mode uses selection_key lookup") {
     // Per SPEC L1172-1175: Mapped mode uses profile.nak.map
     auto manifest = make_manifest("com.example.nak", ">=3.0.0 <4.0.0");
     auto profile = make_profile(BindingMode::Mapped);
-    profile.nak.map["3.0"] = "com.example.nak@3.0.7.toml";
+    profile.nak.map["3.0"] = "com.example.nak@3.0.7.json";
     
     std::vector<NakRegistryEntry> registry = {
         make_registry_entry("com.example.nak", "3.0.0"),
@@ -140,7 +140,7 @@ TEST_CASE("select_nak_for_install: mapped mode uses selection_key lookup") {
     
     CHECK(result.resolved);
     CHECK(result.pin.version == "3.0.7");  // From map, not highest
-    CHECK(result.pin.record_ref == "com.example.nak@3.0.7.toml");
+    CHECK(result.pin.record_ref == "com.example.nak@3.0.7.json");
 }
 
 TEST_CASE("select_nak_for_install: mapped mode emits nak_version_unsupported when key missing") {
@@ -249,7 +249,7 @@ TEST_CASE("load_pinned_nak: missing record file emits nak_pin_invalid") {
     NakPin pin;
     pin.id = "com.example.nak";
     pin.version = "1.0.0";
-    pin.record_ref = "com.example.nak@1.0.0.toml";
+    pin.record_ref = "com.example.nak@1.0.0.json";
     
     auto manifest = make_manifest("com.example.nak", ">=1.0.0 <2.0.0");
     auto profile = make_profile();
@@ -268,7 +268,7 @@ TEST_CASE("load_pinned_nak: missing manifest nak_id emits invalid_manifest") {
     NakPin pin;
     pin.id = "com.example.nak";
     pin.version = "1.0.0";
-    pin.record_ref = "com.example.nak@1.0.0.toml";
+    pin.record_ref = "com.example.nak@1.0.0.json";
     
     Manifest manifest;
     manifest.id = "com.example.app";

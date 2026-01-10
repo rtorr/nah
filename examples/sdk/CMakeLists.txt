@@ -65,10 +65,10 @@ target_link_libraries(framework_loader PRIVATE framework)
 
 set(NAK_STAGING_DIR "${CMAKE_BINARY_DIR}/nak_staging")
 
-# Generate nak.toml from template
+# Generate nak.json from template
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.toml.in
-    ${CMAKE_BINARY_DIR}/META/nak.toml
+    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.json.in
+    ${CMAKE_BINARY_DIR}/META/nak.json
     @ONLY
 )
 
@@ -90,7 +90,7 @@ add_custom_target(stage_nak
 
     # Copy metadata
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/META/nak.toml ${NAK_STAGING_DIR}/META/
+        ${CMAKE_BINARY_DIR}/META/nak.json ${NAK_STAGING_DIR}/META/
 
     DEPENDS framework framework_loader
     COMMENT "Staging NAK pack: ${NAK_ID}@${NAK_VERSION}"

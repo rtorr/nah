@@ -4,7 +4,7 @@
 # directly in the binary at compile time.
 #
 # This approach:
-#   - Manifest TOML is defined in CMake
+#   - Manifest JSON is defined in CMake
 #   - `nah manifest generate` creates binary manifest at build time
 #   - A script converts manifest bytes to a C header file
 #   - The header is compiled into the binary in a special section
@@ -125,29 +125,33 @@ endif()
 # =============================================================================
 # Manifest Generation (Build Time)
 # =============================================================================
-# 1. Write manifest.toml
+# 1. Write manifest.json
 # 2. Run `nah manifest generate` to create binary manifest
 # 3. Convert binary to C header with byte array
 
-set(MANIFEST_TOML "${CMAKE_BINARY_DIR}/manifest.toml")
+set(MANIFEST_JSON "${CMAKE_BINARY_DIR}/manifest.json")
 set(MANIFEST_NAH "${CMAKE_BINARY_DIR}/manifest.nah")
 set(MANIFEST_HEADER "${CMAKE_BINARY_DIR}/generated/manifest_data.h")
 
-# Write manifest TOML
-file(WRITE ${MANIFEST_TOML} "id = \"${APP_ID}\"
-version = \"${APP_VERSION}\"
-nak_id = \"${NAK_ID}\"
-nak_version_req = \"${NAK_VERSION_REQ}\"
-entrypoint = \"bin/app_c\"
-lib_dirs = [\"lib\"]
-asset_dirs = [\"assets\"]
-description = \"C++ application with embedded NAH manifest\"
-author = \"NAH Examples\"
-license = \"MIT\"
-
-[environment]
-APP_MODE = \"embedded\"
-")
+# Write manifest JSON
+file(WRITE ${MANIFEST_JSON} "{
+  \"$schema\": \"nah.manifest.input.v2\",
+  \"app\": {
+    \"id\": \"${APP_ID}\",
+    \"version\": \"${APP_VERSION}\",
+    \"nak_id\": \"${NAK_ID}\",
+    \"nak_version_req\": \"${NAK_VERSION_REQ}\",
+    \"entrypoint\": \"bin/app_c\",
+    \"lib_dirs\": [\"lib\"],
+    \"asset_dirs\": [\"assets\"],
+    \"description\": \"C++ application with embedded NAH manifest\",
+    \"author\": \"NAH Examples\",
+    \"license\": \"MIT\",
+    \"environment\": {
+      \"APP_MODE\": \"embedded\"
+    }
+  }
+}")
 
 # Create generated directory
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
@@ -155,10 +159,10 @@ file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 # Custom command to generate binary manifest and convert to header
 add_custom_command(
     OUTPUT ${MANIFEST_HEADER}
-    COMMAND ${NAH_CLI} manifest generate ${MANIFEST_TOML} -o ${MANIFEST_NAH}
+    COMMAND ${NAH_CLI} manifest generate ${MANIFEST_JSON} -o ${MANIFEST_NAH}
     COMMAND ${CMAKE_COMMAND} -DINPUT_FILE=${MANIFEST_NAH} -DOUTPUT_FILE=${MANIFEST_HEADER}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/bin2header.cmake
-    DEPENDS ${MANIFEST_TOML} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/bin2header.cmake
+    DEPENDS ${MANIFEST_JSON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/bin2header.cmake
     COMMENT "Generating embedded manifest header"
     VERBATIM
 )

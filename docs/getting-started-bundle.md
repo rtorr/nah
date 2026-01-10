@@ -23,36 +23,33 @@ The NAK provides the runtime that executes your bundle. Common examples:
 
 ## 1. Create Manifest Input File
 
-Create a `manifest.toml` file describing your application:
+Create a `manifest.json` file describing your application:
 
-```toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.yourcompany.myapp"
-version = "1.0.0"
-nak_id = "com.example.js-runtime"
-nak_version_req = ">=2.0.0 <3.0.0"
-entrypoint = "dist/bundle.js"
-
-# Optional metadata
-description = "My JavaScript Application"
-author = "Your Name"
-license = "MIT"
-
-# Optional asset directories
-asset_dirs = ["assets"]
-
-# Optional environment defaults
-[app.environment]
-NODE_ENV = "production"
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.yourcompany.myapp",
+    "version": "1.0.0",
+    "nak_id": "com.example.js-runtime",
+    "nak_version_req": ">=2.0.0 <3.0.0",
+    "entrypoint": "dist/bundle.js",
+    "description": "My JavaScript Application",
+    "author": "Your Name",
+    "license": "MIT",
+    "asset_dirs": ["assets"],
+    "environment": {
+      "NODE_ENV": "production"
+    }
+  }
+}
 ```
 
 ### Required Fields
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `schema` | Schema version | `nah.manifest.input.v1` |
+| `$schema` | Schema version | `nah.manifest.input.v2` |
 | `app.id` | Unique identifier | `com.yourcompany.myapp` |
 | `app.version` | SemVer version | `1.0.0` |
 | `app.nak_id` | Runtime NAK ID | `com.example.js-runtime` |
@@ -86,10 +83,10 @@ Invalid: `/dist/bundle.js`, `../shared/lib`
 
 ## 2. Generate Binary Manifest
 
-Convert the TOML to a binary TLV manifest:
+Convert the JSON to a binary TLV manifest:
 
 ```bash
-nah manifest generate manifest.toml -o manifest.nah
+nah manifest generate manifest.json -o manifest.nah
 ```
 
 Verify the generated manifest:
@@ -135,7 +132,7 @@ package/
 │   ├── images/
 │   └── config.json
 └── META/                  # Optional metadata
-    └── package.toml
+    └── package.json
 ```
 
 ## 5. Package as NAP
@@ -169,30 +166,33 @@ nah --root ./test-nah contract show com.yourcompany.myapp
 
 ## Complete Example: React Native App
 
-### manifest.toml
+### manifest.json
 
-```toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.example.rnapp"
-version = "2.1.0"
-nak_id = "com.mycompany.rn-runtime"
-nak_version_req = ">=3.0.0"
-entrypoint = "bundle.jsbundle"
-description = "Example React Native Application"
-author = "Mobile Team"
-
-asset_dirs = ["assets"]
-
-[[app.exports]]
-id = "splash"
-path = "assets/splash.png"
-type = "image/png"
-
-[app.environment]
-NODE_ENV = "production"
-RN_DEBUG = "false"
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.rnapp",
+    "version": "2.1.0",
+    "nak_id": "com.mycompany.rn-runtime",
+    "nak_version_req": ">=3.0.0",
+    "entrypoint": "bundle.jsbundle",
+    "description": "Example React Native Application",
+    "author": "Mobile Team",
+    "asset_dirs": ["assets"],
+    "exports": [
+      {
+        "id": "splash",
+        "path": "assets/splash.png",
+        "type": "image/png"
+      }
+    ],
+    "environment": {
+      "NODE_ENV": "production",
+      "RN_DEBUG": "false"
+    }
+  }
+}
 ```
 
 ### Build Script
@@ -210,7 +210,7 @@ npx react-native bundle \
   --assets-dest package/assets
 
 # Generate manifest
-nah manifest generate manifest.toml -o package/manifest.nah
+nah manifest generate manifest.json -o package/manifest.nah
 
 # Create package
 nah app pack package -o dist/rnapp-2.1.0.nap
@@ -222,16 +222,21 @@ echo "Package created: dist/rnapp-2.1.0.nap"
 
 Export named assets for programmatic access:
 
-```toml
-[[app.exports]]
-id = "app-icon"
-path = "assets/icon.png"
-type = "image/png"
-
-[[app.exports]]
-id = "config"
-path = "config/app.json"
-type = "application/json"
+```json
+{
+  "exports": [
+    {
+      "id": "app-icon",
+      "path": "assets/icon.png",
+      "type": "image/png"
+    },
+    {
+      "id": "config",
+      "path": "config/app.json",
+      "type": "application/json"
+    }
+  ]
+}
 ```
 
 The NAK runtime can query these by ID rather than hardcoding paths.
@@ -240,10 +245,13 @@ The NAK runtime can query these by ID rather than hardcoding paths.
 
 Bundle apps typically don't declare permissions because the NAK runtime defines the sandbox. Only declare permissions if your runtime supports per-app capability escalation:
 
-```toml
-[app.permissions]
-filesystem = ["read:app://assets/*"]
-network = ["connect:https://api.example.com:443"]
+```json
+{
+  "permissions": {
+    "filesystem": ["read:app://assets/*"],
+    "network": ["connect:https://api.example.com:443"]
+  }
+}
 ```
 
 Permission format:
@@ -265,31 +273,33 @@ This mirrors mobile platforms: React Native JS runs inside a native container th
 
 ### "missing or invalid schema"
 
-Ensure your manifest.toml has the correct schema:
-```toml
-schema = "nah.manifest.input.v1"
+Ensure your manifest.json has the correct schema:
+```json
+{
+  "$schema": "nah.manifest.input.v2"
+}
 ```
 
 ### "entrypoint must be a relative path"
 
 Remove leading slashes from paths:
-```toml
-# Wrong
-entrypoint = "/dist/bundle.js"
+```json
+// Wrong
+"entrypoint": "/dist/bundle.js"
 
-# Correct
-entrypoint = "dist/bundle.js"
+// Correct
+"entrypoint": "dist/bundle.js"
 ```
 
 ### "path must not contain '..'"
 
 Use only forward paths within the package:
-```toml
-# Wrong
-lib_dirs = ["../shared/lib"]
+```json
+// Wrong
+"lib_dirs": ["../shared/lib"]
 
-# Correct - copy shared libs into package
-lib_dirs = ["lib"]
+// Correct - copy shared libs into package
+"lib_dirs": ["lib"]
 ```
 
 ### NAK not found

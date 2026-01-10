@@ -32,7 +32,7 @@ struct AppInstallRecord {
     struct {
         std::string id;
         std::string version;
-        std::string record_ref;  // "<nak_id>@<version>.toml"
+        std::string record_ref;  // "<nak_id>@<version>.json"
         std::string selection_reason;  // optional audit-only string
     } nak;
     
@@ -86,8 +86,8 @@ struct AppInstallRecordParseResult {
     std::vector<std::string> warnings;
 };
 
-// Parse an App Install Record from TOML string
-AppInstallRecordParseResult parse_app_install_record_full(const std::string& toml_str,
+// Parse an App Install Record from JSON string
+AppInstallRecordParseResult parse_app_install_record_full(const std::string& json_str,
                                                            const std::string& source_path = "");
 
 // ============================================================================
@@ -107,7 +107,7 @@ struct InstallRecordValidation {
     std::string error;
 };
 
-InstallRecordValidation parse_app_install_record(const std::string& toml,
+InstallRecordValidation parse_app_install_record(const std::string& json,
                                                   AppInstallRecord& out);
 
 } // namespace nah

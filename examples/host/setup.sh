@@ -2,7 +2,7 @@
 #
 # Host Setup Script
 # =================
-# Reads host.toml and installs pre-built NAKs and apps into the NAH root.
+# Reads host.json and installs pre-built NAKs and apps into the NAH root.
 #
 # Usage:
 #   ./setup.sh [--clean]
@@ -14,7 +14,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOST_MANIFEST="$SCRIPT_DIR/host.toml"
+HOST_MANIFEST="$SCRIPT_DIR/host.json"
 
 # Colors
 RED='\033[0;31m'
@@ -29,32 +29,38 @@ log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # =============================================================================
-# Parse host.toml
+# Parse host.json using basic grep/sed (no jq dependency)
 # =============================================================================
 
-get_toml_value() {
+get_json_value() {
     local file="$1" key="$2"
-    grep "^${key}[[:space:]]*=" "$file" 2>/dev/null | sed 's/.*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/' | head -1
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null | sed 's/.*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1
 }
 
-get_toml_array_blocks() {
-    local file="$1" block="$2"
-    grep -c "^\[\[${block}\]\]" "$file" 2>/dev/null || echo 0
+# Get count of array elements
+get_json_array_count() {
+    local file="$1" array="$2"
+    # Count occurrences of "id" field within array blocks
+    python3 -c "
+import json
+with open('$file') as f:
+    data = json.load(f)
+print(len(data.get('$array', [])))
+" 2>/dev/null || echo 0
 }
 
-get_block_field() {
-    local file="$1" block="$2" index="$3" field="$4"
-    awk -v block="$block" -v idx="$index" -v field="$field" '
-        BEGIN { count=0; in_block=0 }
-        /^\[\['"$block"'\]\]/ { count++; in_block=(count==idx) }
-        /^\[/ && !/^\[\['"$block"'\]\]/ { in_block=0 }
-        in_block && $0 ~ "^"field"[[:space:]]*=" {
-            gsub(/.*=[[:space:]]*"?/, "")
-            gsub(/".*/, "")
-            print
-            exit
-        }
-    ' "$file"
+# Get field from array element by index (0-based)
+get_json_array_field() {
+    local file="$1" array="$2" index="$3" field="$4"
+    python3 -c "
+import json
+with open('$file') as f:
+    data = json.load(f)
+arr = data.get('$array', [])
+if $index < len(arr):
+    val = arr[$index].get('$field', '')
+    print(val if val is not None else '')
+" 2>/dev/null || echo ""
 }
 
 # =============================================================================
@@ -105,9 +111,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Verify host.toml exists
+# Verify host.json exists
 if [ ! -f "$HOST_MANIFEST" ]; then
-    log_error "host.toml not found at $HOST_MANIFEST"
+    log_error "host.json not found at $HOST_MANIFEST"
     exit 1
 fi
 
@@ -118,9 +124,9 @@ if ! find_nah_cli; then
 fi
 
 # Read host configuration
-HOST_NAME=$(get_toml_value "$HOST_MANIFEST" "name")
-NAH_ROOT_REL=$(get_toml_value "$HOST_MANIFEST" "nah_root")
-DEFAULT_PROFILE=$(get_toml_value "$HOST_MANIFEST" "default_profile")
+HOST_NAME=$(get_json_value "$HOST_MANIFEST" "name")
+NAH_ROOT_REL=$(get_json_value "$HOST_MANIFEST" "nah_root")
+DEFAULT_PROFILE=$(get_json_value "$HOST_MANIFEST" "default_profile")
 
 # Resolve NAH root path
 if [[ "$NAH_ROOT_REL" == /* ]]; then
@@ -151,13 +157,13 @@ mkdir -p "$NAH_ROOT"/{apps,naks,host/profiles,registry/{installs,naks}}
 
 # Copy profiles
 if [ -d "$SCRIPT_DIR/profiles" ]; then
-    cp "$SCRIPT_DIR/profiles"/*.toml "$NAH_ROOT/host/profiles/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/profiles"/*.json "$NAH_ROOT/host/profiles/" 2>/dev/null || true
     log_success "Copied host profiles"
 fi
 
 # Set default profile
-if [ -n "$DEFAULT_PROFILE" ] && [ -f "$NAH_ROOT/host/profiles/${DEFAULT_PROFILE}.toml" ]; then
-    ln -sf "profiles/${DEFAULT_PROFILE}.toml" "$NAH_ROOT/host/profile.current"
+if [ -n "$DEFAULT_PROFILE" ] && [ -f "$NAH_ROOT/host/profiles/${DEFAULT_PROFILE}.json" ]; then
+    ln -sf "profiles/${DEFAULT_PROFILE}.json" "$NAH_ROOT/host/profile.current"
     log_success "Set default profile: $DEFAULT_PROFILE"
 fi
 
@@ -168,12 +174,12 @@ fi
 echo ""
 log_info "Installing NAKs..."
 
-NAK_COUNT=$(get_toml_array_blocks "$HOST_MANIFEST" "naks")
-for i in $(seq 1 "$NAK_COUNT"); do
-    NAK_ID=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "id")
-    NAK_VERSION=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "version")
-    NAK_PACKAGE=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "package")
-    NAK_OPTIONAL=$(get_block_field "$HOST_MANIFEST" "naks" "$i" "optional")
+NAK_COUNT=$(get_json_array_count "$HOST_MANIFEST" "naks")
+for i in $(seq 0 $((NAK_COUNT - 1))); do
+    NAK_ID=$(get_json_array_field "$HOST_MANIFEST" "naks" "$i" "id")
+    NAK_VERSION=$(get_json_array_field "$HOST_MANIFEST" "naks" "$i" "version")
+    NAK_PACKAGE=$(get_json_array_field "$HOST_MANIFEST" "naks" "$i" "package")
+    NAK_OPTIONAL=$(get_json_array_field "$HOST_MANIFEST" "naks" "$i" "optional")
 
     # Resolve package path
     if [[ "$NAK_PACKAGE" != /* ]]; then
@@ -183,7 +189,7 @@ for i in $(seq 1 "$NAK_COUNT"); do
     if [ -f "$NAK_PACKAGE" ]; then
         "$NAH_CLI" --root "$NAH_ROOT" nak install "$NAK_PACKAGE" >/dev/null 2>&1
         log_success "Installed NAK: $NAK_ID@$NAK_VERSION"
-    elif [ "$NAK_OPTIONAL" = "true" ]; then
+    elif [ "$NAK_OPTIONAL" = "True" ] || [ "$NAK_OPTIONAL" = "true" ]; then
         log_warn "Skipping optional NAK: $NAK_ID (package not found)"
     else
         log_error "NAK package not found: $NAK_PACKAGE"
@@ -198,17 +204,17 @@ done
 echo ""
 log_info "Installing apps..."
 
-APP_COUNT=$(get_toml_array_blocks "$HOST_MANIFEST" "apps")
-for i in $(seq 1 "$APP_COUNT"); do
-    APP_ID=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "id")
-    APP_VERSION=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "version")
-    APP_PACKAGE=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "package")
-    APP_NAK=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "nak")
-    APP_OPTIONAL=$(get_block_field "$HOST_MANIFEST" "apps" "$i" "optional")
+APP_COUNT=$(get_json_array_count "$HOST_MANIFEST" "apps")
+for i in $(seq 0 $((APP_COUNT - 1))); do
+    APP_ID=$(get_json_array_field "$HOST_MANIFEST" "apps" "$i" "id")
+    APP_VERSION=$(get_json_array_field "$HOST_MANIFEST" "apps" "$i" "version")
+    APP_PACKAGE=$(get_json_array_field "$HOST_MANIFEST" "apps" "$i" "package")
+    APP_NAK=$(get_json_array_field "$HOST_MANIFEST" "apps" "$i" "nak")
+    APP_OPTIONAL=$(get_json_array_field "$HOST_MANIFEST" "apps" "$i" "optional")
 
     # Check if required NAK is installed
     if [ -n "$APP_NAK" ] && [ ! -d "$NAH_ROOT/naks/$APP_NAK" ]; then
-        if [ "$APP_OPTIONAL" = "true" ]; then
+        if [ "$APP_OPTIONAL" = "True" ] || [ "$APP_OPTIONAL" = "true" ]; then
             log_warn "Skipping optional app: $APP_ID (NAK $APP_NAK not installed)"
             continue
         else
@@ -225,7 +231,7 @@ for i in $(seq 1 "$APP_COUNT"); do
     if [ -f "$APP_PACKAGE" ]; then
         "$NAH_CLI" --root "$NAH_ROOT" app install "$APP_PACKAGE" >/dev/null 2>&1
         log_success "Installed app: $APP_ID@$APP_VERSION"
-    elif [ "$APP_OPTIONAL" = "true" ]; then
+    elif [ "$APP_OPTIONAL" = "True" ] || [ "$APP_OPTIONAL" = "true" ]; then
         log_warn "Skipping optional app: $APP_ID (package not found)"
     else
         log_error "App package not found: $APP_PACKAGE"

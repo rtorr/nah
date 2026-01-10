@@ -85,7 +85,7 @@ AppInstallRecord create_test_install_record(const std::string& app_root) {
     r.paths.install_root = app_root;
     r.nak.id = "com.example.nak";
     r.nak.version = "3.0.0";
-    r.nak.record_ref = "com.example.nak@3.0.0.toml";
+    r.nak.record_ref = "com.example.nak@3.0.0.json";
     r.trust.state = TrustState::Verified;
     r.trust.source = "test-host";
     r.trust.evaluated_at = "2025-01-01T00:00:00Z";

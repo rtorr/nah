@@ -5,7 +5,7 @@
  * This example demonstrates embedding the NAH manifest directly in the
  * application binary at compile time. The manifest is:
  * 
- *   1. Defined as TOML in CMakeLists.txt
+ *   1. Defined as JSON in CMakeLists.txt
  *   2. Converted to binary TLV format by `nah manifest generate` at build time
  *   3. Converted to a C header with byte array
  *   4. Compiled into the binary in a platform-specific section

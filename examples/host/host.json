@@ -1,0 +1,48 @@
+{
+  "host": {
+    "name": "example-host",
+    "version": "1.0.0",
+    "description": "Example NAH host demonstrating multi-NAK setup",
+    "nah_root": "./nah_root",
+    "default_profile": "default"
+  },
+  "naks": [
+    {
+      "id": "com.example.sdk",
+      "version": "1.2.3",
+      "package": "../sdk/build/com.example.sdk-1.2.3.nak",
+      "description": "Framework SDK - basic runtime for C/C++ apps"
+    },
+    {
+      "id": "com.example.gameengine",
+      "version": "1.0.0",
+      "package": "../conan-sdk/build/build/Release/com.example.gameengine-1.0.0.nak",
+      "description": "Game Engine SDK - runtime with graphics, networking, crypto",
+      "optional": true
+    }
+  ],
+  "apps": [
+    {
+      "id": "com.example.app",
+      "version": "1.0.0",
+      "package": "../apps/app/build/com.example.app-1.0.0.nap",
+      "nak": "com.example.sdk",
+      "description": "Basic C application with standalone manifest"
+    },
+    {
+      "id": "com.example.app_c",
+      "version": "1.0.0",
+      "package": "../apps/app_c/build/com.example.app_c-1.0.0.nap",
+      "nak": "com.example.sdk",
+      "description": "C++ application with embedded manifest"
+    },
+    {
+      "id": "com.example.mygame",
+      "version": "1.0.0",
+      "package": "../apps/game-app/build/com.example.mygame-1.0.0.nap",
+      "nak": "com.example.gameengine",
+      "description": "Game targeting the game engine SDK",
+      "optional": true
+    }
+  ]
+}

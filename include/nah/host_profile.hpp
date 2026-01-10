@@ -62,8 +62,8 @@ struct HostProfileParseResult {
     std::vector<std::string> warnings;
 };
 
-// Parse a Host Profile from TOML string
-HostProfileParseResult parse_host_profile_full(const std::string& toml_str,
+// Parse a Host Profile from JSON string
+HostProfileParseResult parse_host_profile_full(const std::string& json_str,
                                                 const std::string& source_path = "");
 
 // ============================================================================
@@ -105,6 +105,6 @@ struct HostProfileValidation {
     std::string error;
 };
 
-HostProfileValidation parse_host_profile(const std::string& toml, HostProfileRecord& out);
+HostProfileValidation parse_host_profile(const std::string& json, HostProfileRecord& out);
 
 } // namespace nah

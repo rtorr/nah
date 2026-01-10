@@ -1,6 +1,6 @@
 #include "nah/install_record.hpp"
 
-#include <toml++/toml.h>
+#include <nlohmann/json.hpp>
 #include <cctype>
 
 namespace nah {
@@ -19,49 +19,62 @@ bool is_empty_after_trim(const std::string& s) {
     return trim(s).empty();
 }
 
-std::string format_datetime(const toml::date_time& dt) {
-    // Format as RFC3339
-    char buf[64];
-    if (dt.offset.has_value()) {
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02dZ",
-                 dt.date.year, dt.date.month, dt.date.day,
-                 dt.time.hour, dt.time.minute, dt.time.second);
-    } else {
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d",
-                 dt.date.year, dt.date.month, dt.date.day,
-                 dt.time.hour, dt.time.minute, dt.time.second);
+// Helper to safely get a string from JSON
+std::optional<std::string> get_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return j[key].get<std::string>();
     }
-    return buf;
+    return std::nullopt;
+}
+
+// Helper to safely get a string array from JSON
+std::vector<std::string> get_string_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(elem.get<std::string>());
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace
 
-AppInstallRecordParseResult parse_app_install_record_full(const std::string& toml_str,
+AppInstallRecordParseResult parse_app_install_record_full(const std::string& json_str,
                                                            const std::string& source_path) {
     AppInstallRecordParseResult result;
     result.record.source_path = source_path;
     
     try {
-        auto tbl = toml::parse(toml_str);
+        auto j = nlohmann::json::parse(json_str);
         
-        // schema (REQUIRED)
-        if (auto schema = tbl["schema"].value<std::string>()) {
+        if (!j.is_object()) {
+            result.error = "JSON must be an object";
+            result.is_critical_error = true;
+            return result;
+        }
+        
+        // $schema (REQUIRED)
+        if (auto schema = get_string(j, "$schema")) {
             result.record.schema = trim(*schema);
         } else {
-            result.error = "schema missing";
+            result.error = "$schema missing";
             result.is_critical_error = true;
             return result;
         }
         
-        if (result.record.schema != "nah.app.install.v1") {
-            result.error = "schema mismatch: expected nah.app.install.v1";
+        if (result.record.schema != "nah.app.install.v2") {
+            result.error = "$schema mismatch: expected nah.app.install.v2";
             result.is_critical_error = true;
             return result;
         }
         
-        // [install] section
-        if (auto install_tbl = tbl["install"].as_table()) {
-            if (auto id = (*install_tbl)["instance_id"].value<std::string>()) {
+        // "install" section
+        if (j.contains("install") && j["install"].is_object()) {
+            const auto& install = j["install"];
+            if (auto id = get_string(install, "instance_id")) {
                 if (is_empty_after_trim(*id)) {
                     result.error = "install.instance_id empty";
                     result.is_critical_error = true;
@@ -79,41 +92,44 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& tom
             return result;
         }
         
-        // [app] section (audit snapshots only)
-        if (auto app_tbl = tbl["app"].as_table()) {
-            if (auto id = (*app_tbl)["id"].value<std::string>()) {
+        // "app" section (audit snapshots only)
+        if (j.contains("app") && j["app"].is_object()) {
+            const auto& app = j["app"];
+            if (auto id = get_string(app, "id")) {
                 result.record.app.id = *id;
             }
-            if (auto ver = (*app_tbl)["version"].value<std::string>()) {
+            if (auto ver = get_string(app, "version")) {
                 result.record.app.version = *ver;
             }
-            if (auto nak_id = (*app_tbl)["nak_id"].value<std::string>()) {
+            if (auto nak_id = get_string(app, "nak_id")) {
                 result.record.app.nak_id = *nak_id;
             }
-            if (auto nak_ver = (*app_tbl)["nak_version_req"].value<std::string>()) {
+            if (auto nak_ver = get_string(app, "nak_version_req")) {
                 result.record.app.nak_version_req = *nak_ver;
             }
         }
         
-        // [nak] section (pinned NAK)
-        if (auto nak_tbl = tbl["nak"].as_table()) {
-            if (auto id = (*nak_tbl)["id"].value<std::string>()) {
+        // "nak" section (pinned NAK)
+        if (j.contains("nak") && j["nak"].is_object()) {
+            const auto& nak = j["nak"];
+            if (auto id = get_string(nak, "id")) {
                 result.record.nak.id = *id;
             }
-            if (auto ver = (*nak_tbl)["version"].value<std::string>()) {
+            if (auto ver = get_string(nak, "version")) {
                 result.record.nak.version = *ver;
             }
-            if (auto ref = (*nak_tbl)["record_ref"].value<std::string>()) {
+            if (auto ref = get_string(nak, "record_ref")) {
                 result.record.nak.record_ref = *ref;
             }
-            if (auto reason = (*nak_tbl)["selection_reason"].value<std::string>()) {
+            if (auto reason = get_string(nak, "selection_reason")) {
                 result.record.nak.selection_reason = *reason;
             }
         }
         
-        // [paths] section (REQUIRED)
-        if (auto paths_tbl = tbl["paths"].as_table()) {
-            if (auto root = (*paths_tbl)["install_root"].value<std::string>()) {
+        // "paths" section (REQUIRED)
+        if (j.contains("paths") && j["paths"].is_object()) {
+            const auto& paths = j["paths"];
+            if (auto root = get_string(paths, "install_root")) {
                 if (is_empty_after_trim(*root)) {
                     result.error = "paths.install_root empty";
                     result.is_critical_error = true;
@@ -131,27 +147,27 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& tom
             return result;
         }
         
-        // [provenance] section
-        if (auto prov_tbl = tbl["provenance"].as_table()) {
-            if (auto h = (*prov_tbl)["package_hash"].value<std::string>()) {
+        // "provenance" section
+        if (j.contains("provenance") && j["provenance"].is_object()) {
+            const auto& prov = j["provenance"];
+            if (auto h = get_string(prov, "package_hash")) {
                 result.record.provenance.package_hash = *h;
             }
-            if (auto dt = (*prov_tbl)["installed_at"].as<toml::date_time>()) {
-                result.record.provenance.installed_at = format_datetime(dt->get());
-            } else if (auto s = (*prov_tbl)["installed_at"].value<std::string>()) {
-                result.record.provenance.installed_at = *s;
+            if (auto dt = get_string(prov, "installed_at")) {
+                result.record.provenance.installed_at = *dt;
             }
-            if (auto by = (*prov_tbl)["installed_by"].value<std::string>()) {
+            if (auto by = get_string(prov, "installed_by")) {
                 result.record.provenance.installed_by = *by;
             }
-            if (auto src = (*prov_tbl)["source"].value<std::string>()) {
+            if (auto src = get_string(prov, "source")) {
                 result.record.provenance.source = *src;
             }
         }
         
-        // [trust] section
-        if (auto trust_tbl = tbl["trust"].as_table()) {
-            if (auto state = (*trust_tbl)["state"].value<std::string>()) {
+        // "trust" section
+        if (j.contains("trust") && j["trust"].is_object()) {
+            const auto& trust = j["trust"];
+            if (auto state = get_string(trust, "state")) {
                 auto parsed = parse_trust_state(*state);
                 if (parsed) {
                     result.record.trust.state = *parsed;
@@ -160,101 +176,85 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& tom
                     result.record.trust.state = TrustState::Unknown;
                 }
             }
-            if (auto src = (*trust_tbl)["source"].value<std::string>()) {
+            if (auto src = get_string(trust, "source")) {
                 result.record.trust.source = *src;
             }
-            if (auto dt = (*trust_tbl)["evaluated_at"].as<toml::date_time>()) {
-                result.record.trust.evaluated_at = format_datetime(dt->get());
-            } else if (auto s = (*trust_tbl)["evaluated_at"].value<std::string>()) {
-                result.record.trust.evaluated_at = *s;
+            if (auto dt = get_string(trust, "evaluated_at")) {
+                result.record.trust.evaluated_at = *dt;
             }
-            if (auto dt = (*trust_tbl)["expires_at"].as<toml::date_time>()) {
-                result.record.trust.expires_at = format_datetime(dt->get());
-            } else if (auto s = (*trust_tbl)["expires_at"].value<std::string>()) {
-                result.record.trust.expires_at = *s;
+            if (auto dt = get_string(trust, "expires_at")) {
+                result.record.trust.expires_at = *dt;
             }
-            if (auto h = (*trust_tbl)["inputs_hash"].value<std::string>()) {
+            if (auto h = get_string(trust, "inputs_hash")) {
                 result.record.trust.inputs_hash = *h;
             }
             
-            // [trust.details] - opaque metadata
-            if (auto details_tbl = (*trust_tbl)["details"].as_table()) {
-                for (const auto& [key, val] : *details_tbl) {
-                    if (auto s = val.value<std::string>()) {
-                        result.record.trust.details[std::string(key.str())] = *s;
+            // "details" - opaque metadata
+            if (trust.contains("details") && trust["details"].is_object()) {
+                for (auto& [key, val] : trust["details"].items()) {
+                    if (val.is_string()) {
+                        result.record.trust.details[key] = val.get<std::string>();
                     } else if (val.is_boolean()) {
-                        result.record.trust.details[std::string(key.str())] = 
-                            val.as_boolean()->get() ? "true" : "false";
+                        result.record.trust.details[key] = val.get<bool>() ? "true" : "false";
                     }
                 }
             }
         }
         
-        // [verification] section
-        if (auto ver_tbl = tbl["verification"].as_table()) {
-            if (auto dt = (*ver_tbl)["last_verified_at"].as<toml::date_time>()) {
-                result.record.verification.last_verified_at = format_datetime(dt->get());
-            } else if (auto s = (*ver_tbl)["last_verified_at"].value<std::string>()) {
-                result.record.verification.last_verified_at = *s;
+        // "verification" section
+        if (j.contains("verification") && j["verification"].is_object()) {
+            const auto& ver = j["verification"];
+            if (auto dt = get_string(ver, "last_verified_at")) {
+                result.record.verification.last_verified_at = *dt;
             }
-            if (auto v = (*ver_tbl)["last_verifier_version"].value<std::string>()) {
+            if (auto v = get_string(ver, "last_verifier_version")) {
                 result.record.verification.last_verifier_version = *v;
             }
         }
         
-        // [overrides] section
-        if (auto ovr_tbl = tbl["overrides"].as_table()) {
-            // [overrides.environment]
-            if (auto env_tbl = (*ovr_tbl)["environment"].as_table()) {
-                for (const auto& [key, val] : *env_tbl) {
-                    if (auto s = val.value<std::string>()) {
-                        result.record.overrides.environment[std::string(key.str())] = *s;
+        // "overrides" section
+        if (j.contains("overrides") && j["overrides"].is_object()) {
+            const auto& ovr = j["overrides"];
+            
+            // "environment"
+            if (ovr.contains("environment") && ovr["environment"].is_object()) {
+                for (auto& [key, val] : ovr["environment"].items()) {
+                    if (val.is_string()) {
+                        result.record.overrides.environment[key] = val.get<std::string>();
                     }
                 }
             }
             
-            // [overrides.arguments]
-            if (auto args_tbl = (*ovr_tbl)["arguments"].as_table()) {
-                if (auto arr = (*args_tbl)["prepend"].as_array()) {
-                    for (const auto& elem : *arr) {
-                        if (auto s = elem.value<std::string>()) {
-                            result.record.overrides.arguments.prepend.push_back(*s);
-                        }
-                    }
-                }
-                if (auto arr = (*args_tbl)["append"].as_array()) {
-                    for (const auto& elem : *arr) {
-                        if (auto s = elem.value<std::string>()) {
-                            result.record.overrides.arguments.append.push_back(*s);
-                        }
-                    }
-                }
+            // "arguments"
+            if (ovr.contains("arguments") && ovr["arguments"].is_object()) {
+                const auto& args = ovr["arguments"];
+                result.record.overrides.arguments.prepend = get_string_array(args, "prepend");
+                result.record.overrides.arguments.append = get_string_array(args, "append");
             }
             
-            // [overrides.paths]
-            if (auto paths_tbl = (*ovr_tbl)["paths"].as_table()) {
-                if (auto arr = (*paths_tbl)["library_prepend"].as_array()) {
-                    for (const auto& elem : *arr) {
-                        if (auto s = elem.value<std::string>()) {
-                            result.record.overrides.paths.library_prepend.push_back(*s);
-                        }
-                    }
-                }
+            // "paths"
+            if (ovr.contains("paths") && ovr["paths"].is_object()) {
+                const auto& paths = ovr["paths"];
+                result.record.overrides.paths.library_prepend = get_string_array(paths, "library_prepend");
             }
         }
         
         result.ok = true;
         return result;
         
-    } catch (const toml::parse_error& e) {
-        result.error = std::string("parse error: ") + e.description().data();
+    } catch (const nlohmann::json::parse_error& e) {
+        result.error = std::string("parse error: ") + e.what();
+        result.is_critical_error = true;
+        return result;
+    } catch (const nlohmann::json::exception& e) {
+        result.error = std::string("JSON error: ") + e.what();
         result.is_critical_error = true;
         return result;
     }
 }
 
 bool validate_app_install_record(const AppInstallRecord& record, std::string& error) {
-    if (record.schema != "nah.app.install.v1") {
+    if (record.schema != "nah.app.install.v2") {
         error = "schema mismatch";
         return false;
     }
@@ -270,8 +270,8 @@ bool validate_app_install_record(const AppInstallRecord& record, std::string& er
 }
 
 // Legacy API implementation
-InstallRecordValidation parse_app_install_record(const std::string& toml_str, AppInstallRecord& out) {
-    auto result = parse_app_install_record_full(toml_str);
+InstallRecordValidation parse_app_install_record(const std::string& json_str, AppInstallRecord& out) {
+    auto result = parse_app_install_record_full(json_str);
     if (!result.ok) {
         return {false, result.error};
     }

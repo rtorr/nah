@@ -46,9 +46,9 @@ struct ManifestInputParseResult {
     std::vector<std::string> warnings;
 };
 
-// Parse manifest input from TOML content
-// Schema must be "nah.manifest.input.v1"
-ManifestInputParseResult parse_manifest_input(const std::string& toml_content);
+// Parse manifest input from JSON content
+// Schema must be "nah.manifest.input.v2"
+ManifestInputParseResult parse_manifest_input(const std::string& json_content);
 
 // Build TLV manifest bytes from parsed input
 std::vector<uint8_t> build_manifest_from_input(const ManifestInput& input);
@@ -64,7 +64,7 @@ struct ManifestGenerateResult {
     std::vector<std::string> warnings;
 };
 
-// Generate manifest from TOML input string
-ManifestGenerateResult generate_manifest(const std::string& toml_content);
+// Generate manifest from JSON input string
+ManifestGenerateResult generate_manifest(const std::string& json_content);
 
 } // namespace nah

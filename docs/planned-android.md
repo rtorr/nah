@@ -33,7 +33,7 @@ NAKs contain native libraries organized by Android ABI:
 
 ```
 com.vendor.sdk-2.0.0.nak
-├── META/nak.toml
+├── META/nak.json
 ├── lib/
 │   ├── arm64-v8a/
 │   │   └── libsdk.so

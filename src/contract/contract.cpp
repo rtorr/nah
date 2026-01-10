@@ -5,7 +5,6 @@
 #include "nah/path_utils.hpp"
 
 #include <nlohmann/json.hpp>
-#include <toml++/toml.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -84,104 +83,54 @@ char get_path_separator() {
 #endif
 }
 
-OverridesParseResult parse_overrides_file(const std::string& content, const std::string& path) {
+OverridesParseResult parse_overrides_file(const std::string& content, const std::string& /*path*/) {
     OverridesParseResult result;
     
-    // Try TOML first (based on extension or content)
-    bool is_json = !content.empty() && (content[0] == '{' || 
-                   (path.size() > 5 && path.substr(path.size() - 5) == ".json"));
-    
-    if (is_json) {
-        try {
-            auto json = nlohmann::json::parse(content);
-            
-            if (!json.is_object()) {
+    // Parse JSON overrides file
+    try {
+        auto json = nlohmann::json::parse(content);
+        
+        if (!json.is_object()) {
+            result.error = "invalid_shape";
+            return result;
+        }
+        
+        for (auto& [key, val] : json.items()) {
+            if (key == "environment") {
+                if (!val.is_object()) {
+                    result.error = "invalid_shape";
+                    return result;
+                }
+                for (auto& [k, v] : val.items()) {
+                    if (!v.is_string()) {
+                        result.error = "invalid_shape";
+                        return result;
+                    }
+                    result.overrides.environment[k] = v.get<std::string>();
+                }
+            } else if (key == "warnings") {
+                if (!val.is_object()) {
+                    result.error = "invalid_shape";
+                    return result;
+                }
+                for (auto& [k, v] : val.items()) {
+                    if (!v.is_string()) {
+                        result.error = "invalid_shape";
+                        return result;
+                    }
+                    result.overrides.warnings[k] = v.get<std::string>();
+                }
+            } else {
                 result.error = "invalid_shape";
                 return result;
             }
-            
-            for (auto& [key, val] : json.items()) {
-                if (key == "environment") {
-                    if (!val.is_object()) {
-                        result.error = "invalid_shape";
-                        return result;
-                    }
-                    for (auto& [k, v] : val.items()) {
-                        if (!v.is_string()) {
-                            result.error = "invalid_shape";
-                            return result;
-                        }
-                        result.overrides.environment[k] = v.get<std::string>();
-                    }
-                } else if (key == "warnings") {
-                    if (!val.is_object()) {
-                        result.error = "invalid_shape";
-                        return result;
-                    }
-                    for (auto& [k, v] : val.items()) {
-                        if (!v.is_string()) {
-                            result.error = "invalid_shape";
-                            return result;
-                        }
-                        result.overrides.warnings[k] = v.get<std::string>();
-                    }
-                } else {
-                    result.error = "invalid_shape";
-                    return result;
-                }
-            }
-            
-            result.ok = true;
-            return result;
-        } catch (const nlohmann::json::exception&) {
-            result.error = "parse_failure";
-            return result;
         }
-    } else {
-        // Try TOML
-        try {
-            auto tbl = toml::parse(content);
-            
-            for (const auto& [key, val] : tbl) {
-                std::string key_str = std::string(key.str());
-                if (key_str == "environment") {
-                    if (!val.is_table()) {
-                        result.error = "invalid_shape";
-                        return result;
-                    }
-                    for (const auto& [k, v] : *val.as_table()) {
-                        if (auto s = v.value<std::string>()) {
-                            result.overrides.environment[std::string(k.str())] = *s;
-                        } else {
-                            result.error = "invalid_shape";
-                            return result;
-                        }
-                    }
-                } else if (key_str == "warnings") {
-                    if (!val.is_table()) {
-                        result.error = "invalid_shape";
-                        return result;
-                    }
-                    for (const auto& [k, v] : *val.as_table()) {
-                        if (auto s = v.value<std::string>()) {
-                            result.overrides.warnings[std::string(k.str())] = *s;
-                        } else {
-                            result.error = "invalid_shape";
-                            return result;
-                        }
-                    }
-                } else {
-                    result.error = "invalid_shape";
-                    return result;
-                }
-            }
-            
-            result.ok = true;
-            return result;
-        } catch (const toml::parse_error&) {
-            result.error = "parse_failure";
-            return result;
-        }
+        
+        result.ok = true;
+        return result;
+    } catch (const nlohmann::json::exception&) {
+        result.error = "parse_failure";
+        return result;
     }
 }
 

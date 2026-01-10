@@ -138,7 +138,7 @@ struct NakPackInfo {
     bool ok = false;
     std::string error;
     
-    // From META/nak.toml
+    // From META/nak.json
     std::string schema;
     std::string nak_id;
     std::string nak_version;
@@ -160,7 +160,7 @@ NakPackInfo inspect_nak_pack(const std::string& pack_path);
 NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data);
 
 // Pack a directory as a NAK pack
-// Validates structure and META/nak.toml presence
+// Validates structure and META/nak.json presence
 PackResult pack_nak(const std::string& dir_path);
 
 // ============================================================================
@@ -183,7 +183,7 @@ struct AppInstallResult {
     bool ok = false;
     std::string error;
     std::string install_root;           // e.g., /nah/apps/com.example.app-1.0.0
-    std::string record_path;            // e.g., /nah/registry/apps/com.example.app@1.0.0.toml
+    std::string record_path;            // e.g., /nah/registry/apps/com.example.app@1.0.0.json
     std::string instance_id;
     std::string nak_id;
     std::string nak_version;
@@ -226,7 +226,7 @@ struct NakInstallResult {
     bool ok = false;
     std::string error;
     std::string install_root;           // e.g., /nah/naks/com.example.nak/1.0.0
-    std::string record_path;            // e.g., /nah/registry/naks/com.example.nak@1.0.0.toml
+    std::string record_path;            // e.g., /nah/registry/naks/com.example.nak@1.0.0.json
     std::string nak_id;
     std::string nak_version;
     std::string package_hash;           // SHA-256 of the package
@@ -235,7 +235,7 @@ struct NakInstallResult {
 // Install a NAK pack from a local file path
 // Per SPEC:
 //   1. Extract to staging directory
-//   2. Validate META/nak.toml schema and required fields
+//   2. Validate META/nak.json schema and required fields
 //   3. Atomically rename to final location
 //   4. Write NAK Install Record atomically with resolved absolute paths
 NakInstallResult install_nak_pack(const std::string& pack_path,

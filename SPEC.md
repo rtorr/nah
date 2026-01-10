@@ -3054,6 +3054,7 @@ Given a NAK pack artifact reference that contains `META/nak.json` (see “NAK Pa
      - `<TARGET_ROOT>/naks/<nak.id>/<nak.version>`
    - `paths.resource_root` MUST be written as an absolute path under `paths.root` by resolving the pack `paths.resource_root` relative to the extracted pack root (defaults to `paths.root` if omitted or ".").
    - `paths.lib_dirs` entries MUST be written as absolute paths under `paths.root` by resolving pack `paths.lib_dirs` relative to the extracted pack root.
+   - `environment` MUST be copied unchanged from the pack (these are NAK default environment values used at composition time per Precedence Rules).
    - If `[loader]` is present in the pack:
      - `loader.exec_path` MUST be written as an absolute path under `paths.root` by resolving pack `loader.exec_path` relative to the extracted pack root.
      - `loader.args_template` MUST be copied unchanged from the pack (templates resolved at composition time).

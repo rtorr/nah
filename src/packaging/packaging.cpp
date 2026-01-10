@@ -1025,6 +1025,7 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
     result.nak_version = pack.nak.version;
     result.resource_root = pack.paths.resource_root;
     result.lib_dirs = pack.paths.lib_dirs;
+    result.environment = pack.environment;
     result.has_loader = pack.loader.present;
     result.loader_exec_path = pack.loader.exec_path;
     result.loader_args_template = pack.loader.args_template;
@@ -1741,6 +1742,20 @@ static NakInstallResult install_nak_from_bytes(
         record << "]\n";
         record << "  },\n";
     }
+    
+    // Environment section (materialized from NAK pack)
+    record << "  \"environment\": {";
+    if (!pack_info.environment.empty()) {
+        record << "\n";
+        bool first_env = true;
+        for (const auto& [key, value] : pack_info.environment) {
+            if (!first_env) record << ",\n";
+            record << "    \"" << key << "\": \"" << value << "\"";
+            first_env = false;
+        }
+        record << "\n  ";
+    }
+    record << "},\n";
     
     record << "  \"execution\": {\n";
     record << "    \"cwd\": \"" << to_portable_path(pack_info.execution_cwd) << "\"\n";

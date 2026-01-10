@@ -10,11 +10,12 @@ Start here to understand NAH terminology:
 
 Choose based on your role:
 
-| Guide                                      | You are...                         |
-| ------------------------------------------ | ---------------------------------- |
-| [Host Integrator](getting-started-host.md) | Running apps and SDKs from vendors |
-| [NAK Developer](getting-started-nak.md)    | Building an SDK or framework       |
-| [App Developer](getting-started-app.md)    | Building an app that needs an SDK  |
+| Guide                                           | You are...                                    |
+| ----------------------------------------------- | --------------------------------------------- |
+| [Host Integrator](getting-started-host.md)      | Running apps and SDKs from vendors            |
+| [NAK Developer](getting-started-nak.md)         | Building an SDK or framework                  |
+| [App Developer](getting-started-app.md)         | Building a native app that needs an SDK       |
+| [Bundle App Developer](getting-started-bundle.md) | Building a JS/Python app with a runtime NAK |
 
 ## Reference
 

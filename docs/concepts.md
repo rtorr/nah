@@ -35,7 +35,10 @@ The application's declaration of identity and requirements.
 - Host policy or trust decisions
 - NAK install locations
 
-Example (embedded in C++):
+### Native Apps: Embedded Manifest
+
+For native applications (C, C++, Rust), embed the manifest in the binary:
+
 ```cpp
 NAH_APP_MANIFEST(
     NAH_FIELD_ID("com.example.myapp")
@@ -46,6 +49,28 @@ NAH_APP_MANIFEST(
     NAH_FIELD_LIB_DIR("lib")
 )
 ```
+
+### Bundle Apps: File-based Manifest
+
+For bundle applications (JavaScript, Python, etc.), create a `manifest.toml` and generate the binary manifest:
+
+```toml
+schema = "nah.manifest.input.v1"
+
+[app]
+id = "com.example.myapp"
+version = "1.0.0"
+nak_id = "com.example.js-runtime"
+nak_version_req = ">=2.0.0"
+entrypoint = "bundle.js"
+```
+
+Generate with:
+```bash
+nah manifest generate manifest.toml -o manifest.nah
+```
+
+See [Getting Started: Bundle Apps](getting-started-bundle.md) for the complete workflow.
 
 ## NAK (Native App Kit)
 

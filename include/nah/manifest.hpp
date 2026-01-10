@@ -36,6 +36,12 @@ struct Manifest {
     std::vector<AssetExportParts> asset_exports;
     std::vector<std::string> permissions_filesystem;
     std::vector<std::string> permissions_network;
+    
+    // Metadata fields
+    std::string description;
+    std::string author;
+    std::string license;
+    std::string homepage;
 };
 
 struct ManifestFieldsResult {

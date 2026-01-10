@@ -20,6 +20,7 @@ set(NAH_ALL_SOURCES
     manifest/manifest.cpp
     manifest/tlv_decode.cpp
     manifest/tlv_encode.cpp
+    manifest/manifest_generate.cpp
     platform/path_utils.cpp
     platform/atomic_io.cpp
     platform/section_reader.cpp
@@ -46,12 +47,13 @@ add_library(nah_manifest STATIC
     manifest/manifest.cpp
     manifest/tlv_decode.cpp
     manifest/tlv_encode.cpp
+    manifest/manifest_generate.cpp
 )
 target_include_directories(nah_manifest PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(nah_manifest PUBLIC semver)
+target_link_libraries(nah_manifest PUBLIC semver tomlplusplus::tomlplusplus)
 
 add_library(nah_platform STATIC
     platform/path_utils.cpp

@@ -8,6 +8,7 @@ add_executable(nah-tests
     tlv_tests.cpp
     manifest_tests.cpp
     manifest_parse_tests.cpp
+    manifest_generate_tests.cpp
     warnings_tests.cpp
     expansion_tests.cpp
     capabilities_tests.cpp

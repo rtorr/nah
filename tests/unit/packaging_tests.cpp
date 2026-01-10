@@ -333,6 +333,104 @@ TEST_CASE("inspect_nak_pack extracts metadata") {
     CHECK(info.resource_root == "resources");
 }
 
+TEST_CASE("inspect_nak_pack extracts environment section") {
+    TempDir temp;
+    
+    fs::create_directories(temp.path() + "/META");
+    
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v2",
+        "nak": {
+            "id": "com.example.nak-with-env",
+            "version": "1.0.0"
+        },
+        "paths": {
+            "resource_root": ".",
+            "lib_dirs": []
+        },
+        "environment": {
+            "NAK_HOME": "{NAH_NAK_ROOT}",
+            "NAK_VERSION": "1.0.0",
+            "CUSTOM_VAR": "custom_value"
+        },
+        "execution": {
+            "cwd": "{NAH_APP_ROOT}"
+        }
+    })";
+    
+    auto pack_result = pack_directory(temp.path());
+    REQUIRE(pack_result.ok);
+    
+    auto info = inspect_nak_pack(pack_result.archive_data);
+    
+    CHECK(info.ok);
+    CHECK(info.nak_id == "com.example.nak-with-env");
+    CHECK(info.environment.size() == 3);
+    CHECK(info.environment.at("NAK_HOME") == "{NAH_NAK_ROOT}");
+    CHECK(info.environment.at("NAK_VERSION") == "1.0.0");
+    CHECK(info.environment.at("CUSTOM_VAR") == "custom_value");
+}
+
+TEST_CASE("inspect_nak_pack handles empty environment section") {
+    TempDir temp;
+    
+    fs::create_directories(temp.path() + "/META");
+    
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v2",
+        "nak": {
+            "id": "com.example.nak-no-env",
+            "version": "1.0.0"
+        },
+        "paths": {
+            "resource_root": ".",
+            "lib_dirs": []
+        },
+        "environment": {},
+        "execution": {
+            "cwd": "{NAH_APP_ROOT}"
+        }
+    })";
+    
+    auto pack_result = pack_directory(temp.path());
+    REQUIRE(pack_result.ok);
+    
+    auto info = inspect_nak_pack(pack_result.archive_data);
+    
+    CHECK(info.ok);
+    CHECK(info.environment.empty());
+}
+
+TEST_CASE("inspect_nak_pack handles missing environment section") {
+    TempDir temp;
+    
+    fs::create_directories(temp.path() + "/META");
+    
+    // No environment section at all
+    std::ofstream(temp.path() + "/META/nak.json") << R"({
+        "$schema": "nah.nak.pack.v2",
+        "nak": {
+            "id": "com.example.nak-missing-env",
+            "version": "1.0.0"
+        },
+        "paths": {
+            "resource_root": ".",
+            "lib_dirs": []
+        },
+        "execution": {
+            "cwd": "{NAH_APP_ROOT}"
+        }
+    })";
+    
+    auto pack_result = pack_directory(temp.path());
+    REQUIRE(pack_result.ok);
+    
+    auto info = inspect_nak_pack(pack_result.archive_data);
+    
+    CHECK(info.ok);
+    CHECK(info.environment.empty());
+}
+
 TEST_CASE("pack_nap validates manifest presence") {
     TempDir temp;
     

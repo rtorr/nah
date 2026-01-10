@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nah {
@@ -144,6 +145,7 @@ struct NakPackInfo {
     std::string nak_version;
     std::string resource_root;
     std::vector<std::string> lib_dirs;
+    std::unordered_map<std::string, std::string> environment;
     bool has_loader = false;
     std::string loader_exec_path;
     std::vector<std::string> loader_args_template;

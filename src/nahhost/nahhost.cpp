@@ -40,7 +40,7 @@ std::vector<AppInfo> NahHost::listApplications() const {
         if (!entry.is_regular_file()) continue;
         
         std::string filename = entry.path().filename().string();
-        if (filename.size() < 5 || filename.substr(filename.size() - 5) != ".toml") {
+        if (filename.size() < 5 || filename.substr(filename.size() - 5) != ".json") {
             continue;
         }
         
@@ -100,8 +100,8 @@ Result<HostProfile> NahHost::getActiveHostProfile() const {
 
 Result<void> NahHost::setActiveHostProfile(const std::string& name) {
     fs::path link_path = fs::path(root_) / "host" / "profile.current";
-    std::string target = "profiles/" + name + ".toml";
-    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".toml");
+    std::string target = "profiles/" + name + ".json";
+    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".json");
     
     // Verify profile exists
     if (!fs::exists(profile_path)) {
@@ -134,7 +134,7 @@ std::vector<std::string> NahHost::listProfiles() const {
         if (!entry.is_regular_file()) continue;
         
         std::string filename = entry.path().filename().string();
-        if (filename.size() > 5 && filename.substr(filename.size() - 5) == ".toml") {
+        if (filename.size() > 5 && filename.substr(filename.size() - 5) == ".json") {
             profiles.push_back(filename.substr(0, filename.size() - 5));
         }
     }
@@ -144,7 +144,7 @@ std::vector<std::string> NahHost::listProfiles() const {
 }
 
 Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
-    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".toml");
+    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".json");
     
     std::string content = read_file(profile_path.string());
     if (content.empty()) {
@@ -162,7 +162,7 @@ Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
 }
 
 Result<void> NahHost::validateProfile(const HostProfile& profile) const {
-    if (profile.schema != "nah.host.profile.v1") {
+    if (profile.schema != "nah.host.profile.v2") {
         return Result<void>::err(Error(ErrorCode::PROFILE_PARSE_ERROR,
                                        "invalid schema"));
     }
@@ -178,7 +178,7 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
         if (result.isOk()) {
             return result;
         }
-        // Fall back to default.toml on failure
+        // Fall back to default.json on failure
     }
     
     // 2. Check profile.current symlink
@@ -195,7 +195,7 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
                 
                 if (!content.empty()) {
                     auto parse_result = parse_host_profile_full(content, profile_path.string());
-                    if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v1") {
+                    if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v2") {
                         return Result<HostProfile>::ok(parse_result.profile);
                     }
                 }
@@ -203,13 +203,13 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
         }
     }
     
-    // 3. Fall back to default.toml
-    fs::path default_path = fs::path(root_) / "host" / "profiles" / "default.toml";
+    // 3. Fall back to default.json
+    fs::path default_path = fs::path(root_) / "host" / "profiles" / "default.json";
     std::string content = read_file(default_path.string());
     
     if (!content.empty()) {
         auto parse_result = parse_host_profile_full(content, default_path.string());
-        if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v1") {
+        if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v2") {
             return Result<HostProfile>::ok(parse_result.profile);
         }
     }

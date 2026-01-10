@@ -19,7 +19,7 @@ struct NakRegistryEntry {
     std::string id;
     std::string version;
     std::string record_path;  // Full path to the record file
-    std::string record_ref;   // Filename only (e.g., "com.example.nak@3.0.2.toml")
+    std::string record_ref;   // Filename only (e.g., "com.example.nak@3.0.2.json")
 };
 
 // ============================================================================

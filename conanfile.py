@@ -44,7 +44,6 @@ class NahConan(ConanFile):
 
     def requirements(self):
         self.requires("nlohmann_json/3.11.3")
-        self.requires("tomlplusplus/3.4.0")
         self.requires("zlib/1.3.1")
         self.requires("openssl/3.2.1")
         self.requires("libcurl/8.6.0")
@@ -179,14 +178,16 @@ class NahConan(ConanFile):
                 "nah_config",
                 "nah_platform",
                 "nlohmann_json::nlohmann_json",
-                "tomlplusplus::tomlplusplus",
             ]
 
             self.cpp_info.components["nah_manifest"].libs = ["nah_manifest"]
+            self.cpp_info.components["nah_manifest"].requires = [
+                "nlohmann_json::nlohmann_json",
+            ]
 
             self.cpp_info.components["nah_config"].libs = ["nah_config"]
             self.cpp_info.components["nah_config"].requires = [
-                "tomlplusplus::tomlplusplus"
+                "nlohmann_json::nlohmann_json",
             ]
 
             self.cpp_info.components["nah_platform"].libs = ["nah_platform"]

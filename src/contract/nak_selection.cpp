@@ -153,14 +153,14 @@ PinnedNakLoadResult load_pinned_nak(
     std::string record_path = (fs::path(nah_root) / "registry" / "naks" / pin.record_ref).string();
     
     // Read and parse the record
-    std::string toml_content = read_file(record_path);
-    if (toml_content.empty()) {
+    std::string json_content = read_file(record_path);
+    if (json_content.empty()) {
         warnings.emit(Warning::nak_pin_invalid, 
                       {{"reason", "record_not_found"}, {"path", record_path}});
         return result;
     }
     
-    auto parse_result = parse_nak_install_record_full(toml_content, record_path);
+    auto parse_result = parse_nak_install_record_full(json_content, record_path);
     if (!parse_result.ok) {
         warnings.emit(Warning::nak_pin_invalid,
                       {{"reason", "parse_error"}, {"error", parse_result.error}});
@@ -170,7 +170,7 @@ PinnedNakLoadResult load_pinned_nak(
     const auto& nak_record = parse_result.record;
     
     // Validate schema
-    if (nak_record.schema != "nah.nak.install.v1") {
+    if (nak_record.schema != "nah.nak.install.v2") {
         warnings.emit(Warning::nak_pin_invalid, {{"reason", "schema_mismatch"}});
         return result;
     }
@@ -258,7 +258,7 @@ std::vector<NakRegistryEntry> scan_nak_registry(const std::string& nah_root) {
         if (!entry.is_regular_file()) continue;
         
         std::string filename = entry.path().filename().string();
-        if (filename.size() < 5 || filename.substr(filename.size() - 5) != ".toml") {
+        if (filename.size() < 5 || filename.substr(filename.size() - 5) != ".json") {
             continue;
         }
         

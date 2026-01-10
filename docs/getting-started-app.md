@@ -87,24 +87,26 @@ nah --root /path/to/nah contract show com.yourcompany.myapp
 
 ## Alternative: Standalone Manifest
 
-Instead of embedding, use a separate `manifest.toml`:
+Instead of embedding, use a separate `manifest.json`:
 
-```toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.yourcompany.myapp"
-version = "1.0.0"
-nak_id = "com.example.sdk"
-nak_version_req = ">=2.0.0 <3.0.0"
-entrypoint = "bin/myapp"
-lib_dirs = ["lib"]
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.yourcompany.myapp",
+    "version": "1.0.0",
+    "nak_id": "com.example.sdk",
+    "nak_version_req": ">=2.0.0 <3.0.0",
+    "entrypoint": "bin/myapp",
+    "lib_dirs": ["lib"]
+  }
+}
 ```
 
 Generate the binary manifest:
 
 ```bash
-nah manifest generate manifest.toml -o manifest.nah
+nah manifest generate manifest.json -o manifest.nah
 ```
 
 Include `manifest.nah` in your package root.

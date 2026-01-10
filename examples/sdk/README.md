@@ -43,7 +43,7 @@ sdk/
 │   └── loader.c          # NAK loader binary
 ├── resources/            # SDK resources
 └── META/
-    └── nak.toml.in       # NAK manifest template
+    └── nak.json.in       # NAK manifest template
 ```
 
 ## Building and Packaging
@@ -63,7 +63,7 @@ Output: `build/com.example.sdk-1.2.3.nak`
 ```
 com.example.sdk-1.2.3.nak
 ├── META/
-│   └── nak.toml          # NAK manifest
+│   └── nak.json          # NAK manifest
 ├── lib/
 │   └── libframework.so   # SDK shared library
 ├── bin/
@@ -112,12 +112,17 @@ int main(int argc, char** argv) {
 
 The app's manifest:
 
-```toml
-id = "com.example.app"
-version = "1.0.0"
-nak_id = "com.example.sdk"
-nak_version_req = ">=1.0.0 <2.0.0"
-entrypoint = "bin/app"
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.app",
+    "version": "1.0.0",
+    "nak_id": "com.example.sdk",
+    "nak_version_req": ">=1.0.0 <2.0.0",
+    "entrypoint": "bin/app"
+  }
+}
 ```
 
 ## Installing the NAK

@@ -1,6 +1,6 @@
 #include "nah/host_profile.hpp"
 
-#include <toml++/toml.h>
+#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 
@@ -23,11 +23,32 @@ std::string trim(const std::string& s) {
     return s.substr(start, end - start);
 }
 
+// Helper to safely get a string from JSON
+std::optional<std::string> get_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return j[key].get<std::string>();
+    }
+    return std::nullopt;
+}
+
+// Helper to safely get a string array from JSON
+std::vector<std::string> get_string_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(elem.get<std::string>());
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 HostProfile get_builtin_empty_profile() {
     HostProfile profile;
-    profile.schema = "nah.host.profile.v1";
+    profile.schema = "nah.host.profile.v2";
     profile.nak.binding_mode = BindingMode::Canonical;
     // Default warning actions per SPEC Built-in Empty Profile
     profile.warnings["nak_not_found"] = WarningAction::Warn;
@@ -37,31 +58,38 @@ HostProfile get_builtin_empty_profile() {
     return profile;
 }
 
-HostProfileParseResult parse_host_profile_full(const std::string& toml_str,
+HostProfileParseResult parse_host_profile_full(const std::string& json_str,
                                                 const std::string& source_path) {
     HostProfileParseResult result;
     result.profile.source_path = source_path;
     
     try {
-        auto tbl = toml::parse(toml_str);
+        auto j = nlohmann::json::parse(json_str);
         
-        // schema (REQUIRED)
-        if (auto schema = tbl["schema"].value<std::string>()) {
+        if (!j.is_object()) {
+            result.error = "JSON must be an object";
+            return result;
+        }
+        
+        // $schema (REQUIRED)
+        if (auto schema = get_string(j, "$schema")) {
             result.profile.schema = trim(*schema);
         } else {
-            result.error = "schema missing";
+            result.error = "$schema missing";
             return result;
         }
         
-        if (result.profile.schema != "nah.host.profile.v1") {
-            result.error = "schema mismatch: expected nah.host.profile.v1";
+        if (result.profile.schema != "nah.host.profile.v2") {
+            result.error = "$schema mismatch: expected nah.host.profile.v2";
             return result;
         }
         
-        // [nak] section
-        if (auto nak_tbl = tbl["nak"].as_table()) {
+        // "nak" section
+        if (j.contains("nak") && j["nak"].is_object()) {
+            const auto& nak = j["nak"];
+            
             // binding_mode
-            if (auto mode = (*nak_tbl)["binding_mode"].value<std::string>()) {
+            if (auto mode = get_string(nak, "binding_mode")) {
                 auto parsed = parse_binding_mode(*mode);
                 if (parsed) {
                     result.profile.nak.binding_mode = *parsed;
@@ -72,66 +100,43 @@ HostProfileParseResult parse_host_profile_full(const std::string& toml_str,
             }
             
             // allow_versions
-            if (auto arr = (*nak_tbl)["allow_versions"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.profile.nak.allow_versions.push_back(*s);
-                    }
-                }
-            }
+            result.profile.nak.allow_versions = get_string_array(nak, "allow_versions");
             
             // deny_versions
-            if (auto arr = (*nak_tbl)["deny_versions"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.profile.nak.deny_versions.push_back(*s);
-                    }
-                }
-            }
+            result.profile.nak.deny_versions = get_string_array(nak, "deny_versions");
             
-            // [nak.map] for mapped mode
-            if (auto map_tbl = (*nak_tbl)["map"].as_table()) {
-                for (const auto& [key, val] : *map_tbl) {
-                    if (auto s = val.value<std::string>()) {
-                        result.profile.nak.map[std::string(key.str())] = *s;
+            // "map" for mapped mode
+            if (nak.contains("map") && nak["map"].is_object()) {
+                for (auto& [key, val] : nak["map"].items()) {
+                    if (val.is_string()) {
+                        result.profile.nak.map[key] = val.get<std::string>();
                     }
                 }
             }
         }
         
-        // [environment] section
-        if (auto env_tbl = tbl["environment"].as_table()) {
-            for (const auto& [key, val] : *env_tbl) {
-                if (auto s = val.value<std::string>()) {
-                    result.profile.environment[std::string(key.str())] = *s;
+        // "environment" section
+        if (j.contains("environment") && j["environment"].is_object()) {
+            for (auto& [key, val] : j["environment"].items()) {
+                if (val.is_string()) {
+                    result.profile.environment[key] = val.get<std::string>();
                 }
             }
         }
         
-        // [paths] section
-        if (auto paths_tbl = tbl["paths"].as_table()) {
-            if (auto arr = (*paths_tbl)["library_prepend"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.profile.paths.library_prepend.push_back(*s);
-                    }
-                }
-            }
-            if (auto arr = (*paths_tbl)["library_append"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.profile.paths.library_append.push_back(*s);
-                    }
-                }
-            }
+        // "paths" section
+        if (j.contains("paths") && j["paths"].is_object()) {
+            const auto& paths = j["paths"];
+            result.profile.paths.library_prepend = get_string_array(paths, "library_prepend");
+            result.profile.paths.library_append = get_string_array(paths, "library_append");
         }
         
-        // [warnings] section
-        if (auto warn_tbl = tbl["warnings"].as_table()) {
-            for (const auto& [key, val] : *warn_tbl) {
-                if (auto s = val.value<std::string>()) {
-                    std::string key_str = to_lower(std::string(key.str()));
-                    auto action = parse_warning_action(*s);
+        // "warnings" section
+        if (j.contains("warnings") && j["warnings"].is_object()) {
+            for (auto& [key, val] : j["warnings"].items()) {
+                if (val.is_string()) {
+                    std::string key_str = to_lower(key);
+                    auto action = parse_warning_action(val.get<std::string>());
                     if (action) {
                         result.profile.warnings[key_str] = *action;
                     } else {
@@ -141,18 +146,20 @@ HostProfileParseResult parse_host_profile_full(const std::string& toml_str,
             }
         }
         
-        // [capabilities] section
-        if (auto cap_tbl = tbl["capabilities"].as_table()) {
-            for (const auto& [key, val] : *cap_tbl) {
-                if (auto s = val.value<std::string>()) {
-                    result.profile.capabilities[std::string(key.str())] = *s;
+        // "capabilities" section
+        if (j.contains("capabilities") && j["capabilities"].is_object()) {
+            for (auto& [key, val] : j["capabilities"].items()) {
+                if (val.is_string()) {
+                    result.profile.capabilities[key] = val.get<std::string>();
                 }
             }
         }
         
-        // [overrides] section
-        if (auto ovr_tbl = tbl["overrides"].as_table()) {
-            if (auto mode = (*ovr_tbl)["mode"].value<std::string>()) {
+        // "overrides" section
+        if (j.contains("overrides") && j["overrides"].is_object()) {
+            const auto& ovr = j["overrides"];
+            
+            if (auto mode = get_string(ovr, "mode")) {
                 auto parsed = parse_override_mode(*mode);
                 if (parsed) {
                     result.profile.overrides.mode = *parsed;
@@ -161,20 +168,17 @@ HostProfileParseResult parse_host_profile_full(const std::string& toml_str,
                 }
             }
             
-            if (auto arr = (*ovr_tbl)["allow_keys"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.profile.overrides.allow_keys.push_back(*s);
-                    }
-                }
-            }
+            result.profile.overrides.allow_keys = get_string_array(ovr, "allow_keys");
         }
         
         result.ok = true;
         return result;
         
-    } catch (const toml::parse_error& e) {
-        result.error = std::string("parse error: ") + e.description().data();
+    } catch (const nlohmann::json::parse_error& e) {
+        result.error = std::string("parse error: ") + e.what();
+        return result;
+    } catch (const nlohmann::json::exception& e) {
+        result.error = std::string("JSON error: ") + e.what();
         return result;
     }
 }
@@ -266,8 +270,8 @@ bool is_override_permitted(const std::string& target, const HostProfile& profile
 }
 
 // Legacy API implementation
-HostProfileValidation parse_host_profile(const std::string& toml_str, HostProfileRecord& out) {
-    auto result = parse_host_profile_full(toml_str);
+HostProfileValidation parse_host_profile(const std::string& json_str, HostProfileRecord& out) {
+    auto result = parse_host_profile_full(json_str);
     if (!result.ok) {
         return {false, result.error};
     }

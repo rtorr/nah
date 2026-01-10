@@ -154,7 +154,7 @@ TEST_CASE("serialize_contract_json trace contains all entry fields") {
     TraceEntry entry;
     entry.value = "test_value";
     entry.source_kind = "install_record";
-    entry.source_path = "/nah/registry/installs/app.toml";
+    entry.source_path = "/nah/registry/installs/app.json";
     entry.precedence_rank = 4;
     trace_map["environment"]["MY_VAR"] = entry;
     envelope.trace = trace_map;

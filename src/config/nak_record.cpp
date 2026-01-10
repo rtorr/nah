@@ -1,6 +1,6 @@
 #include "nah/nak_record.hpp"
 
-#include <toml++/toml.h>
+#include <nlohmann/json.hpp>
 #include <cctype>
 
 namespace nah {
@@ -19,46 +19,60 @@ bool is_empty_after_trim(const std::string& s) {
     return trim(s).empty();
 }
 
-std::string format_datetime(const toml::date_time& dt) {
-    char buf[64];
-    if (dt.offset.has_value()) {
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02dZ",
-                 dt.date.year, dt.date.month, dt.date.day,
-                 dt.time.hour, dt.time.minute, dt.time.second);
-    } else {
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d",
-                 dt.date.year, dt.date.month, dt.date.day,
-                 dt.time.hour, dt.time.minute, dt.time.second);
+// Helper to safely get a string from JSON
+std::optional<std::string> get_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return j[key].get<std::string>();
     }
-    return buf;
+    return std::nullopt;
+}
+
+// Helper to safely get a string array from JSON
+std::vector<std::string> get_string_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(elem.get<std::string>());
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace
 
-NakInstallRecordParseResult parse_nak_install_record_full(const std::string& toml_str,
+NakInstallRecordParseResult parse_nak_install_record_full(const std::string& json_str,
                                                            const std::string& source_path) {
     NakInstallRecordParseResult result;
     result.record.source_path = source_path;
     
     try {
-        auto tbl = toml::parse(toml_str);
+        auto j = nlohmann::json::parse(json_str);
         
-        // schema (REQUIRED)
-        if (auto schema = tbl["schema"].value<std::string>()) {
+        if (!j.is_object()) {
+            result.error = "JSON must be an object";
+            return result;
+        }
+        
+        // $schema (REQUIRED)
+        if (auto schema = get_string(j, "$schema")) {
             result.record.schema = trim(*schema);
         } else {
-            result.error = "schema missing";
+            result.error = "$schema missing";
             return result;
         }
         
-        if (result.record.schema != "nah.nak.install.v1") {
-            result.error = "schema mismatch: expected nah.nak.install.v1";
+        if (result.record.schema != "nah.nak.install.v2") {
+            result.error = "$schema mismatch: expected nah.nak.install.v2";
             return result;
         }
         
-        // [nak] section (REQUIRED)
-        if (auto nak_tbl = tbl["nak"].as_table()) {
-            if (auto id = (*nak_tbl)["id"].value<std::string>()) {
+        // "nak" section (REQUIRED)
+        if (j.contains("nak") && j["nak"].is_object()) {
+            const auto& nak = j["nak"];
+            
+            if (auto id = get_string(nak, "id")) {
                 if (is_empty_after_trim(*id)) {
                     result.error = "nak.id empty";
                     return result;
@@ -69,7 +83,7 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& tom
                 return result;
             }
             
-            if (auto ver = (*nak_tbl)["version"].value<std::string>()) {
+            if (auto ver = get_string(nak, "version")) {
                 if (is_empty_after_trim(*ver)) {
                     result.error = "nak.version empty";
                     return result;
@@ -84,9 +98,11 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& tom
             return result;
         }
         
-        // [paths] section (REQUIRED)
-        if (auto paths_tbl = tbl["paths"].as_table()) {
-            if (auto root = (*paths_tbl)["root"].value<std::string>()) {
+        // "paths" section (REQUIRED)
+        if (j.contains("paths") && j["paths"].is_object()) {
+            const auto& paths = j["paths"];
+            
+            if (auto root = get_string(paths, "root")) {
                 if (is_empty_after_trim(*root)) {
                     result.error = "paths.root empty";
                     return result;
@@ -98,74 +114,64 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& tom
             }
             
             // resource_root (defaults to root if omitted)
-            if (auto res = (*paths_tbl)["resource_root"].value<std::string>()) {
+            if (auto res = get_string(paths, "resource_root")) {
                 result.record.paths.resource_root = *res;
             } else {
                 result.record.paths.resource_root = result.record.paths.root;
             }
             
             // lib_dirs
-            if (auto arr = (*paths_tbl)["lib_dirs"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.record.paths.lib_dirs.push_back(*s);
-                    }
-                }
-            }
+            result.record.paths.lib_dirs = get_string_array(paths, "lib_dirs");
         } else {
             result.error = "paths section missing";
             return result;
         }
         
-        // [environment] section
-        if (auto env_tbl = tbl["environment"].as_table()) {
-            for (const auto& [key, val] : *env_tbl) {
-                if (auto s = val.value<std::string>()) {
-                    result.record.environment[std::string(key.str())] = *s;
+        // "environment" section
+        if (j.contains("environment") && j["environment"].is_object()) {
+            for (auto& [key, val] : j["environment"].items()) {
+                if (val.is_string()) {
+                    result.record.environment[key] = val.get<std::string>();
                 }
             }
         }
         
-        // [loader] section (OPTIONAL per SPEC L395)
-        if (auto loader_tbl = tbl["loader"].as_table()) {
+        // "loader" section (OPTIONAL per SPEC L395)
+        if (j.contains("loader") && j["loader"].is_object()) {
             result.record.loader.present = true;
+            const auto& loader = j["loader"];
             
-            if (auto exec = (*loader_tbl)["exec_path"].value<std::string>()) {
+            if (auto exec = get_string(loader, "exec_path")) {
                 result.record.loader.exec_path = *exec;
             }
             
-            if (auto arr = (*loader_tbl)["args_template"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.record.loader.args_template.push_back(*s);
-                    }
-                }
-            }
+            result.record.loader.args_template = get_string_array(loader, "args_template");
         }
         
-        // [execution] section (OPTIONAL per SPEC L402)
-        if (auto exec_tbl = tbl["execution"].as_table()) {
+        // "execution" section (OPTIONAL per SPEC L402)
+        if (j.contains("execution") && j["execution"].is_object()) {
             result.record.execution.present = true;
+            const auto& exec = j["execution"];
             
-            if (auto cwd = (*exec_tbl)["cwd"].value<std::string>()) {
+            if (auto cwd = get_string(exec, "cwd")) {
                 result.record.execution.cwd = *cwd;
             }
         }
         
-        // [provenance] section
-        if (auto prov_tbl = tbl["provenance"].as_table()) {
-            if (auto h = (*prov_tbl)["package_hash"].value<std::string>()) {
+        // "provenance" section
+        if (j.contains("provenance") && j["provenance"].is_object()) {
+            const auto& prov = j["provenance"];
+            
+            if (auto h = get_string(prov, "package_hash")) {
                 result.record.provenance.package_hash = *h;
             }
-            if (auto dt = (*prov_tbl)["installed_at"].as<toml::date_time>()) {
-                result.record.provenance.installed_at = format_datetime(dt->get());
-            } else if (auto s = (*prov_tbl)["installed_at"].value<std::string>()) {
-                result.record.provenance.installed_at = *s;
+            if (auto dt = get_string(prov, "installed_at")) {
+                result.record.provenance.installed_at = *dt;
             }
-            if (auto by = (*prov_tbl)["installed_by"].value<std::string>()) {
+            if (auto by = get_string(prov, "installed_by")) {
                 result.record.provenance.installed_by = *by;
             }
-            if (auto src = (*prov_tbl)["source"].value<std::string>()) {
+            if (auto src = get_string(prov, "source")) {
                 result.record.provenance.source = *src;
             }
         }
@@ -173,14 +179,17 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& tom
         result.ok = true;
         return result;
         
-    } catch (const toml::parse_error& e) {
-        result.error = std::string("parse error: ") + e.description().data();
+    } catch (const nlohmann::json::parse_error& e) {
+        result.error = std::string("parse error: ") + e.what();
+        return result;
+    } catch (const nlohmann::json::exception& e) {
+        result.error = std::string("JSON error: ") + e.what();
         return result;
     }
 }
 
 bool validate_nak_install_record(const NakInstallRecord& record, std::string& error) {
-    if (record.schema != "nah.nak.install.v1") {
+    if (record.schema != "nah.nak.install.v2") {
         error = "schema mismatch";
         return false;
     }
@@ -199,28 +208,35 @@ bool validate_nak_install_record(const NakInstallRecord& record, std::string& er
     return true;
 }
 
-NakPackManifestParseResult parse_nak_pack_manifest(const std::string& toml_str) {
+NakPackManifestParseResult parse_nak_pack_manifest(const std::string& json_str) {
     NakPackManifestParseResult result;
     
     try {
-        auto tbl = toml::parse(toml_str);
+        auto j = nlohmann::json::parse(json_str);
         
-        // schema (REQUIRED)
-        if (auto schema = tbl["schema"].value<std::string>()) {
+        if (!j.is_object()) {
+            result.error = "JSON must be an object";
+            return result;
+        }
+        
+        // $schema (REQUIRED)
+        if (auto schema = get_string(j, "$schema")) {
             result.manifest.schema = trim(*schema);
         } else {
-            result.error = "schema missing";
+            result.error = "$schema missing";
             return result;
         }
         
-        if (result.manifest.schema != "nah.nak.pack.v1") {
-            result.error = "schema mismatch: expected nah.nak.pack.v1";
+        if (result.manifest.schema != "nah.nak.pack.v2") {
+            result.error = "$schema mismatch: expected nah.nak.pack.v2";
             return result;
         }
         
-        // [nak] section (REQUIRED)
-        if (auto nak_tbl = tbl["nak"].as_table()) {
-            if (auto id = (*nak_tbl)["id"].value<std::string>()) {
+        // "nak" section (REQUIRED)
+        if (j.contains("nak") && j["nak"].is_object()) {
+            const auto& nak = j["nak"];
+            
+            if (auto id = get_string(nak, "id")) {
                 if (is_empty_after_trim(*id)) {
                     result.error = "nak.id empty";
                     return result;
@@ -231,7 +247,7 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& toml_str) 
                 return result;
             }
             
-            if (auto ver = (*nak_tbl)["version"].value<std::string>()) {
+            if (auto ver = get_string(nak, "version")) {
                 if (is_empty_after_trim(*ver)) {
                     result.error = "nak.version empty";
                     return result;
@@ -246,52 +262,44 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& toml_str) 
             return result;
         }
         
-        // [paths] section
-        if (auto paths_tbl = tbl["paths"].as_table()) {
-            if (auto res = (*paths_tbl)["resource_root"].value<std::string>()) {
+        // "paths" section
+        if (j.contains("paths") && j["paths"].is_object()) {
+            const auto& paths = j["paths"];
+            
+            if (auto res = get_string(paths, "resource_root")) {
                 result.manifest.paths.resource_root = *res;
             }
             
-            if (auto arr = (*paths_tbl)["lib_dirs"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.manifest.paths.lib_dirs.push_back(*s);
-                    }
+            result.manifest.paths.lib_dirs = get_string_array(paths, "lib_dirs");
+        }
+        
+        // "environment" section
+        if (j.contains("environment") && j["environment"].is_object()) {
+            for (auto& [key, val] : j["environment"].items()) {
+                if (val.is_string()) {
+                    result.manifest.environment[key] = val.get<std::string>();
                 }
             }
         }
         
-        // [environment] section
-        if (auto env_tbl = tbl["environment"].as_table()) {
-            for (const auto& [key, val] : *env_tbl) {
-                if (auto s = val.value<std::string>()) {
-                    result.manifest.environment[std::string(key.str())] = *s;
-                }
-            }
-        }
-        
-        // [loader] section
-        if (auto loader_tbl = tbl["loader"].as_table()) {
+        // "loader" section
+        if (j.contains("loader") && j["loader"].is_object()) {
             result.manifest.loader.present = true;
+            const auto& loader = j["loader"];
             
-            if (auto exec = (*loader_tbl)["exec_path"].value<std::string>()) {
+            if (auto exec = get_string(loader, "exec_path")) {
                 result.manifest.loader.exec_path = *exec;
             }
             
-            if (auto arr = (*loader_tbl)["args_template"].as_array()) {
-                for (const auto& elem : *arr) {
-                    if (auto s = elem.value<std::string>()) {
-                        result.manifest.loader.args_template.push_back(*s);
-                    }
-                }
-            }
+            result.manifest.loader.args_template = get_string_array(loader, "args_template");
         }
         
-        // [execution] section
-        if (auto exec_tbl = tbl["execution"].as_table()) {
+        // "execution" section
+        if (j.contains("execution") && j["execution"].is_object()) {
             result.manifest.execution.present = true;
+            const auto& exec = j["execution"];
             
-            if (auto cwd = (*exec_tbl)["cwd"].value<std::string>()) {
+            if (auto cwd = get_string(exec, "cwd")) {
                 result.manifest.execution.cwd = *cwd;
             }
         }
@@ -299,15 +307,18 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& toml_str) 
         result.ok = true;
         return result;
         
-    } catch (const toml::parse_error& e) {
-        result.error = std::string("parse error: ") + e.description().data();
+    } catch (const nlohmann::json::parse_error& e) {
+        result.error = std::string("parse error: ") + e.what();
+        return result;
+    } catch (const nlohmann::json::exception& e) {
+        result.error = std::string("JSON error: ") + e.what();
         return result;
     }
 }
 
 // Legacy API implementation
-NakInstallValidation parse_nak_install_record(const std::string& toml_str, NakInstallRecord& out) {
-    auto result = parse_nak_install_record_full(toml_str);
+NakInstallValidation parse_nak_install_record(const std::string& json_str, NakInstallRecord& out) {
+    auto result = parse_nak_install_record_full(json_str);
     if (!result.ok) {
         return {false, result.error};
     }

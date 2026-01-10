@@ -160,24 +160,28 @@ endif()
 # Manifest Generation
 # =============================================================================
 
-set(MANIFEST_TOML "${CMAKE_BINARY_DIR}/manifest.toml")
+set(MANIFEST_JSON "${CMAKE_BINARY_DIR}/manifest.json")
 set(MANIFEST_NAH "${CMAKE_BINARY_DIR}/manifest.nah")
 
-file(WRITE ${MANIFEST_TOML} "id = \"${APP_ID}\"
-version = \"${APP_VERSION}\"
-nak_id = \"${NAK_ID}\"
-nak_version_req = \"${NAK_VERSION_REQ}\"
-entrypoint = \"bin/mygame\"
-lib_dirs = [\"lib\"]
-asset_dirs = [\"assets\"]
-
-[permissions]
-filesystem = [\"read:assets/*\"]
-network = [\"connect:*.example.com:443\"]
-")
+file(WRITE ${MANIFEST_JSON} "{
+  \"$schema\": \"nah.manifest.input.v2\",
+  \"app\": {
+    \"id\": \"${APP_ID}\",
+    \"version\": \"${APP_VERSION}\",
+    \"nak_id\": \"${NAK_ID}\",
+    \"nak_version_req\": \"${NAK_VERSION_REQ}\",
+    \"entrypoint\": \"bin/mygame\",
+    \"lib_dirs\": [\"lib\"],
+    \"asset_dirs\": [\"assets\"],
+    \"permissions\": {
+      \"filesystem\": [\"read:assets/*\"],
+      \"network\": [\"connect:*.example.com:443\"]
+    }
+  }
+}")
 
 add_custom_target(generate_manifest
-    COMMAND ${NAH_CLI} manifest generate ${MANIFEST_TOML} -o ${MANIFEST_NAH}
+    COMMAND ${NAH_CLI} manifest generate ${MANIFEST_JSON} -o ${MANIFEST_NAH}
     COMMENT "Generating binary manifest"
 )
 

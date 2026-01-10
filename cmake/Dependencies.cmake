@@ -20,16 +20,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cpp-semver)
 
 # Try to find packages from Conan/system first, fall back to FetchContent
-find_package(tomlplusplus QUIET)
-if(NOT tomlplusplus_FOUND)
-    FetchContent_Declare(
-        tomlplusplus
-        GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-        GIT_TAG        v3.4.0
-    )
-    FetchContent_MakeAvailable(tomlplusplus)
-endif()
-
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
     FetchContent_Declare(

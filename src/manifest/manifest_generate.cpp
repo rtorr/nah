@@ -1,62 +1,85 @@
 #include "nah/manifest_generate.hpp"
 #include "nah/manifest_builder.hpp"
 
-#include <toml++/toml.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 
 namespace nah {
 
-ManifestInputParseResult parse_manifest_input(const std::string& toml_content) {
+namespace {
+
+std::optional<std::string> get_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return j[key].get<std::string>();
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> get_string_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& item : j[key]) {
+            if (item.is_string()) {
+                result.push_back(item.get<std::string>());
+            }
+        }
+    }
+    return result;
+}
+
+} // anonymous namespace
+
+ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
     ManifestInputParseResult result;
     
     try {
-        auto tbl = toml::parse(toml_content);
+        auto j = nlohmann::json::parse(json_content);
         
         // Check schema
-        auto schema = tbl["schema"].value<std::string>();
-        if (!schema || *schema != "nah.manifest.input.v1") {
-            result.error = "missing or invalid schema (expected nah.manifest.input.v1)";
+        auto schema = get_string(j, "$schema");
+        if (!schema || *schema != "nah.manifest.input.v2") {
+            result.error = "missing or invalid $schema (expected nah.manifest.input.v2)";
             return result;
         }
         
-        // Parse [app] section
-        auto app = tbl["app"].as_table();
-        if (!app) {
-            result.error = "missing [app] section";
+        // Parse "app" section
+        if (!j.contains("app") || !j["app"].is_object()) {
+            result.error = "missing \"app\" section";
             return result;
         }
+        const auto& app = j["app"];
         
         // Required fields
-        auto id = (*app)["id"].value<std::string>();
+        auto id = get_string(app, "id");
         if (!id || id->empty()) {
             result.error = "missing required field: app.id";
             return result;
         }
         result.input.id = *id;
         
-        auto version = (*app)["version"].value<std::string>();
+        auto version = get_string(app, "version");
         if (!version || version->empty()) {
             result.error = "missing required field: app.version";
             return result;
         }
         result.input.version = *version;
         
-        auto nak_id = (*app)["nak_id"].value<std::string>();
+        auto nak_id = get_string(app, "nak_id");
         if (!nak_id || nak_id->empty()) {
             result.error = "missing required field: app.nak_id";
             return result;
         }
         result.input.nak_id = *nak_id;
         
-        auto nak_version_req = (*app)["nak_version_req"].value<std::string>();
+        auto nak_version_req = get_string(app, "nak_version_req");
         if (!nak_version_req || nak_version_req->empty()) {
             result.error = "missing required field: app.nak_version_req";
             return result;
         }
         result.input.nak_version_req = *nak_version_req;
         
-        auto entrypoint = (*app)["entrypoint"].value<std::string>();
+        auto entrypoint = get_string(app, "entrypoint");
         if (!entrypoint || entrypoint->empty()) {
             result.error = "missing required field: app.entrypoint";
             return result;
@@ -73,154 +96,139 @@ ManifestInputParseResult parse_manifest_input(const std::string& toml_content) {
         result.input.entrypoint = *entrypoint;
         
         // Optional fields
-        if (auto desc = (*app)["description"].value<std::string>()) {
+        if (auto desc = get_string(app, "description")) {
             result.input.description = *desc;
         }
-        if (auto auth = (*app)["author"].value<std::string>()) {
+        if (auto auth = get_string(app, "author")) {
             result.input.author = *auth;
         }
-        if (auto lic = (*app)["license"].value<std::string>()) {
+        if (auto lic = get_string(app, "license")) {
             result.input.license = *lic;
         }
-        if (auto hp = (*app)["homepage"].value<std::string>()) {
+        if (auto hp = get_string(app, "homepage")) {
             result.input.homepage = *hp;
         }
         
         // Entrypoint args
-        if (auto args = (*app)["entrypoint_args"].as_array()) {
-            for (const auto& arg : *args) {
-                if (auto s = arg.value<std::string>()) {
-                    result.input.entrypoint_args.push_back(*s);
-                }
-            }
-        }
+        result.input.entrypoint_args = get_string_array(app, "entrypoint_args");
         
         // lib_dirs
-        if (auto libs = (*app)["lib_dirs"].as_array()) {
-            for (const auto& lib : *libs) {
-                if (auto s = lib.value<std::string>()) {
-                    if (!s->empty() && (*s)[0] == '/') {
-                        result.error = "lib_dirs entries must be relative paths";
-                        return result;
-                    }
-                    if (s->find("..") != std::string::npos) {
-                        result.error = "lib_dirs entries must not contain '..'";
-                        return result;
-                    }
-                    result.input.lib_dirs.push_back(*s);
-                }
+        auto lib_dirs = get_string_array(app, "lib_dirs");
+        for (const auto& s : lib_dirs) {
+            if (!s.empty() && s[0] == '/') {
+                result.error = "lib_dirs entries must be relative paths";
+                return result;
             }
+            if (s.find("..") != std::string::npos) {
+                result.error = "lib_dirs entries must not contain '..'";
+                return result;
+            }
+            result.input.lib_dirs.push_back(s);
         }
         
         // asset_dirs
-        if (auto assets = (*app)["asset_dirs"].as_array()) {
-            for (const auto& asset : *assets) {
-                if (auto s = asset.value<std::string>()) {
-                    if (!s->empty() && (*s)[0] == '/') {
-                        result.error = "asset_dirs entries must be relative paths";
-                        return result;
-                    }
-                    if (s->find("..") != std::string::npos) {
-                        result.error = "asset_dirs entries must not contain '..'";
-                        return result;
-                    }
-                    result.input.asset_dirs.push_back(*s);
-                }
+        auto asset_dirs = get_string_array(app, "asset_dirs");
+        for (const auto& s : asset_dirs) {
+            if (!s.empty() && s[0] == '/') {
+                result.error = "asset_dirs entries must be relative paths";
+                return result;
             }
+            if (s.find("..") != std::string::npos) {
+                result.error = "asset_dirs entries must not contain '..'";
+                return result;
+            }
+            result.input.asset_dirs.push_back(s);
         }
         
-        // exports (array of tables)
-        if (auto exports = (*app)["exports"].as_array()) {
-            for (const auto& exp : *exports) {
-                if (auto exp_tbl = exp.as_table()) {
-                    ManifestInput::AssetExport asset_exp;
-                    
-                    auto exp_id = (*exp_tbl)["id"].value<std::string>();
-                    auto exp_path = (*exp_tbl)["path"].value<std::string>();
-                    
-                    if (!exp_id || exp_id->empty()) {
-                        result.error = "exports entry missing 'id'";
-                        return result;
-                    }
-                    if (!exp_path || exp_path->empty()) {
-                        result.error = "exports entry missing 'path'";
-                        return result;
-                    }
-                    if ((*exp_path)[0] == '/') {
-                        result.error = "exports path must be relative";
-                        return result;
-                    }
-                    if (exp_path->find("..") != std::string::npos) {
-                        result.error = "exports path must not contain '..'";
-                        return result;
-                    }
-                    
-                    asset_exp.id = *exp_id;
-                    asset_exp.path = *exp_path;
-                    
-                    if (auto exp_type = (*exp_tbl)["type"].value<std::string>()) {
-                        asset_exp.type = *exp_type;
-                    }
-                    
-                    result.input.exports.push_back(asset_exp);
+        // exports (array of objects)
+        if (app.contains("exports") && app["exports"].is_array()) {
+            for (const auto& exp : app["exports"]) {
+                if (!exp.is_object()) continue;
+                
+                ManifestInput::AssetExport asset_exp;
+                
+                auto exp_id = get_string(exp, "id");
+                auto exp_path = get_string(exp, "path");
+                
+                if (!exp_id || exp_id->empty()) {
+                    result.error = "exports entry missing 'id'";
+                    return result;
                 }
+                if (!exp_path || exp_path->empty()) {
+                    result.error = "exports entry missing 'path'";
+                    return result;
+                }
+                if ((*exp_path)[0] == '/') {
+                    result.error = "exports path must be relative";
+                    return result;
+                }
+                if (exp_path->find("..") != std::string::npos) {
+                    result.error = "exports path must not contain '..'";
+                    return result;
+                }
+                
+                asset_exp.id = *exp_id;
+                asset_exp.path = *exp_path;
+                
+                if (auto exp_type = get_string(exp, "type")) {
+                    asset_exp.type = *exp_type;
+                }
+                
+                result.input.exports.push_back(asset_exp);
             }
         }
         
         // environment
-        if (auto env = (*app)["environment"].as_table()) {
-            for (const auto& [key, val] : *env) {
-                if (auto s = val.value<std::string>()) {
-                    result.input.environment[std::string(key.str())] = *s;
+        if (app.contains("environment") && app["environment"].is_object()) {
+            for (const auto& [key, val] : app["environment"].items()) {
+                if (val.is_string()) {
+                    result.input.environment[key] = val.get<std::string>();
                 }
             }
         }
         
         // permissions
-        if (auto perms = (*app)["permissions"].as_table()) {
-            if (auto fs = (*perms)["filesystem"].as_array()) {
-                for (const auto& p : *fs) {
-                    if (auto s = p.value<std::string>()) {
-                        // Validate format: operation:selector
-                        auto colon = s->find(':');
-                        if (colon == std::string::npos) {
-                            result.error = "invalid filesystem permission format (expected operation:selector)";
-                            return result;
-                        }
-                        std::string op = s->substr(0, colon);
-                        if (op != "read" && op != "write" && op != "execute") {
-                            result.error = "invalid filesystem permission operation (expected read, write, or execute)";
-                            return result;
-                        }
-                        result.input.permissions_filesystem.push_back(*s);
-                    }
+        if (app.contains("permissions") && app["permissions"].is_object()) {
+            const auto& perms = app["permissions"];
+            
+            auto fs_perms = get_string_array(perms, "filesystem");
+            for (const auto& s : fs_perms) {
+                // Validate format: operation:selector
+                auto colon = s.find(':');
+                if (colon == std::string::npos) {
+                    result.error = "invalid filesystem permission format (expected operation:selector)";
+                    return result;
                 }
+                std::string op = s.substr(0, colon);
+                if (op != "read" && op != "write" && op != "execute") {
+                    result.error = "invalid filesystem permission operation (expected read, write, or execute)";
+                    return result;
+                }
+                result.input.permissions_filesystem.push_back(s);
             }
-            if (auto net = (*perms)["network"].as_array()) {
-                for (const auto& p : *net) {
-                    if (auto s = p.value<std::string>()) {
-                        // Validate format: operation:selector
-                        auto colon = s->find(':');
-                        if (colon == std::string::npos) {
-                            result.error = "invalid network permission format (expected operation:selector)";
-                            return result;
-                        }
-                        std::string op = s->substr(0, colon);
-                        if (op != "connect" && op != "listen" && op != "bind") {
-                            result.error = "invalid network permission operation (expected connect, listen, or bind)";
-                            return result;
-                        }
-                        result.input.permissions_network.push_back(*s);
-                    }
+            
+            auto net_perms = get_string_array(perms, "network");
+            for (const auto& s : net_perms) {
+                // Validate format: operation:selector
+                auto colon = s.find(':');
+                if (colon == std::string::npos) {
+                    result.error = "invalid network permission format (expected operation:selector)";
+                    return result;
                 }
+                std::string op = s.substr(0, colon);
+                if (op != "connect" && op != "listen" && op != "bind") {
+                    result.error = "invalid network permission operation (expected connect, listen, or bind)";
+                    return result;
+                }
+                result.input.permissions_network.push_back(s);
             }
         }
         
         result.ok = true;
         return result;
         
-    } catch (const toml::parse_error& e) {
-        result.error = std::string("TOML parse error: ") + e.what();
+    } catch (const nlohmann::json::parse_error& e) {
+        result.error = std::string("JSON parse error: ") + e.what();
         return result;
     }
 }
@@ -281,10 +289,10 @@ std::vector<uint8_t> build_manifest_from_input(const ManifestInput& input) {
     return builder.build();
 }
 
-ManifestGenerateResult generate_manifest(const std::string& toml_content) {
+ManifestGenerateResult generate_manifest(const std::string& json_content) {
     ManifestGenerateResult result;
     
-    auto parse_result = parse_manifest_input(toml_content);
+    auto parse_result = parse_manifest_input(json_content);
     if (!parse_result.ok) {
         result.error = parse_result.error;
         result.warnings = parse_result.warnings;

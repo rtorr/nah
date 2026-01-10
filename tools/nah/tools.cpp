@@ -1,6 +1,5 @@
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
-#include <toml++/toml.h>
 
 #include "nah/nahhost.hpp"
 #include "nah/manifest.hpp"
@@ -731,30 +730,25 @@ int cmd_nak_init(const GlobalOptions& opts, const std::string& dir) {
     fs::create_directories(dir + "/resources");
     fs::create_directories(dir + "/bin");
     
-    std::string nak_toml = R"toml(schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.example.nak"
-version = "1.0.0"
-
-[paths]
-resource_root = "resources"
-lib_dirs = ["lib"]
-
-[environment]
-# NAH_NAK_FLAG = "1"
-
-# Optional loader configuration
-# [loader]
-# exec_path = "bin/nah-runtime"
-# args_template = ["--app", "{NAH_APP_ENTRY}"]
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
-)toml";
+    std::string nak_json = R"({
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {},
+  "loader": {},
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  }
+})";
     
-    std::ofstream file(dir + "/META/nak.toml");
-    file << nak_toml;
+    std::ofstream file(dir + "/META/nak.json");
+    file << nak_json;
     file.close();
     
     // Create README.md
@@ -764,7 +758,7 @@ This is a NAK skeleton for building an SDK or framework.
 
 ## Next Steps
 
-1. Edit `META/nak.toml` to update:
+1. Edit `META/nak.json` to update:
    - `nak.id`: Your NAK's unique identifier (e.g., `com.yourcompany.mysdk`)
    - `nak.version`: Your NAK's version
    - `paths.lib_dirs`: Directories containing shared libraries
@@ -773,7 +767,7 @@ This is a NAK skeleton for building an SDK or framework.
    - `lib/libmysdk.so` (Linux)
    - `lib/libmysdk.dylib` (macOS)
 
-3. Optional: Add a loader binary to `bin/` and configure `[loader]`
+3. Optional: Add a loader binary to `bin/` and configure `loader`
 
 4. Package as NAK:
    ```bash
@@ -798,7 +792,7 @@ See `docs/getting-started-nak.md` for the full guide.
     if (!opts.quiet) {
         std::cout << "Created NAK skeleton in " << dir << std::endl;
         std::cout << "Files created:" << std::endl;
-        std::cout << "  " << dir << "/META/nak.toml" << std::endl;
+        std::cout << "  " << dir << "/META/nak.json" << std::endl;
         std::cout << "  " << dir << "/bin/" << std::endl;
         std::cout << "  " << dir << "/lib/" << std::endl;
         std::cout << "  " << dir << "/resources/" << std::endl;
@@ -866,29 +860,25 @@ int cmd_profile_init(const GlobalOptions& opts, const std::string& dir) {
     fs::create_directories(root_path / "registry" / "installs", ec);
     fs::create_directories(root_path / "registry" / "naks", ec);
     
-    // Create default.toml
-    std::string default_profile = R"(schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-
-[environment]
-# Add environment variables for your deployment
-# NAH_HOST_VERSION = "1.0"
-
-[warnings]
-# Override warning actions: "warn", "ignore", or "error"
-# nak_not_found = "error"
-
-[capabilities]
-# Map app capabilities to host enforcement
-# "filesystem.read" = "sandbox.readonly"
-# "network.connect" = "network.outbound"
-)";
+    // Create default.json
+    std::string default_profile = R"({
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical",
+    "allow_versions": [],
+    "deny_versions": []
+  },
+  "environment": {},
+  "warnings": {},
+  "capabilities": {},
+  "overrides": {
+    "mode": "deny"
+  }
+})";
     
-    std::ofstream profile_file(root_path / "host" / "profiles" / "default.toml");
+    std::ofstream profile_file(root_path / "host" / "profiles" / "default.json");
     if (!profile_file) {
-        print_error("failed to write default.toml", opts.json);
+        print_error("failed to write default.json", opts.json);
         return 1;
     }
     profile_file << default_profile;
@@ -896,7 +886,7 @@ binding_mode = "canonical"
     
     // Create profile.current symlink
     fs::path symlink_path = root_path / "host" / "profile.current";
-    fs::create_symlink("profiles/default.toml", symlink_path, ec);
+    fs::create_symlink("profiles/default.json", symlink_path, ec);
     if (ec) {
         print_error("failed to create profile.current symlink: " + ec.message(), opts.json);
         return 1;
@@ -912,7 +902,7 @@ This directory is a NAH (Native Application Host) root.
 ```
 ├── host/
 │   ├── profiles/
-│   │   └── default.toml    # Host profile configuration
+│   │   └── default.json    # Host profile configuration
 │   └── profile.current     # Symlink to active profile
 ├── apps/                   # Installed applications
 ├── naks/                   # Installed NAK packs
@@ -923,7 +913,7 @@ This directory is a NAH (Native Application Host) root.
 
 ## Next Steps
 
-1. Edit `host/profiles/default.toml` for your environment
+1. Edit `host/profiles/default.json` for your environment
 2. Install NAKs: `nah --root )" + dir + R"( nak install <pack.nak>`
 3. Install apps: `nah --root )" + dir + R"( app install <app.nap>`
 4. Validate: `nah --root )" + dir + R"( doctor <app_id>`
@@ -947,8 +937,8 @@ See `docs/getting-started-host.md` for the full host integrator guide.
     } else if (!opts.quiet) {
         std::cout << "Created NAH root in " << dir << std::endl;
         std::cout << "Files created:" << std::endl;
-        std::cout << "  " << dir << "/host/profiles/default.toml" << std::endl;
-        std::cout << "  " << dir << "/host/profile.current -> profiles/default.toml" << std::endl;
+        std::cout << "  " << dir << "/host/profiles/default.json" << std::endl;
+        std::cout << "  " << dir << "/host/profile.current -> profiles/default.json" << std::endl;
         std::cout << "  " << dir << "/apps/" << std::endl;
         std::cout << "  " << dir << "/naks/" << std::endl;
         std::cout << "  " << dir << "/registry/installs/" << std::endl;
@@ -1463,20 +1453,20 @@ int cmd_contract_resolve(const GlobalOptions& opts, const std::string& target) {
 
 int cmd_manifest_generate(const GlobalOptions& opts, const std::string& input_path,
                            const std::string& output_path) {
-    // Read TOML file
-    std::string toml_content = read_file(input_path);
-    if (toml_content.empty()) {
+    // Read JSON file
+    std::string json_content = read_file(input_path);
+    if (json_content.empty()) {
         print_error("failed to read input file: " + input_path, opts.json);
         return 1;
     }
     
-    // Use the manifest generation library (expects nah.manifest.input.v1 schema)
-    auto result = nah::generate_manifest(toml_content);
+    // Use the manifest generation library (expects nah.manifest.input.v2 schema)
+    auto result = nah::generate_manifest(json_content);
     
     if (!result.ok) {
         ErrorContext ctx;
         ctx.file_path = input_path;
-        ctx.hint = "The input file must use schema = \"nah.manifest.input.v1\" with an [app] section.\n"
+        ctx.hint = "The input file must use $schema: \"nah.manifest.input.v2\" with an \"app\" section.\n"
                    "       See 'nah manifest generate --help' for the expected format.";
         print_error(result.error, opts.json, ctx);
         return 1;
@@ -1702,9 +1692,9 @@ int cmd_doctor(const GlobalOptions& opts, const std::string& target, bool fix) {
                 std::error_code ec;
                 fs::remove(profile_current, ec);
                 if (!ec) {
-                    fs::path default_profile = fs::path(opts.root) / "host" / "profiles" / "default.toml";
+                    fs::path default_profile = fs::path(opts.root) / "host" / "profiles" / "default.json";
                     if (fs::exists(default_profile)) {
-                        fs::create_symlink("profiles/default.toml", profile_current, ec);
+                        fs::create_symlink("profiles/default.json", profile_current, ec);
                         if (!ec) {
                             issues.push_back({"info", "fixed: profile.current symlink recreated", ""});
                         }
@@ -1839,19 +1829,17 @@ int cmd_format(const GlobalOptions& opts, const std::string& path, bool check) {
         return 1;
     }
     
-    // Parse as TOML
-    toml::table tbl;
+    // Parse as JSON
+    nlohmann::json j;
     try {
-        tbl = toml::parse(content);
-    } catch (const toml::parse_error& e) {
-        print_error("TOML parse error: " + std::string(e.what()), opts.json);
+        j = nlohmann::json::parse(content);
+    } catch (const nlohmann::json::parse_error& e) {
+        print_error("JSON parse error: " + std::string(e.what()), opts.json);
         return 1;
     }
     
-    // Format to canonical TOML
-    std::ostringstream formatted;
-    formatted << tbl;
-    std::string formatted_str = formatted.str();
+    // Format to canonical JSON (2-space indent)
+    std::string formatted_str = j.dump(2) + "\n";
     
     // Check if different
     bool differs = (content != formatted_str);
@@ -1859,10 +1847,10 @@ int cmd_format(const GlobalOptions& opts, const std::string& path, bool check) {
     if (check) {
         // Just check, don't modify
         if (opts.json) {
-            nlohmann::json j;
-            j["path"] = path;
-            j["formatted"] = !differs;
-            std::cout << j.dump(2) << std::endl;
+            nlohmann::json jout;
+            jout["path"] = path;
+            jout["formatted"] = !differs;
+            std::cout << jout.dump(2) << std::endl;
         } else {
             if (differs) {
                 std::cout << path << ": would be reformatted" << std::endl;
@@ -1902,11 +1890,11 @@ int cmd_format(const GlobalOptions& opts, const std::string& path, bool check) {
     }
     
     if (opts.json) {
-        nlohmann::json j;
-        j["path"] = path;
-        j["formatted"] = true;
-        j["changed"] = differs;
-        std::cout << j.dump(2) << std::endl;
+        nlohmann::json jout;
+        jout["path"] = path;
+        jout["formatted"] = true;
+        jout["changed"] = differs;
+        std::cout << jout.dump(2) << std::endl;
     } else {
         if (differs) {
             std::cout << path << ": formatted" << std::endl;
@@ -2148,8 +2136,8 @@ int main(int argc, char** argv) {
     profile_init->add_option("dir", profile_init_dir, 
         "Directory to initialize as a NAH root")->required();
     profile_init->footer("\nCreates the required directory structure:\n"
-                         "  <dir>/host/profiles/default.toml\n"
-                         "  <dir>/host/profile.current -> profiles/default.toml\n"
+                         "  <dir>/host/profiles/default.json\n"
+                         "  <dir>/host/profile.current -> profiles/default.json\n"
                          "  <dir>/apps/\n"
                          "  <dir>/naks/\n"
                          "  <dir>/registry/installs/\n"
@@ -2173,7 +2161,7 @@ int main(int argc, char** argv) {
     std::string profile_path;
     auto profile_validate = profile_cmd->add_subcommand("validate", "Validate a profile file");
     profile_validate->add_option("path", profile_path, 
-        "Path to profile TOML file")->required()->check(CLI::ExistingFile);
+        "Path to profile JSON file")->required()->check(CLI::ExistingFile);
     profile_validate->callback([&]() { std::exit(cmd_profile_validate(opts, profile_path)); });
     
     // ========== Contract Commands ==========
@@ -2217,7 +2205,7 @@ int main(int argc, char** argv) {
     manifest_cmd->footer("\nManifests are embedded in application binaries to declare dependencies.\n"
                          "\nExamples:\n"
                          "  nah manifest show ./myapp              # Extract manifest from binary\n"
-                         "  nah manifest generate manifest.toml -o manifest.nah");
+                         "  nah manifest generate manifest.json -o manifest.nah");
     
     std::string manifest_target;
     auto manifest_show = manifest_cmd->add_subcommand("show", "Display manifest from a binary or installed app");
@@ -2226,32 +2214,25 @@ int main(int argc, char** argv) {
     manifest_show->callback([&]() { std::exit(cmd_manifest_show(opts, manifest_target)); });
     
     std::string manifest_input, manifest_output;
-    auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from TOML");
+    auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from JSON");
     manifest_generate->add_option("input", manifest_input, 
-        "Input TOML file with manifest definition\n"
-        "Must use schema = \"nah.manifest.input.v1\"")->required()->check(CLI::ExistingFile);
+        "Input JSON file with manifest definition\n"
+        "Must use $schema: \"nah.manifest.input.v2\"")->required()->check(CLI::ExistingFile);
     manifest_generate->add_option("-o,--output", manifest_output, 
         "Output binary manifest file (.nah)")->required();
-    manifest_generate->footer("\nInput file format (nah.manifest.input.v1):\n"
-                               "  schema = \"nah.manifest.input.v1\"\n"
-                               "  \n"
-                               "  [app]\n"
-                               "  id = \"com.example.myapp\"\n"
-                               "  version = \"1.0.0\"\n"
-                               "  nak_id = \"com.example.sdk\"\n"
-                               "  nak_version_req = \"^1.0.0\"\n"
-                               "  entrypoint = \"bundle.js\"  # relative path\n"
-                               "  \n"
-                               "  # Optional fields:\n"
-                               "  # description = \"My application\"\n"
-                               "  # author = \"Developer Name\"\n"
-                               "  # lib_dirs = [\"lib\"]\n"
-                               "  # asset_dirs = [\"assets\"]\n"
-                               "  # [app.permissions]\n"
-                               "  # filesystem = [\"read:assets/*\"]\n"
-                               "  # network = [\"connect:*.example.com:443\"]\n"
+    manifest_generate->footer("\nInput file format (nah.manifest.input.v2):\n"
+                               "  {\n"
+                               "    \"$schema\": \"nah.manifest.input.v2\",\n"
+                               "    \"app\": {\n"
+                               "      \"id\": \"com.example.myapp\",\n"
+                               "      \"version\": \"1.0.0\",\n"
+                               "      \"nak_id\": \"com.example.sdk\",\n"
+                               "      \"nak_version_req\": \"^1.0.0\",\n"
+                               "      \"entrypoint\": \"bundle.js\"\n"
+                               "    }\n"
+                               "  }\n"
                                "\nExample:\n"
-                               "  nah manifest generate manifest.toml -o manifest.nah");
+                               "  nah manifest generate manifest.json -o manifest.nah");
     manifest_generate->callback([&]() { std::exit(cmd_manifest_generate(opts, manifest_input, manifest_output)); });
     
     // ========== Doctor Command ==========
@@ -2281,9 +2262,9 @@ int main(int argc, char** argv) {
     validate_cmd->add_flag("--strict", validate_strict, 
         "Treat warnings as errors");
     validate_cmd->footer("\nValidation kinds:\n"
-                         "  profile         Host profile TOML\n"
-                         "  install-record  App install record TOML\n"
-                         "  nak-record      NAK install record TOML\n"
+                         "  profile         Host profile JSON\n"
+                         "  install-record  App install record JSON\n"
+                         "  nak-record      NAK install record JSON\n"
                          "  package         NAP package archive\n"
                          "  nak-pack        NAK pack archive\n"
                          "  capabilities    Capabilities declaration");
@@ -2292,9 +2273,9 @@ int main(int argc, char** argv) {
     // ========== Format Command ==========
     std::string format_path;
     bool format_check = false;
-    auto format_cmd = app.add_subcommand("format", "Format TOML configuration files");
+    auto format_cmd = app.add_subcommand("format", "Format JSON configuration files");
     format_cmd->add_option("file", format_path, 
-        "TOML file to format")->required()->check(CLI::ExistingFile);
+        "JSON file to format")->required()->check(CLI::ExistingFile);
     format_cmd->add_flag("--check", format_check, 
         "Check if file needs formatting (exit 1 if changes needed)");
     format_cmd->footer("\nUseful in CI to enforce consistent formatting.");

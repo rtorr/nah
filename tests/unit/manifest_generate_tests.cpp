@@ -10,18 +10,18 @@
 // ============================================================================
 
 TEST_CASE("parse_manifest_input: valid minimal input") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js"
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK(result.ok);
     CHECK(result.error.empty());
     CHECK(result.input.id == "com.example.myapp");
@@ -32,42 +32,44 @@ TEST_CASE("parse_manifest_input: valid minimal input") {
 }
 
 TEST_CASE("parse_manifest_input: valid full input") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-        entrypoint_args = ["--mode", "production"]
-        description = "My Application"
-        author = "Developer"
-        license = "MIT"
-        homepage = "https://example.com"
-        lib_dirs = ["lib", "vendor/lib"]
-        asset_dirs = ["assets"]
-        
-        [[app.exports]]
-        id = "config"
-        path = "share/config.json"
-        type = "application/json"
-        
-        [[app.exports]]
-        id = "splash"
-        path = "assets/splash.png"
-        
-        [app.environment]
-        NODE_ENV = "production"
-        LOG_LEVEL = "info"
-        
-        [app.permissions]
-        filesystem = ["read:app://assets/*"]
-        network = ["connect:https://api.example.com:443"]
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js",
+            "entrypoint_args": ["--mode", "production"],
+            "description": "My Application",
+            "author": "Developer",
+            "license": "MIT",
+            "homepage": "https://example.com",
+            "lib_dirs": ["lib", "vendor/lib"],
+            "asset_dirs": ["assets"],
+            "exports": [
+                {
+                    "id": "config",
+                    "path": "share/config.json",
+                    "type": "application/json"
+                },
+                {
+                    "id": "splash",
+                    "path": "assets/splash.png"
+                }
+            ],
+            "environment": {
+                "NODE_ENV": "production",
+                "LOG_LEVEL": "info"
+            },
+            "permissions": {
+                "filesystem": ["read:app://assets/*"],
+                "network": ["connect:https://api.example.com:443"]
+            }
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK(result.ok);
     CHECK(result.input.id == "com.example.myapp");
     CHECK(result.input.entrypoint_args.size() == 2);
@@ -87,176 +89,188 @@ TEST_CASE("parse_manifest_input: valid full input") {
 }
 
 TEST_CASE("parse_manifest_input: missing schema fails") {
-    const char* toml = R"(
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-    )";
+    const char* json = R"({
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js"
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("schema") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: wrong schema fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v2"
-        
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v1",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js"
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("schema") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: missing required field fails") {
     // Missing id
-    const char* toml1 = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-    )";
-    auto r1 = nah::parse_manifest_input(toml1);
+    const char* json1 = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js"
+        }
+    })";
+    auto r1 = nah::parse_manifest_input(json1);
     CHECK_FALSE(r1.ok);
     CHECK(r1.error.find("id") != std::string::npos);
     
     // Missing entrypoint
-    const char* toml2 = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-    )";
-    auto r2 = nah::parse_manifest_input(toml2);
+    const char* json2 = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0"
+        }
+    })";
+    auto r2 = nah::parse_manifest_input(json2);
     CHECK_FALSE(r2.ok);
     CHECK(r2.error.find("entrypoint") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: absolute entrypoint path fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "/absolute/path/bundle.js"
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "/absolute/path/bundle.js"
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("relative") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: path traversal in entrypoint fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "../escape/bundle.js"
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "../escape/bundle.js"
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("..") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: absolute lib_dir fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-        lib_dirs = ["/absolute/lib"]
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js",
+            "lib_dirs": ["/absolute/lib"]
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("relative") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: invalid filesystem permission format fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-        [app.permissions]
-        filesystem = ["invalid-no-colon"]
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js",
+            "permissions": {
+                "filesystem": ["invalid-no-colon"]
+            }
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("permission") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: invalid filesystem operation fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-        [app.permissions]
-        filesystem = ["delete:app://files/*"]
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js",
+            "permissions": {
+                "filesystem": ["delete:app://files/*"]
+            }
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("operation") != std::string::npos);
 }
 
 TEST_CASE("parse_manifest_input: invalid network operation fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app]
-        id = "com.example.myapp"
-        version = "1.0.0"
-        nak_id = "com.example.runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-        [app.permissions]
-        network = ["broadcast:udp://0.0.0.0:1234"]
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.myapp",
+            "version": "1.0.0",
+            "nak_id": "com.example.runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js",
+            "permissions": {
+                "network": ["broadcast:udp://0.0.0.0:1234"]
+            }
+        }
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("operation") != std::string::npos);
 }
 
-TEST_CASE("parse_manifest_input: invalid TOML syntax fails") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        [app
-        id = "broken
-    )";
+TEST_CASE("parse_manifest_input: invalid JSON syntax fails") {
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "broken
+    })";
     
-    auto result = nah::parse_manifest_input(toml);
+    auto result = nah::parse_manifest_input(json);
     CHECK_FALSE(result.ok);
     CHECK(result.error.find("parse") != std::string::npos);
 }
@@ -331,33 +345,35 @@ TEST_CASE("build_manifest_from_input: includes all optional fields") {
 }
 
 // ============================================================================
-// Tests: End-to-End (TOML -> TLV -> Parse)
+// Tests: End-to-End (JSON -> TLV -> Parse)
 // ============================================================================
 
-TEST_CASE("end-to-end: TOML input to parsed manifest") {
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        
-        [app]
-        id = "com.example.bundle-app"
-        version = "2.0.0"
-        nak_id = "com.mycompany.rn-runtime"
-        nak_version_req = ">=3.0.0 <4.0.0"
-        entrypoint = "dist/bundle.js"
-        entrypoint_args = ["--config", "prod.json"]
-        description = "A bundle application"
-        
-        [[app.exports]]
-        id = "splash"
-        path = "assets/splash.png"
-        type = "image/png"
-        
-        [app.environment]
-        NODE_ENV = "production"
-    )";
+TEST_CASE("end-to-end: JSON input to parsed manifest") {
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.bundle-app",
+            "version": "2.0.0",
+            "nak_id": "com.mycompany.rn-runtime",
+            "nak_version_req": ">=3.0.0 <4.0.0",
+            "entrypoint": "dist/bundle.js",
+            "entrypoint_args": ["--config", "prod.json"],
+            "description": "A bundle application",
+            "exports": [
+                {
+                    "id": "splash",
+                    "path": "assets/splash.png",
+                    "type": "image/png"
+                }
+            ],
+            "environment": {
+                "NODE_ENV": "production"
+            }
+        }
+    })";
     
-    // Parse TOML
-    auto parse_result = nah::parse_manifest_input(toml);
+    // Parse JSON
+    auto parse_result = nah::parse_manifest_input(json);
     REQUIRE(parse_result.ok);
     
     // Build TLV
@@ -383,18 +399,18 @@ TEST_CASE("end-to-end: TOML input to parsed manifest") {
 TEST_CASE("end-to-end: bundle app with no permissions") {
     // This is the typical case for bundle apps - no permissions declared
     // because the NAK runtime is the sandbox
-    const char* toml = R"(
-        schema = "nah.manifest.input.v1"
-        
-        [app]
-        id = "com.example.my-rn-app"
-        version = "1.0.0"
-        nak_id = "com.mycompany.rn-runtime"
-        nak_version_req = ">=2.0.0"
-        entrypoint = "bundle.js"
-    )";
+    const char* json = R"({
+        "$schema": "nah.manifest.input.v2",
+        "app": {
+            "id": "com.example.my-rn-app",
+            "version": "1.0.0",
+            "nak_id": "com.mycompany.rn-runtime",
+            "nak_version_req": ">=2.0.0",
+            "entrypoint": "bundle.js"
+        }
+    })";
     
-    auto parse_result = nah::parse_manifest_input(toml);
+    auto parse_result = nah::parse_manifest_input(json);
     REQUIRE(parse_result.ok);
     
     auto manifest_bytes = nah::build_manifest_from_input(parse_result.input);

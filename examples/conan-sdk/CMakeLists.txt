@@ -59,10 +59,10 @@ set(NAK_STAGING_DIR "${CMAKE_BINARY_DIR}/nak_staging")
 # When using: conan install . --deployer=full_deploy --deployer-folder=build/deploy
 set(CONAN_DEPLOY_DIR "${CMAKE_SOURCE_DIR}/build/deploy/full_deploy" CACHE PATH "Conan full_deploy output directory")
 
-# Generate nak.toml from template
+# Generate nak.json from template
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.toml.in
-    ${CMAKE_BINARY_DIR}/META/nak.toml
+    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.json.in
+    ${CMAKE_BINARY_DIR}/META/nak.json
     @ONLY
 )
 
@@ -110,7 +110,7 @@ add_custom_target(stage_nak
 
     # Copy metadata
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/META/nak.toml ${NAK_STAGING_DIR}/META/
+        ${CMAKE_BINARY_DIR}/META/nak.json ${NAK_STAGING_DIR}/META/
 
     DEPENDS gameengine engine-loader
     COMMENT "Staging NAK pack: ${NAK_ID}@${NAK_VERSION}"

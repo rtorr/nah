@@ -52,22 +52,24 @@ NAH_APP_MANIFEST(
 
 ### Bundle Apps: File-based Manifest
 
-For bundle applications (JavaScript, Python, etc.), create a `manifest.toml` and generate the binary manifest:
+For bundle applications (JavaScript, Python, etc.), create a `manifest.json` and generate the binary manifest:
 
-```toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.example.myapp"
-version = "1.0.0"
-nak_id = "com.example.js-runtime"
-nak_version_req = ">=2.0.0"
-entrypoint = "bundle.js"
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.myapp",
+    "version": "1.0.0",
+    "nak_id": "com.example.js-runtime",
+    "nak_version_req": ">=2.0.0",
+    "entrypoint": "bundle.js"
+  }
+}
 ```
 
 Generate with:
 ```bash
-nah manifest generate manifest.toml -o manifest.nah
+nah manifest generate manifest.json -o manifest.nah
 ```
 
 See [Getting Started: Bundle Apps](getting-started-bundle.md) for the complete workflow.
@@ -78,7 +80,7 @@ A versioned SDK, runtime, or framework that apps depend on at launch.
 
 **Owner:** SDK developer  
 **Mutability:** Immutable after packaging  
-**Format:** `.nak` archive with `META/nak.toml`
+**Format:** `.nak` archive with `META/nak.json`
 
 **Contains:**
 - Identity: `id`, `version`
@@ -94,30 +96,35 @@ A versioned SDK, runtime, or framework that apps depend on at launch.
 
 NAKs are installed on the host and referenced by apps via `nak_id` and a version requirement. Multiple versions of the same NAK can coexist.
 
-Example `META/nak.toml`:
-```toml
-schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.example.sdk"
-version = "2.1.0"
-
-[paths]
-resource_root = "resources"
-lib_dirs = ["lib"]
-
-[environment]
-SDK_VERSION = "2.1.0"
+Example `META/nak.json`:
+```json
+{
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.example.sdk",
+    "version": "2.1.0"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {
+    "SDK_VERSION": "2.1.0"
+  }
+}
 ```
 
 ### Loader (Optional)
 
 A NAK may include a loader binary that wraps app execution:
 
-```toml
-[loader]
-exec_path = "bin/sdk-loader"
-args_template = ["--app", "{NAH_APP_ENTRY}"]
+```json
+{
+  "loader": {
+    "exec_path": "bin/sdk-loader",
+    "args_template": ["--app", "{NAH_APP_ENTRY}"]
+  }
+}
 ```
 
 When present, the loader is invoked instead of the app binary directly.
@@ -133,7 +140,7 @@ A packaged application ready for installation.
 - Application binary (with embedded manifest or separate `manifest.nah`)
 - Libraries
 - Assets
-- Optional `META/package.toml` with metadata
+- Optional `META/package.json` with metadata
 
 NAPs are installed by the host. At install time, NAH selects a compatible NAK version and pins it in the App Install Record.
 
@@ -143,7 +150,7 @@ The host's configuration for NAH behavior.
 
 **Owner:** Host platform  
 **Mutability:** Mutable by host  
-**Format:** TOML file in `host/profiles/`
+**Format:** JSON file in `host/profiles/`
 
 **Controls:**
 - NAK binding mode (canonical or mapped)
@@ -153,18 +160,20 @@ The host's configuration for NAH behavior.
 - Capability mappings
 
 Example:
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-allow_versions = ["2.*"]
-
-[environment]
-DEPLOYMENT_ENV = "production"
-
-[warnings]
-nak_not_found = "error"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical",
+    "allow_versions": ["2.*"]
+  },
+  "environment": {
+    "DEPLOYMENT_ENV": "production"
+  },
+  "warnings": {
+    "nak_not_found": "error"
+  }
+}
 ```
 
 ### Binding Modes
@@ -180,7 +189,7 @@ Per-installation state created when an app is installed.
 
 **Owner:** Host  
 **Mutability:** Mutable by host  
-**Format:** TOML in `registry/installs/`
+**Format:** JSON in `registry/installs/`
 
 **Contains:**
 - App identity and version
@@ -198,7 +207,7 @@ Per-installation state for an installed NAK.
 
 **Owner:** Host  
 **Mutability:** Mutable by host  
-**Format:** TOML in `registry/naks/`
+**Format:** JSON in `registry/naks/`
 
 **Contains:**
 - NAK identity and version
@@ -239,7 +248,7 @@ A NAH root has this structure:
 /nah/
 ├── host/
 │   ├── profiles/
-│   │   └── default.toml      # Host profile
+│   │   └── default.json      # Host profile
 │   └── profile.current       # Symlink to active profile
 ├── apps/
 │   └── <id>-<version>/       # Installed app payloads

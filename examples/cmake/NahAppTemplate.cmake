@@ -118,16 +118,16 @@ function(nah_create_app TARGET_NAME)
     endif()
 endfunction()
 
-# Generate manifest from TOML content
-# Usage: nah_generate_manifest(target_name "id = \"...\"\nversion = \"...\"")
+# Generate manifest from JSON content
+# Usage: nah_generate_manifest(target_name "{\"$schema\": \"nah.manifest.input.v2\", ...}")
 function(nah_generate_manifest TARGET_NAME MANIFEST_CONTENT)
-    set(MANIFEST_TOML "${CMAKE_BINARY_DIR}/${TARGET_NAME}_manifest.toml")
+    set(MANIFEST_JSON "${CMAKE_BINARY_DIR}/${TARGET_NAME}_manifest.json")
     set(MANIFEST_NAH "${CMAKE_BINARY_DIR}/${TARGET_NAME}_manifest.nah")
 
-    file(WRITE ${MANIFEST_TOML} "${MANIFEST_CONTENT}")
+    file(WRITE ${MANIFEST_JSON} "${MANIFEST_CONTENT}")
 
     add_custom_target(${TARGET_NAME}_generate_manifest
-        COMMAND ${NAH_CLI} manifest generate ${MANIFEST_TOML} -o ${MANIFEST_NAH}
+        COMMAND ${NAH_CLI} manifest generate ${MANIFEST_JSON} -o ${MANIFEST_NAH}
         COMMENT "Generating manifest for ${TARGET_NAME}"
     )
 

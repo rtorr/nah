@@ -59,7 +59,7 @@ struct OverridesParseResult {
     OverridesFile overrides;
 };
 
-// Parse an overrides file (TOML or JSON)
+// Parse an overrides file (JSON)
 OverridesParseResult parse_overrides_file(const std::string& content, const std::string& path);
 
 // ============================================================================

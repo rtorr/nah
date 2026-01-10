@@ -15,8 +15,8 @@ This creates:
 /opt/myplatform/
 ├── host/
 │   ├── profiles/
-│   │   └── default.toml
-│   └── profile.current -> profiles/default.toml
+│   │   └── default.json
+│   └── profile.current -> profiles/default.json
 ├── apps/
 ├── naks/
 └── registry/
@@ -26,22 +26,22 @@ This creates:
 
 ## 2. Configure the Host Profile
 
-Edit `host/profiles/default.toml`:
+Edit `host/profiles/default.json`:
 
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-# allow_versions = ["2.*"]
-# deny_versions = ["*-beta*"]
-
-[environment]
-DEPLOYMENT_ENV = "production"
-
-[warnings]
-nak_not_found = "error"
-nak_version_unsupported = "error"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical"
+  },
+  "environment": {
+    "DEPLOYMENT_ENV": "production"
+  },
+  "warnings": {
+    "nak_not_found": "error",
+    "nak_version_unsupported": "error"
+  }
+}
 ```
 
 ### Binding Modes
@@ -111,7 +111,7 @@ nah --root /opt/myplatform --json contract show com.example.myapp
 Create profiles for different environments:
 
 ```bash
-cp host/profiles/default.toml host/profiles/staging.toml
+cp host/profiles/default.json host/profiles/staging.json
 ```
 
 Switch the active profile:

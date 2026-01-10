@@ -15,7 +15,7 @@ This creates:
 ```
 mysdk/
 ├── META/
-│   └── nak.toml
+│   └── nak.json
 ├── bin/
 ├── lib/
 └── resources/
@@ -23,24 +23,26 @@ mysdk/
 
 ## 2. Edit NAK Metadata
 
-Open `META/nak.toml`:
+Open `META/nak.json`:
 
-```toml
-schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.yourcompany.mysdk"
-version = "1.0.0"
-
-[paths]
-resource_root = "resources"
-lib_dirs = ["lib"]
-
-[environment]
-MYSDK_VERSION = "1.0.0"
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
+```json
+{
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.yourcompany.mysdk",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {
+    "MYSDK_VERSION": "1.0.0"
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  }
+}
 ```
 
 ### Required Fields
@@ -74,10 +76,13 @@ lib/
 
 If your SDK needs to wrap app execution:
 
-```toml
-[loader]
-exec_path = "bin/mysdk-loader"
-args_template = ["--app", "{NAH_APP_ENTRY}"]
+```json
+{
+  "loader": {
+    "exec_path": "bin/mysdk-loader",
+    "args_template": ["--app", "{NAH_APP_ENTRY}"]
+  }
+}
 ```
 
 When present, the loader binary runs instead of the app directly.

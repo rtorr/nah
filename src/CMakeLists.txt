@@ -53,7 +53,7 @@ target_include_directories(nah_manifest PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(nah_manifest PUBLIC semver tomlplusplus::tomlplusplus)
+target_link_libraries(nah_manifest PUBLIC semver nlohmann_json::nlohmann_json)
 
 add_library(nah_platform STATIC
     platform/path_utils.cpp
@@ -74,7 +74,7 @@ target_include_directories(nah_config PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(nah_config PUBLIC tomlplusplus::tomlplusplus)
+target_link_libraries(nah_config PUBLIC nlohmann_json::nlohmann_json)
 
 add_library(nah_contract STATIC
     contract/contract.cpp
@@ -94,7 +94,6 @@ target_link_libraries(nah_contract PUBLIC
     nah_config
     nah_platform
     nlohmann_json::nlohmann_json
-    tomlplusplus::tomlplusplus
     semver
 )
 
@@ -182,7 +181,6 @@ if(NAH_BUILD_SHARED)
 
     target_link_libraries(nahhost_shared PUBLIC
         nlohmann_json::nlohmann_json
-        tomlplusplus::tomlplusplus
         semver
         ZLIB::ZLIB
         OpenSSL::Crypto

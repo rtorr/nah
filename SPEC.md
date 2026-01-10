@@ -70,9 +70,9 @@ The output is a directly executable Launch Contract (binary, argv, cwd, environm
 NAH enforces separation through exactly four artifacts:
 
 1. **App Manifest** — Application-authored portable contract (immutable; embedded in binary or provided as `manifest.nah`)
-2. **App Install Record** — Host-owned per-install-instance state and provenance (mutable; TOML)
-3. **NAK Install Record** — Host-owned record describing the installed Native App Kit used at launch (mutable; TOML)
-4. **Host Profile** — Host-owned policy and deterministic selection rules for launch bindings (mutable; TOML)
+2. **App Install Record** — Host-owned per-install-instance state and provenance (mutable; JSON)
+3. **NAK Install Record** — Host-owned record describing the installed Native App Kit used at launch (mutable; JSON)
+4. **Host Profile** — Host-owned policy and deterministic selection rules for launch bindings (mutable; JSON)
 
 Note: the Native App Kit (NAK) is the host-installed, versioned set of shared runtime components and optional loader wiring that applications target at launch (defined normatively later in this spec).
 
@@ -141,7 +141,7 @@ NAH is built on these design principles:
 - **Minimal mechanism**: NAH provides mechanism, not policy
 - **Default permissive**: NAH continues execution and records warnings for non-critical missing/invalid data; composition halts only on CriticalError conditions defined in this specification.
 - **Host-upgradable**: Host Profile warning policy MAY upgrade warnings into errors
-- **Binary manifests, text configuration**: Embedded manifests use TLV, operational config uses TOML
+- **Binary manifests, text configuration**: Embedded manifests use TLV, operational config uses JSON
 - **Platform-native**: Direct binary format integration (ELF, Mach-O sections)
 - **Debuggable**: All configuration readable with standard text tools
 - **Escape hatches**: Environment overrides (`NAH_OVERRIDE_*`) are local-only and MAY override configuration only when permitted by Host Profile override policy. Overrides MUST NOT trigger any network access or artifact installation.
@@ -323,7 +323,7 @@ If parsing fails or the range syntax is invalid, NAH MUST emit `invalid_manifest
 **Owner:** Host
 **Mutability:** Mutable (updated by host tooling)
 **Storage:** Host registry (`<nah_root>/registry/installs/`)
-**Format:** TOML text format
+**Format:** JSON text format
 
 **What it is (Normative):** The host-owned record of a specific installed app instance, including the pinned NAK and host-owned trust/provenance.
 
@@ -347,65 +347,59 @@ If parsing fails or the range syntax is invalid, NAH MUST emit `invalid_manifest
 
 The App Manifest remains the authoritative source for app identity and NAK requirements during composition; App Install Record `[app]` fields are audit snapshots only.
 
-**Schema Field (Normative):** The top-level `schema` field is REQUIRED and MUST equal `nah.app.install.v1`. Missing or mismatched schema MUST cause the record to be treated as invalid for composition (CriticalError::INSTALL_RECORD_INVALID) or as a validation error for `nah validate`.
+**Schema Field (Normative):** The top-level `schema` field is REQUIRED and MUST equal `nah.app.install.v2`. Missing or mismatched schema MUST cause the record to be treated as invalid for composition (CriticalError::INSTALL_RECORD_INVALID) or as a validation error for `nah validate`.
 
 **Normative Fields:**
 
-```toml
-schema = "nah.app.install.v1"
-
-[install]
-instance_id = "uuid-string"      # Unique per install
-
-[app]
-id = "com.example.app"           # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
-version = "1.2.3"                # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
-nak_id = "com.example.nak"           # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
-nak_version_req = ">=3.0.0 <4.0.0"   # Copied from manifest (audit snapshot only; MUST NOT affect behavior)
-
-[nak]
-id = "com.example.nak"                   # Resolved NAK id
-version = "3.0.2"                # Resolved NAK version
-record_ref = "com.example.nak@3.0.2.toml"  # Required pin to NAK record file
-# selection_reason = "matched >=3.0.0 <4.0.0, allowed by profile"  # Optional audit-only string
-
-[paths]
-install_root = "/nah/apps/com.example.app-1.2.3"   # Absolute path to app root
-
-[provenance]
-package_hash = "sha256:..."      # Hash of installed payload
-installed_at = 2024-01-15T10:30:00Z
-installed_by = "user"
-source = "package.nap"
-
-[trust]
-state = "verified"            # verified | unverified | failed | unknown
-source = "corp-verifier"    # identifier for who wrote it
-evaluated_at = 2025-12-30T16:21:00Z
-expires_at = 2026-01-30T16:21:00Z    # optional: when trust evaluation becomes stale
-inputs_hash = "sha256:..."           # optional: hash of evaluated material
-
-# optional, host-defined opaque metadata; NAH must treat as opaque
-[trust.details]
-method = "codesign"           # optional
-signer = "Developer ID ..."   # optional
-signature_present = true      # optional
-signature_valid = true        # optional
-
-[verification]
-last_verified_at = 2024-01-15T10:30:00Z
-last_verifier_version = "1.0.0"
-
-# Host-owned overrides (optional, applied at install time)
-[overrides.environment]
-# NAH_DEBUG = "1"
-
-[overrides.arguments]
-# prepend = ["--config", "/etc/app.conf"]
-# append = ["--verbose"]
-
-[overrides.paths]
-# library_prepend = ["/opt/debug/lib"]
+```json
+{
+  "$schema": "nah.app.install.v2",
+  "install": {
+    "instance_id": "uuid-string"
+  },
+  "app": {
+    "id": "com.example.app",
+    "version": "1.2.3",
+    "nak_id": "com.example.nak",
+    "nak_version_req": ">=3.0.0 <4.0.0"
+  },
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.0.2",
+    "record_ref": "com.example.nak@3.0.2.json"
+  },
+  "paths": {
+    "install_root": "/nah/apps/com.example.app-1.2.3"
+  },
+  "provenance": {
+    "package_hash": "sha256:...",
+    "installed_at": "2024-01-15T10:30:00Z",
+    "installed_by": "user",
+    "source": "package.nap"
+  },
+  "trust": {
+    "state": "verified",
+    "source": "corp-verifier",
+    "evaluated_at": "2025-12-30T16:21:00Z",
+    "expires_at": "2026-01-30T16:21:00Z",
+    "inputs_hash": "sha256:...",
+    "details": {
+      "method": "codesign",
+      "signer": "Developer ID ...",
+      "signature_present": true,
+      "signature_valid": true
+    }
+  },
+  "verification": {
+    "last_verified_at": "2024-01-15T10:30:00Z",
+    "last_verifier_version": "1.0.0"
+  },
+  "overrides": {
+    "environment": {},
+    "arguments": {},
+    "paths": {}
+  }
+}
 ```
 
 **Required fields for composition (Normative):** `schema`, `[install].instance_id`, and `[paths].install_root` MUST be present per Presence semantics. Missing or empty values MUST produce CriticalError::INSTALL_RECORD_INVALID.
@@ -419,7 +413,7 @@ The entrypoint path is derived during composition from `paths.install_root` + `m
 **Owner:** Host
 **Mutability:** Mutable (updated by host tooling)
 **Storage:** Host registry (`<nah_root>/registry/naks/`)
-**Format:** TOML text format
+**Format:** JSON text format
 
 **What it is (Normative):** The host-owned record of an installed NAK pack that defines loader wiring (if any), resource roots, and default environment for composition.
 
@@ -447,46 +441,41 @@ The entrypoint path is derived during composition from `paths.install_root` + `m
 
 - `[execution]` is OPTIONAL. If absent, contract composition MUST default `execution.cwd` to `app.root`.
 
-**Schema Field (Normative):** The top-level `schema` field is REQUIRED and MUST equal `nah.nak.install.v1`. Missing or mismatched schema MUST emit `nak_pin_invalid` when the record is loaded as a pin, MUST mark the NAK unresolved, and MUST continue composition per warning policy (or as a validation error for `nah validate`).
+**Schema Field (Normative):** The top-level `schema` field is REQUIRED and MUST equal `nah.nak.install.v2`. Missing or mismatched schema MUST emit `nak_pin_invalid` when the record is loaded as a pin, MUST mark the NAK unresolved, and MUST continue composition per warning policy (or as a validation error for `nah validate`).
 
 **Normative Fields:**
 
-```toml
-schema = "nah.nak.install.v1"
-
-[nak]
-id = "com.example.nak"
-version = "3.0.2"
-
-[paths]
-root = "/nah/naks/com.example.nak/3.0.2"
-resource_root = "/nah/naks/com.example.nak/3.0.2/resources"  # Defaults to paths.root if omitted
-lib_dirs = [
-  "/nah/naks/com.example.nak/3.0.2/lib",
-  "/nah/naks/com.example.nak/3.0.2/lib64"
-]
-
-[environment]
-# NAH_NAK_FLAG = "1"
-
-[loader]
-exec_path = "/nah/naks/com.example.nak/3.0.2/bin/nah-runtime"
-args_template = [
-  "--app", "{NAH_APP_ENTRY}",
-  "--root", "{NAH_APP_ROOT}",
-  "--id", "{NAH_APP_ID}",
-  "--version", "{NAH_APP_VERSION}",
-  "--nak", "{NAH_NAK_ROOT}"
-]
-
-[execution]
-cwd = "{NAH_APP_ROOT}"        # Optional working directory template
-
-[provenance]
-# package_hash = "sha256:..."
-# installed_at = 2024-01-15T10:30:00Z
-# installed_by = "user"
-# source = "nak-pack.nak"
+```json
+{
+  "$schema": "nah.nak.install.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.0.2"
+  },
+  "paths": {
+    "root": "/nah/naks/com.example.nak/3.0.2",
+    "resource_root": "/nah/naks/com.example.nak/3.0.2/resources",
+    "lib_dirs": [
+      "/nah/naks/com.example.nak/3.0.2/lib",
+      "/nah/naks/com.example.nak/3.0.2/lib64"
+    ]
+  },
+  "environment": {},
+  "loader": {
+    "exec_path": "/nah/naks/com.example.nak/3.0.2/bin/nah-runtime",
+    "args_template": [
+      "--app", "{NAH_APP_ENTRY}",
+      "--root", "{NAH_APP_ROOT}",
+      "--id", "{NAH_APP_ID}",
+      "--version", "{NAH_APP_VERSION}",
+      "--nak", "{NAH_NAK_ROOT}"
+    ]
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  },
+  "provenance": {}
+}
 ```
 
 **Template expansion (Normative):**
@@ -527,7 +516,7 @@ Host tooling MUST NOT modify `[nak].id`, `[nak].version`, or `[nak].record_ref` 
 
 ### Trust Timestamp Format (Normative)
 
-- `evaluated_at` and `expires_at` MUST be TOML offset datetime values (RFC3339-compatible)
+- `evaluated_at` and `expires_at` MUST be JSON offset datetime values (RFC3339-compatible)
 - When serialized in JSON output / Launch Contract, they MUST be RFC3339 strings
 
 Derived output-only paths MUST be recomputable from (`paths.install_root` + `manifest.entrypoint_relative_path`).
@@ -536,10 +525,10 @@ Derived output-only paths MUST be recomputable from (`paths.install_root` + `man
 
 **Owner:** Framework team / host integrator
 **Mutability:** Mutable, auditable
-**Storage:** .toml files
-**Format:** TOML text format
+**Storage:** .json files
+**Format:** JSON text format
 
-**Schema Field (Normative):** The top-level `schema` field is REQUIRED and MUST equal `nah.host.profile.v1`. Missing or mismatched schema MUST emit `profile_invalid` (or be a validation error for `nah validate`) and MUST trigger the fallback rules in Active Host Profile Resolution exactly as written.
+**Schema Field (Normative):** The top-level `$schema` field is REQUIRED and MUST equal `nah.host.profile.v2`. Missing or mismatched schema MUST emit `profile_invalid` (or be a validation error for `nah validate`) and MUST trigger the fallback rules in Active Host Profile Resolution exactly as written.
 
 **What it is (Normative):** The host-owned policy and binding document that governs NAK selection, warning policy, and capability mapping for contract composition.
 
@@ -581,15 +570,15 @@ Derived output-only paths MUST be recomputable from (`paths.install_root` + `man
 │   └── <nak_id>/<version>/     # NAK root
 ├── host/
 │   ├── profiles/
-│   │   ├── default.toml           # Default profile
-│   │   ├── development.toml       # Development profile
-│   │   └── <name>.toml            # Named profiles
+│   │   ├── default.json           # Default profile
+│   │   ├── development.json       # Development profile
+│   │   └── <name>.json            # Named profiles
 │   └── profile.current            # Active profile symlink
 └── registry/
     ├── installs/
-    │   └── <id>-<version>-<instance_id>.toml   # App Install Record (normative fields)
+    │   └── <id>-<version>-<instance_id>.json   # App Install Record (normative fields)
     ├── naks/
-    │   └── <nak_id>@<version>.toml         # NAK Install Record
+    │   └── <nak_id>@<version>.json         # NAK Install Record
     └── locks/                    # Host-only lock files (implementation-defined)
 ```
 
@@ -634,96 +623,79 @@ NAH MUST resolve the active Host Profile as follows:
 
 1. If an explicit profile name is provided (CLI flag or API parameter), load that profile file
 2. Else, if `<nah_root>/host/profile.current` exists, it MUST be a symlink to a profile file under `<nah_root>/host/profiles/`. NAH MUST resolve the symlink target path and load that file as the active profile.
-3. Else, load `<nah_root>/host/profiles/default.toml`
+3. Else, load `<nah_root>/host/profiles/default.json`
 
-If profile.current exists but is not a symlink, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.toml`.
-If the chosen profile file is missing or unreadable, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.toml`.
-If the chosen profile file is readable but fails to parse, NAH MUST emit `profile_parse_error` (including the file path), then emit `profile_invalid`, and fall back to `<nah_root>/host/profiles/default.toml`.
-If the chosen profile file parses but has a missing/mismatched schema, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.toml`.
+If profile.current exists but is not a symlink, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.json`.
+If the chosen profile file is missing or unreadable, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.json`.
+If the chosen profile file is readable but fails to parse, NAH MUST emit `profile_parse_error` (including the file path), then emit `profile_invalid`, and fall back to `<nah_root>/host/profiles/default.json`.
+If the chosen profile file parses but has a missing/mismatched schema, NAH MUST emit `profile_invalid` and fall back to `<nah_root>/host/profiles/default.json`.
 
-If `default.toml` is missing or unreadable, NAH MUST emit `profile_missing` and use the Built-in Empty Profile.
-If `default.toml` is readable but fails to parse, NAH MUST emit `profile_parse_error` (including the file path), then emit `profile_missing`, and use the Built-in Empty Profile.
-If `default.toml` parses but has a missing/mismatched schema, NAH MUST emit `profile_missing` and use the Built-in Empty Profile.
+If `default.json` is missing or unreadable, NAH MUST emit `profile_missing` and use the Built-in Empty Profile.
+If `default.json` is readable but fails to parse, NAH MUST emit `profile_parse_error` (including the file path), then emit `profile_missing`, and use the Built-in Empty Profile.
+If `default.json` parses but has a missing/mismatched schema, NAH MUST emit `profile_missing` and use the Built-in Empty Profile.
 
 ### Built-in Empty Profile (Normative)
 
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"     # canonical | mapped
-
-[warnings]
-# Default: warn and continue
-nak_not_found = "warn"
-# nak_not_found is install-time only; compose_contract MUST NOT emit it
-nak_version_unsupported = "warn"
-profile_missing = "warn"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical"
+  },
+  "warnings": {
+    "nak_not_found": "warn",
+    "nak_version_unsupported": "warn",
+    "profile_missing": "warn"
+  }
+}
 ```
 
 **Default Warning Action (Normative):** If a warning key is absent from `profile.warnings`, its effective action MUST be `"warn"`.
 
-### Host Profile TOML Format (Normative)
+### Host Profile JSON Format (Normative)
 
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"      # canonical | mapped
-allow_versions = ["3.*"]        # Optional allow list (prefix patterns ending in *)
-deny_versions = []              # Optional deny list (prefix patterns ending in *)
-
-# The [nak] table MUST contain only: binding_mode, allow_versions, deny_versions,
-# and optional [nak.map] (for mapped mode). It MUST NOT specify a NAK id.
-
-# mapped mode: major.minor selection -> NAK record reference (pin by policy)
-# mapped mode derives selection_key from the requirement's min_version using SemVer Parsing and Satisfaction (Normative)
-# The value MUST be a NAK record reference: "<nak_id>@<version>.toml"
-# [nak.map]
-# "3.0" = "com.example.nak@3.0.7.toml"
-# "3.1" = "com.example.nak@3.1.2.toml"
-
-[environment]
-NAH_HOST_VERSION = "1.0"
-NAH_NAK_MODE = "production"
-
-[paths]
-# Optional host-only library path modifications
-# library_prepend = ["/opt/monitoring/lib"]
-# library_append = ["/usr/local/lib"]
-
-[warnings]
-# Warning keys MUST be lowercase snake_case and match canonical Warning identifiers.
-capability_missing = "warn"          # warn | ignore | error
-invalid_manifest = "warn"
-invalid_configuration = "warn"
-profile_invalid = "warn"
-profile_parse_error = "warn"
-profile_missing = "warn"
-nak_pin_invalid = "warn"
-# nak_not_found is install-time only; compose_contract MUST NOT emit it
-nak_not_found = "error"
-nak_version_unsupported = "error"
-binary_not_found = "warn"
-capability_malformed = "warn"
-capability_unknown = "warn"
-missing_env_var = "warn"
-invalid_trust_state = "warn"
-override_denied = "warn"
-override_invalid = "warn"
-invalid_library_path = "warn"
-trust_state_unknown = "warn"
-trust_state_unverified = "warn"
-trust_state_failed = "error"
-trust_state_stale = "warn"
-
-[capabilities]
-# "filesystem.read" = "sandbox.filesystem.readonly"
-# "network.connect" = "sandbox.network.client"
-
-[overrides]
-mode = "allow"                   # allow | deny | allowlist
-allow_keys = ["ENVIRONMENT", "WARNINGS_*"]
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical",
+    "allow_versions": ["3.*"],
+    "deny_versions": []
+  },
+  "environment": {
+    "NAH_HOST_VERSION": "1.0",
+    "NAH_NAK_MODE": "production"
+  },
+  "paths": {},
+  "warnings": {
+    "capability_missing": "warn",
+    "invalid_manifest": "warn",
+    "invalid_configuration": "warn",
+    "profile_invalid": "warn",
+    "profile_parse_error": "warn",
+    "profile_missing": "warn",
+    "nak_pin_invalid": "warn",
+    "nak_not_found": "error",
+    "nak_version_unsupported": "error",
+    "binary_not_found": "warn",
+    "capability_malformed": "warn",
+    "capability_unknown": "warn",
+    "missing_env_var": "warn",
+    "invalid_trust_state": "warn",
+    "override_denied": "warn",
+    "override_invalid": "warn",
+    "invalid_library_path": "warn",
+    "trust_state_unknown": "warn",
+    "trust_state_unverified": "warn",
+    "trust_state_failed": "error",
+    "trust_state_stale": "warn"
+  },
+  "capabilities": {},
+  "overrides": {
+    "mode": "allow",
+    "allow_keys": ["ENVIRONMENT", "WARNINGS_*"]
+  }
+}
 ```
 
 **NAK Allow/Deny Matching (Normative):**
@@ -769,49 +741,51 @@ allow_keys = ["ENVIRONMENT", "WARNINGS_*"]
 
 ### Example Profiles
 
-**default.toml:**
+**default.json:**
 
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "canonical"
-allow_versions = ["3.*"]
-
-[environment]
-NAH_HOST_VERSION = "1.0"
-NAH_NAK_MODE = "production"
-
-[warnings]
-nak_not_found = "error"
-nak_version_unsupported = "error"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "canonical",
+    "allow_versions": ["3.*"]
+  },
+  "environment": {
+    "NAH_HOST_VERSION": "1.0",
+    "NAH_NAK_MODE": "production"
+  },
+  "warnings": {
+    "nak_not_found": "error",
+    "nak_version_unsupported": "error"
+  }
+}
 ```
 
-**production.toml (mapped):**
+**production.json (mapped):**
 
-```toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "mapped"
-
-[nak.map]
-"3.0" = "com.example.nak@3.0.7.toml"
-"3.1" = "com.example.nak@3.1.2.toml"
-
-[environment]
-NAH_HOST_VERSION = "1.0"
-NAH_NAK_MODE = "production"
-
-[warnings]
-invalid_manifest = "error"
-nak_not_found = "error"
-nak_version_unsupported = "error"
-
-[capabilities]
-"filesystem.read" = "apparmor.profile.readonly"
-"filesystem.write" = "apparmor.profile.readwrite"
-"network.connect" = "apparmor.profile.network-client"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "mapped",
+    "map": {
+      "3.0": "com.example.nak@3.0.7.json",
+      "3.1": "com.example.nak@3.1.2.json"
+    }
+  },
+  "environment": {
+    "NAH_HOST_VERSION": "1.0",
+    "NAH_NAK_MODE": "production"
+  },
+  "warnings": {
+    "invalid_manifest": "error"
+  },
+  "capabilities": {
+    "filesystem.read": "apparmor.profile.readonly",
+    "filesystem.write": "apparmor.profile.readwrite",
+    "network.connect": "apparmor.profile.network-client"
+  }
+}
 ```
 
 ---
@@ -902,7 +876,7 @@ The output of contract composition is the Launch Contract.
 3. Pinned NAK Install Record (loaded only by `<nah_root>/registry/naks/<install_record.nak.record_ref>` when present)
 4. Host Profile (active or explicitly selected)
 5. Current process environment (including NAH overrides)
-6. Optional overrides file (TOML or JSON) supplied by the caller (e.g., `nah contract show --overrides`)
+6. Optional overrides file (JSON) supplied by the caller (e.g., `nah contract show --overrides`)
 7. now: an RFC3339 timestamp representing the current time for composition. The CLI MUST default now to the system clock. now MUST be used ONLY for evaluating trust.expires_at staleness warnings and MUST NOT influence any other composition behavior.
 
 **Output:**
@@ -912,8 +886,8 @@ Launch Contract (LaunchContract)
 
 **Presence semantics (Normative):**
 
-- A TOML table is “present” if the table exists in the parsed document.
-- A TOML key is “present” if the key exists in the parsed document.
+- A JSON table is “present” if the table exists in the parsed document.
+- A JSON key is “present” if the key exists in the parsed document.
 - For **string** values: a key’s value is “present” only if the string is non-empty after trimming ASCII whitespace.
 - For **arrays**: if the key is absent, treat it as an empty list; if present, preserve the element order exactly as in the document.
 - For **datetime/boolean/integer/float**: if the key is present, the value is present (no “empty” concept).
@@ -929,9 +903,8 @@ Launch Contract (LaunchContract)
 
 - All other manifest invalidities are non-fatal: NAH MUST emit invalid_manifest and continue composition permissively by treating only the affected manifest fields as absent, using the rules below.
 
-- If an overrides file is provided, load and parse it as TOML or JSON.
-  - TOML form: the document MUST be a TOML table whose only top-level tables are [environment] and/or [warnings].
-  - JSON form: the document MUST decode to a JSON object whose only top-level keys are "environment" and/or "warnings".
+- If an overrides file is provided, load and parse it as JSON.
+  - The document MUST decode to a JSON object whose only top-level keys are "environment" and/or "warnings".
 
   For either form:
   - environment MUST be a map/object of string keys to string values.
@@ -941,7 +914,7 @@ Launch Contract (LaunchContract)
   - For file-level failures, target MUST be OVERRIDES_FILE, source_kind MUST be overrides_file, and source_ref MUST be <file_path>.
   - For shape failures scoped to a subsection, source_ref MUST be <file_path>:environment or <file_path>:warnings.
 
-- If the App Install Record is missing, unreadable, fails TOML parsing, has a missing/mismatched schema, or is missing required fields, emit CriticalError::INSTALL_RECORD_INVALID and MUST NOT produce a Launch Contract.
+- If the App Install Record is missing, unreadable, fails JSON parsing, has a missing/mismatched schema, or is missing required fields, emit CriticalError::INSTALL_RECORD_INVALID and MUST NOT produce a Launch Contract.
 
 - If `[app].id`, `[app].version`, `[app].nak_id`, or `[app].nak_version_req` are present in the App Install Record and any differ from the corresponding values in the App Manifest (`manifest.id`, `manifest.version`, `manifest.nak_id`, `manifest.nak_version_req`), NAH MUST emit `invalid_configuration` with `fields.reason = "app_field_mismatch"`, `fields.source_path = "install_record.app"`, and `fields.fields` listing the differing field names as a comma-separated string; continue composition and treat the App Manifest as authoritative.
 
@@ -1188,7 +1161,7 @@ The **selector/resource** is passed through to host policy for evaluation.
 struct NakPin {
     std::string id;         // NAK id (must match manifest.nak_id)
     std::string version;    // Pinned version (must match nak_record.nak.version)
-    std::string record_ref; // "<nak_id>@<version>.toml" filename under <nah_root>/registry/naks/
+    std::string record_ref; // "<nak_id>@<version>.json" filename under <nah_root>/registry/naks/
 };
 
 NakPin select_nak_for_install(
@@ -1237,7 +1210,7 @@ PinnedNakLoadResult load_pinned_nak(
 
 - Load `<nah_root>/registry/naks/<pin.record_ref>`.
 - If `pin.record_ref` is missing or empty, emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`.
-- If the pinned record cannot be loaded as a valid `nah.nak.install.v1` record with required fields, emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`.
+- If the pinned record cannot be loaded as a valid `nah.nak.install.v2` record with required fields, emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`.
 - If the pinned record loads successfully, validate:
   - `manifest.nak_id` MUST be present and non-empty.
     - If not, emit `invalid_manifest` and return `PinnedNakLoadResult{ .loaded = false }`.
@@ -1260,7 +1233,7 @@ PinnedNakLoadResult load_pinned_nak(
   - The pinned version MUST be allowed by `profile.nak.allow_versions/deny_versions`.
     - If denied, emit `nak_version_unsupported` and return `PinnedNakLoadResult{ .loaded = false }`.
 
-`load_pinned_nak` MUST attempt to read and parse `<nah_root>/registry/naks/<pin.record_ref>`, validate `schema = "nah.nak.install.v1"`, and require `nak.id`, `nak.version`, and `paths.root`. On any failure (file missing, parse error, schema missing/mismatch, missing required fields), it MUST emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`. On success, it MUST return `PinnedNakLoadResult{ .loaded = true, .nak_record = nak_record }`, and `loaded == true` MUST imply that no `nak_pin_invalid` or `nak_version_unsupported` condition occurred during the validation rules above.
+`load_pinned_nak` MUST attempt to read and parse `<nah_root>/registry/naks/<pin.record_ref>`, validate `"$schema": "nah.nak.install.v2"`, and require `nak.id`, `nak.version`, and `paths.root`. On any failure (file missing, parse error, schema missing/mismatch, missing required fields), it MUST emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`. On success, it MUST return `PinnedNakLoadResult{ .loaded = true, .nak_record = nak_record }`, and `loaded == true` MUST imply that no `nak_pin_invalid` or `nak_version_unsupported` condition occurred during the validation rules above.
 
 **Warning emission (Normative):**
 
@@ -1453,7 +1426,7 @@ Contract composition (`nah contract show` / `compose_contract`) is a **pure func
 
 ### Operational Safety
 
-All app payloads, manifests, and install records MUST be treated as untrusted input. Manifest parsing / TLV decode / TOML parse MUST be hardened (bounds checks, size caps). `nah manifest show` / `nah contract show` MUST NOT execute or load code from the target app.
+All app payloads, manifests, and install records MUST be treated as untrusted input. Manifest parsing / TLV decode / JSON parse MUST be hardened (bounds checks, size caps). `nah manifest show` / `nah contract show` MUST NOT execute or load code from the target app.
 
 ```
 NAH Provides (Mechanism):
@@ -1848,7 +1821,7 @@ Semantics:
 - `nah app init` MUST generate a minimal app skeleton: manifest embedding snippet + canonical package layout + minimal README using only canonical commands.
 - `nah app pack` MUST produce a deterministic gzip tar archive.
 - `nah app pack` MUST enforce extraction safety invariants (path traversal protections) during pack-time checks.
-- `nah nak init` MUST generate a minimal NAK pack skeleton including `META/nak.toml`.
+- `nah nak init` MUST generate a minimal NAK pack skeleton including `META/nak.json`.
 - `nah nak pack` MUST produce a deterministic gzip tar archive.
 
 #### Deterministic Packaging (Normative)
@@ -1884,7 +1857,7 @@ nah nak path <nak_id@version>
 Semantics:
 
 - nah nak install MUST materialize the NAK pack under <root>/naks/<nak_id>/<version>/.
-- nah nak install MUST write the NAK Install Record atomically under <root>/registry/naks/<nak_id>@<version>.toml.
+- nah nak install MUST write the NAK Install Record atomically under <root>/registry/naks/<nak_id>@<version>.json.
 - `nah nak install` MUST extract into a temporary staging directory under `<nah_root>`, validate extraction safety invariants, then atomically rename into `<nah_root>/naks/<nak_id>/<version>/` and fsync the parent directory.
 - Only after the final directory rename succeeds, `nah nak install` MUST write the NAK Install Record atomically.
 - On any failure before the final rename, `nah nak install` MUST delete the staging directory and MUST NOT write any NAK Install Record or final NAK directory.
@@ -1902,10 +1875,10 @@ nah profile validate [name|file]
 Semantics:
 
 - `nah profile init` MUST create a minimal NAH root directory structure with a default profile.
-- `nah profile init` MUST create: `<dir>/host/profiles/default.toml`, `<dir>/host/profile.current` symlink, `<dir>/apps/`, `<dir>/naks/`, `<dir>/registry/installs/`, `<dir>/registry/naks/`.
+- `nah profile init` MUST create: `<dir>/host/profiles/default.json`, `<dir>/host/profile.current` symlink, `<dir>/apps/`, `<dir>/naks/`, `<dir>/registry/installs/`, `<dir>/registry/naks/`.
 - `nah profile init` MUST generate a README.md in `<dir>` documenting next steps.
 - `nah profile init` MUST fail if `<dir>` already exists and contains a `host/` directory.
-- The generated `default.toml` MUST be a valid profile with `schema = "nah.host.profile.v1"` and `binding_mode = "canonical"`.
+- The generated `default.json` MUST be a valid profile with `"$schema": "nah.host.profile.v2"` and `binding_mode = "canonical"`.
 
 #### Contract (launch UX)
 
@@ -1921,7 +1894,7 @@ Semantics:
 - `nah contract show` MUST generate Launch Contract from: Manifest + App Install Record + pinned NAK Install Record + Host Profile + process env.
 - `nah contract show` MUST NOT call trust sources or trust APIs.
 - `nah contract show` MUST NOT perform NAK selection during composition; MUST load pinned NAK record only.
-- If the selected App Install Record is missing, unreadable, fails TOML parsing, has a missing/mismatched schema, or is missing REQUIRED fields, `nah contract show` MUST fail with CriticalError::INSTALL_RECORD_INVALID and MUST NOT produce a Launch Contract.
+- If the selected App Install Record is missing, unreadable, fails JSON parsing, has a missing/mismatched schema, or is missing REQUIRED fields, `nah contract show` MUST fail with CriticalError::INSTALL_RECORD_INVALID and MUST NOT produce a Launch Contract.
 - `nah contract show` MUST apply overrides in deterministic order: process environment overrides first, then `--overrides <file>` (file overrides win on conflicts), with lexicographic ordering by override key within each source.
 - `nah contract explain` MUST return the effective value and provenance for a single `<path>`.
 - `nah contract explain` MUST support `<path>` addressing for `app.*`, `nak.*`, `execution.*`, `environment.<KEY>`, `warnings[*]` as applicable.
@@ -1938,66 +1911,63 @@ nah manifest show <binary|id[@version]> [--json]
 #### Manifest generation
 
 ```
-nah manifest generate <input.toml> -o <manifest.nah> [--json]
+nah manifest generate <input.json> -o <manifest.nah> [--json]
 nah manifest generate --stdin -o <manifest.nah> [--json]
 ```
 
 Semantics:
 
-- `nah manifest generate` MUST produce a valid TLV-encoded `manifest.nah` file from a TOML input.
-- The input TOML MUST conform to the Manifest Input Format (Normative) defined below.
+- `nah manifest generate` MUST produce a valid TLV-encoded `manifest.nah` file from a JSON input.
+- The input JSON MUST conform to the Manifest Input Format (Normative) defined below.
 - The output MUST be a valid TLV binary manifest per the Binary Manifest Format specification.
 - If `-o` is omitted, the output MUST be written to `manifest.nah` in the current directory.
-- `--stdin` MUST read TOML input from standard input instead of a file.
+- `--stdin` MUST read JSON input from standard input instead of a file.
 - `--json` MUST output a JSON object with `ok`, `path`, and `warnings` fields instead of human-readable output.
 - On validation failure, `nah manifest generate` MUST exit with code 1 and MUST NOT write any output file.
 - On success, `nah manifest generate` MUST exit with code 0.
 
 **Manifest Input Format (Normative):**
 
-The input TOML file MUST have the following structure:
+The input JSON file MUST have the following structure:
 
-```toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.example.myapp"                    # REQUIRED
-version = "1.0.0"                           # REQUIRED
-nak_id = "com.example.runtime"              # REQUIRED
-nak_version_req = ">=2.0.0"                 # REQUIRED
-entrypoint = "bundle.js"                    # REQUIRED, relative path
-
-# Optional fields
-entrypoint_args = ["--mode", "production"]
-description = "My application"
-author = "Developer Name"
-license = "MIT"
-homepage = "https://example.com"
-
-# Optional layout
-lib_dirs = ["lib", "vendor/lib"]
-asset_dirs = ["assets", "share"]
-
-# Optional asset exports
-[[app.exports]]
-id = "config"
-path = "share/config.json"
-type = "application/json"
-
-# Optional environment defaults
-[app.environment]
-LOG_LEVEL = "info"
-NODE_ENV = "production"
-
-# Optional permissions (empty by default for bundle apps)
-[app.permissions]
-filesystem = ["read:app://assets/*"]
-network = ["connect:https://api.example.com:443"]
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.myapp",
+    "version": "1.0.0",
+    "nak_id": "com.example.runtime",
+    "nak_version_req": ">=2.0.0",
+    "entrypoint": "bundle.js",
+    "entrypoint_args": ["--mode", "production"],
+    "description": "My application",
+    "author": "Developer Name",
+    "license": "MIT",
+    "homepage": "https://example.com",
+    "lib_dirs": ["lib", "vendor/lib"],
+    "asset_dirs": ["assets", "share"],
+    "exports": [
+      {
+        "id": "config",
+        "path": "share/config.json",
+        "type": "application/json"
+      }
+    ],
+    "environment": {
+      "LOG_LEVEL": "info",
+      "NODE_ENV": "production"
+    },
+    "permissions": {
+      "filesystem": ["read:app://assets/*"],
+      "network": ["connect:https://api.example.com:443"]
+    }
+  }
+}
 ```
 
 **Required fields (Normative):** `schema`, `[app].id`, `[app].version`, `[app].nak_id`, `[app].nak_version_req`, and `[app].entrypoint` MUST be present. Missing required fields MUST cause validation failure.
 
-**Schema field (Normative):** The `schema` field MUST equal `nah.manifest.input.v1`. Missing or mismatched schema MUST cause validation failure.
+**Schema field (Normative):** The `schema` field MUST equal `nah.manifest.input.v2`. Missing or mismatched schema MUST cause validation failure.
 
 **Path validation (Normative):**
 
@@ -2059,14 +2029,14 @@ nah format <file> [--check] [--json]
 
 Semantics:
 
-- MUST output canonical TOML formatting with stable key ordering and normalized whitespace.
+- MUST output canonical JSON formatting with stable key ordering and normalized whitespace.
 - `--check` MUST exit non-zero if formatting differs.
 - MUST NOT reorder arrays where order is semantically meaningful.
 - MUST write updates atomically.
 
 #### File-based overrides (contract show)
 
-`nah contract show <id[@version]> --overrides <file>` MUST accept TOML or JSON. The format MAY be inferred by extension; regardless of inference, the parsed document MUST satisfy the TOML/JSON shape rules defined in Contract Composition.
+`nah contract show <id[@version]> --overrides <file>` MUST accept JSON. The parsed document MUST satisfy the JSON shape rules defined in Contract Composition.
 
 Overrides MUST be local-only, MUST NOT trigger network access, MUST NOT persist host state,
 and MUST be gated by Host Profile override policy exactly like env overrides.
@@ -2088,12 +2058,11 @@ Trace output MUST indicate which overrides applied and which were denied/invalid
 
 Minimal overrides schema:
 
-```toml
-[environment]
-# KEY = "value"
-
-[warnings]
-# warning_key = "ignore" | "error" | "warn"
+```json
+{
+  "environment": {},
+  "warnings": {}
+}
 ```
 
 ### CLI Exit Codes (Normative)
@@ -2111,81 +2080,87 @@ Effective warning evaluation MUST use canonical lowercase snake_case warning key
 
 ### Example NAK Install Record (with loader)
 
-```toml
-schema = "nah.nak.install.v1"
-
-[nak]
-id = "com.example.nak"
-version = "3.1.2"
-
-[paths]
-root = "/nah/naks/com.example.nak/3.1.2"
-resource_root = "/nah/naks/com.example.nak/3.1.2/resources"
-lib_dirs = [
-  "/nah/naks/com.example.nak/3.1.2/lib",
-  "/nah/naks/com.example.nak/3.1.2/lib64"
-]
-
-[environment]
-NAH_NAK_FLAG = "1"
-
-[loader]
-exec_path = "/nah/naks/com.example.nak/3.1.2/bin/nah-runtime"
-args_template = [
-  "--app", "{NAH_APP_ENTRY}",
-  "--root", "{NAH_APP_ROOT}",
-  "--id", "{NAH_APP_ID}",
-  "--version", "{NAH_APP_VERSION}"
-]
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
+```json
+{
+  "$schema": "nah.nak.install.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.1.2"
+  },
+  "paths": {
+    "root": "/nah/naks/com.example.nak/3.1.2",
+    "resource_root": "/nah/naks/com.example.nak/3.1.2/resources",
+    "lib_dirs": [
+      "/nah/naks/com.example.nak/3.1.2/lib",
+      "/nah/naks/com.example.nak/3.1.2/lib64"
+    ]
+  },
+  "environment": {
+    "NAH_NAK_FLAG": "1"
+  },
+  "loader": {
+    "exec_path": "/nah/naks/com.example.nak/3.1.2/bin/nah-runtime",
+    "args_template": [
+      "--app", "{NAH_APP_ENTRY}",
+      "--root", "{NAH_APP_ROOT}",
+      "--id", "{NAH_APP_ID}",
+      "--version", "{NAH_APP_VERSION}"
+    ]
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  }
+}
 ```
 
 ### Example NAK Install Record (libs-only)
 
-```toml
-schema = "nah.nak.install.v1"
-
-[nak]
-id = "com.example.nak"
-version = "3.1.3"
-
-[paths]
-root = "/nah/naks/com.example.nak/3.1.3"
-resource_root = "/nah/naks/com.example.nak/3.1.3/resources"
-lib_dirs = [
-  "/nah/naks/com.example.nak/3.1.3/lib"
-]
-
-[environment]
-NAH_NAK_FLAG = "1"
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
+```json
+{
+  "$schema": "nah.nak.install.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.1.3"
+  },
+  "paths": {
+    "root": "/nah/naks/com.example.nak/3.1.3",
+    "resource_root": "/nah/naks/com.example.nak/3.1.3/resources",
+    "lib_dirs": [
+      "/nah/naks/com.example.nak/3.1.3/lib"
+    ]
+  },
+  "environment": {
+    "NAH_NAK_FLAG": "1"
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  }
+}
 ```
 
 ### Example App Install Record (pinned NAK)
 
-```toml
-schema = "nah.app.install.v1"
-
-[install]
-instance_id = "0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f"
-
-[app]
-id = "com.example.app"
-version = "1.2.3"
-nak_id = "com.example.nak"
-nak_version_req = ">=3.1.0 <4.0.0"
-
-[nak]
-id = "com.example.nak"
-version = "3.1.2"
-record_ref = "com.example.nak@3.1.2.toml"
-
-[paths]
-install_root = "/nah/apps/com.example.app-1.2.3"
+```json
+{
+  "$schema": "nah.app.install.v2",
+  "install": {
+    "instance_id": "0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f"
+  },
+  "app": {
+    "id": "com.example.app",
+    "version": "1.2.3",
+    "nak_id": "com.example.nak",
+    "nak_version_req": ">=3.1.0 <4.0.0"
+  },
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.1.2",
+    "record_ref": "com.example.nak@3.1.2.json"
+  },
+  "paths": {
+    "install_root": "/nah/apps/com.example.app-1.2.3"
+  }
+}
 ```
 
 ### Example JSON Output (Machine-Readable)
@@ -2218,7 +2193,7 @@ In JSON output, `warnings` is a top-level field representing warnings emitted du
     "version": "3.1.2",
     "root": "/nah/naks/com.example.nak/3.1.2",
     "resource_root": "/nah/naks/com.example.nak/3.1.2/resources",
-    "record_ref": "com.example.nak@3.1.2.toml"
+    "record_ref": "com.example.nak@3.1.2.json"
   },
   "execution": {
     "binary": "/nah/naks/com.example.nak/3.1.2/bin/nah-runtime",
@@ -2420,44 +2395,36 @@ Bundle applications (JavaScript, Python, or other interpreted code) use a file-b
 
 #### 1. Create Manifest Input File
 
-```toml
-# manifest.toml
-schema = "nah.manifest.input.v1"
-
-[app]
-id = "com.example.my-rn-app"
-version = "1.0.0"
-nak_id = "com.mycompany.rn-runtime"
-nak_version_req = ">=2.0.0"
-entrypoint = "bundle.js"
-
-# Optional metadata
-description = "My React Native Application"
-author = "Mobile Team"
-
-# Optional asset exports
-[[app.exports]]
-id = "splash"
-path = "assets/splash.png"
-type = "image/png"
-
-# Environment defaults (optional)
-[app.environment]
-NODE_ENV = "production"
-
-# Permissions are typically empty for bundle apps - the NAK runtime
-# defines the sandbox boundary. Only declare permissions if your
-# runtime supports per-app capability escalation.
-# [app.permissions]
-# filesystem = []
-# network = []
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.my-rn-app",
+    "version": "1.0.0",
+    "nak_id": "com.mycompany.rn-runtime",
+    "nak_version_req": ">=2.0.0",
+    "entrypoint": "bundle.js",
+    "description": "My React Native Application",
+    "author": "Mobile Team",
+    "exports": [
+      {
+        "id": "splash",
+        "path": "assets/splash.png",
+        "type": "image/png"
+      }
+    ],
+    "environment": {
+      "NODE_ENV": "production"
+    }
+  }
+}
 ```
 
 #### 2. Generate Manifest and Package
 
 ```bash
-# Generate TLV manifest from TOML input
-nah manifest generate manifest.toml -o manifest.nah
+# Generate TLV manifest from JSON input
+nah manifest generate manifest.json -o manifest.nah
 
 # Verify the generated manifest
 nah manifest show manifest.nah
@@ -2476,31 +2443,32 @@ nah app pack package -o my-rn-app-1.0.0.nap
 
 The NAK provides the runtime that loads and executes bundles:
 
-```toml
-# META/nak.toml for the RN runtime NAK pack
-schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.mycompany.rn-runtime"
-version = "2.0.0"
-
-[paths]
-lib_dirs = ["lib"]
-resource_root = "resources"
-
-[loader]
-exec_path = "bin/rn-loader"
-args_template = [
-  "--bundle", "{NAH_APP_ENTRY}",
-  "--assets", "{NAH_APP_ROOT}/assets",
-  "--nak-resources", "{NAH_NAK_ROOT}/resources"
-]
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
-
-[environment]
-RN_RUNTIME_VERSION = "2.0.0"
+```json
+{
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.mycompany.rn-runtime",
+    "version": "2.0.0"
+  },
+  "paths": {
+    "lib_dirs": ["lib"],
+    "resource_root": "resources"
+  },
+  "loader": {
+    "exec_path": "bin/rn-loader",
+    "args_template": [
+      "--bundle", "{NAH_APP_ENTRY}",
+      "--assets", "{NAH_APP_ROOT}/assets",
+      "--nak-resources", "{NAH_NAK_ROOT}/resources"
+    ]
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  },
+  "environment": {
+    "RN_RUNTIME_VERSION": "2.0.0"
+  }
+}
 ```
 
 #### 4. Installation and Launch
@@ -2546,36 +2514,36 @@ This mirrors how React Native apps work on iOS/Android: the JS bundle runs insid
 
 #### 1. Create Custom Host Profile
 
-```toml
-# /nah/host/profiles/production.toml
-schema = "nah.host.profile.v1"
-
-[nak]
-binding_mode = "mapped"
-
-[nak.map]
-"3.0" = "com.example.nak@3.0.2.toml"
-"2.0" = "com.example.nak@2.4.1.toml"
-
-[environment]
-NAH_HOST_VERSION = "1.0"
-NAH_NAK_MODE = "production"
-NAH_CLUSTER = "us-west-2"
-
-[paths]
-library_prepend = ["/opt/monitoring/lib"]
-library_append = ["/usr/local/lib"]
-
-[warnings]
-capability_missing = "warn"
-invalid_manifest = "error"   # Stricter in production
-
-[capabilities]
-# Map to AppArmor profiles
-"filesystem.read" = "apparmor.profile.readonly"
-"filesystem.write" = "apparmor.profile.readwrite"
-"network.connect" = "apparmor.profile.network-client"
-"network.listen" = "apparmor.profile.network-server"
+```json
+{
+  "$schema": "nah.host.profile.v2",
+  "nak": {
+    "binding_mode": "mapped",
+    "map": {
+      "3.0": "com.example.nak@3.0.2.json",
+      "2.0": "com.example.nak@2.4.1.json"
+    }
+  },
+  "environment": {
+    "NAH_HOST_VERSION": "1.0",
+    "NAH_NAK_MODE": "production",
+    "NAH_CLUSTER": "us-west-2"
+  },
+  "paths": {
+    "library_prepend": ["/opt/monitoring/lib"],
+    "library_append": ["/usr/local/lib"]
+  },
+  "warnings": {
+    "capability_missing": "warn",
+    "invalid_manifest": "error"
+  },
+  "capabilities": {
+    "filesystem.read": "apparmor.profile.readonly",
+    "filesystem.write": "apparmor.profile.readwrite",
+    "network.connect": "apparmor.profile.network-client",
+    "network.listen": "apparmor.profile.network-server"
+  }
+}
 ```
 
 #### 2. Integrate with Host Application
@@ -2659,11 +2627,11 @@ nah contract show myapp --profile development
 
 ```bash
 # Edit profile directly
-vim /nah/host/profiles/production.toml
+vim /nah/host/profiles/production.json
 
 # Add new NAK mapping
 # [nak.map]
-# "4.0" = "com.example.nak@4.0.0.toml"
+# "4.0" = "com.example.nak@4.0.0.json"
 
 # Change warning behavior
 # [warnings]
@@ -2682,9 +2650,7 @@ NAH implementors should leverage existing, well-tested libraries rather than rei
 
 - **LIEF** - ELF/Mach-O/PE section extraction and binary inspection. Used by `nah manifest show` and installation-time validation; the contract library can optionally use a minimal extractor if splitting the codebase.
 
-- **toml++** - TOML parsing/writing for Host Profile, App Install Record, and NAK Install Record. Output must be stable and atomic-write safe.
-
-- **nlohmann/json** - JSON serialization for tooling output only; the canonical persisted formats remain TLV (manifest) and TOML (records/profiles).
+- **nlohmann/json** - JSON parsing/writing for Host Profile, App Install Record, NAK Install Record, and tooling output. The canonical persisted formats are TLV (manifest) and JSON (records/profiles). Output must be stable and atomic-write safe.
 
 - **CLI11** - Command-line parsing and subcommands for NAH tools.
 
@@ -2696,7 +2662,7 @@ NAH implementors should leverage existing, well-tested libraries rather than rei
 
 - **OpenSSL** - Used only for hashing (e.g., SHA-256 for package_hash) and CRC helpers if needed. MUST NOT be used to make trust decisions inside NAH contract composition.
 
-- **simdutf** - UTF-8 validation for manifest strings and TOML-derived values before use (especially for env var keys/values).
+- **simdutf** - UTF-8 validation for manifest strings and JSON-derived values before use (especially for env var keys/values).
 
 - **semver** (optional) - Strict SemVer parsing/comparison for binding_mode=mapped and canonical selection. Parse failures MUST emit `invalid_manifest` and treat NAK as unresolved.
 
@@ -2749,7 +2715,7 @@ nah/
 ├── src/
 │   ├── manifest/                       # TLV encode/decode + extraction
 │   ├── contract/                       # compose_contract + warnings + capabilities
-│   ├── config/                         # TOML load/write + schema validate
+│   ├── config/                         # JSON load/write + schema validate
 │   ├── registry/                       # install discovery + index
 │   ├── platform/                       # ELF/Mach-O/PE section readers + path safety
 │   ├── io/                             # atomic write + fsync helpers
@@ -2774,7 +2740,7 @@ The implementation MUST produce the following build targets:
 - **nah_contract** (library): compose_contract + models + path safety + expansion + warning policy. MUST NOT link trust sources, plugins, or heavy dependencies.
 - **nah_manifest** (library): TLV encode/decode + manifest builder macros. Header-only or minimal static lib.
 - **nah_platform** (library): ELF/Mach-O/PE minimal section readers. No LIEF dependency for contract composition.
-- **nah_config** (library): TOML load/write + schema validate. Used by tools and host integration, NOT by pure contract composition.
+- **nah_config** (library): JSON load/write + schema validate. Used by tools and host integration, NOT by pure contract composition.
 - **nah_registry** (library): Registry scanning + instance selection.
 - **nahhost** (library): Host-facing API (NahHost::create, getLaunchContract, etc.). Links nah_contract + nah_config + nah_registry.
 - **nah** (executable): CLI tool. MAY link all libraries including trust source plugins.
@@ -2792,7 +2758,7 @@ The test suite MUST include:
 - Capability derivation from permissions
 - NAK resolution (registry-first, canonical/mapped modes)
 - Warning policy application
-- TOML parsing for profiles and install records (app + NAK)
+- JSON parsing for profiles and install records (app + NAK)
 
 **Integration Tests** (filesystem operations):
 
@@ -2811,7 +2777,7 @@ The test suite MUST include:
 **Fuzz Tests** (security hardening):
 
 - TLV decoder with malformed inputs
-- TOML parser with malformed profiles
+- JSON parser with malformed profiles
 - Variable expansion with malformed placeholders and overflow limits
 
 ### Memory Safety Features
@@ -2893,7 +2859,7 @@ The archive root MUST contain:
 - `lib/` (optional) - Application libraries
 - `share/` (optional) - Application assets
 - `manifest.nah` (optional; used only if binaries do not embed a manifest)
-- `META/install.toml` (optional; installer hints; host-owned and ignored by apps)
+- `META/install.json` (optional; installer hints; host-owned and ignored by apps)
 
 If both an embedded manifest and `manifest.nah` exist, the embedded manifest MUST take precedence.
 
@@ -2911,20 +2877,23 @@ myapp-1.0.0.nap
 ├── share/
 │   └── assets/
 └── META/
-    └── install.toml   # Optional installer hints
+    └── install.json   # Optional installer hints
 ```
 
-The `META/install.toml` file MAY contain:
+The `META/install.json` file MAY contain:
 
-```toml
-[package]
-name = "myapp"
-version = "1.0.0"
-description = "Example application"
-
-[install]
-preferred_location = "/nah/apps/myapp-1.0.0"
-signature_file = "myapp-1.0.0.nap.sig"
+```json
+{
+  "package": {
+    "name": "myapp",
+    "version": "1.0.0",
+    "description": "Example application"
+  },
+  "install": {
+    "preferred_location": "/nah/apps/myapp-1.0.0",
+    "signature_file": "myapp-1.0.0.nap.sig"
+  }
+}
 ```
 
 ---
@@ -2937,7 +2906,7 @@ A NAK pack (`.nak`) MUST be a gzip-compressed tar archive and MUST follow the De
 
 **Contains (Normative):**
 
-- `META/nak.toml` (required)
+- `META/nak.json` (required)
 - Optional `lib/`, `resources/`, and `bin/` trees
 
 **MUST NOT contain:**
@@ -2947,14 +2916,14 @@ A NAK pack (`.nak`) MUST be a gzip-compressed tar archive and MUST follow the De
 - Absolute paths in `paths.*` or `loader.exec_path`
 - Compose-time selection logic
 
-**Schema Field (Normative):** The top-level `schema` field in `META/nak.toml` is REQUIRED and MUST equal `nah.nak.pack.v1`. Missing or mismatched schema MUST cause `nah nak install` to fail with an error because the pack cannot be safely materialized.
-If `META/nak.toml` is missing, unreadable, fails TOML parsing, has a missing/mismatched schema, or is missing REQUIRED fields, `nah nak install` MUST fail with a non-zero exit and MUST NOT write any filesystem outputs (no partial install).
+**Schema Field (Normative):** The top-level `$schema` field in `META/nak.json` is REQUIRED and MUST equal `nah.nak.pack.v2`. Missing or mismatched schema MUST cause `nah nak install` to fail with an error because the pack cannot be safely materialized.
+If `META/nak.json` is missing, unreadable, fails JSON parsing, has a missing/mismatched schema, or is missing REQUIRED fields, `nah nak install` MUST fail with a non-zero exit and MUST NOT write any filesystem outputs (no partial install).
 
 **Required fields (Normative):** `schema`, `[nak].id`, and `[nak].version` MUST be present per Presence semantics.
 
 The archive root MUST contain:
 
-- `META/nak.toml` (required) - NAK pack manifest
+- `META/nak.json` (required) - NAK pack manifest
 - `resources/` (optional) - NAK resource root used at launch
 - `lib/` (optional) - NAK libraries
 - `bin/` (optional) - NAK loader or tools
@@ -2964,13 +2933,13 @@ Example structure:
 ```
 nak-3.0.2.nak
 ├── META/
-│   └── nak.toml
+│   └── nak.json
 ├── resources/
 │   └── lib/
 └── lib/
 ```
 
-The `META/nak.toml` file MUST contain the pack manifest. In this pack format:
+The `META/nak.json` file MUST contain the pack manifest. In this pack format:
 
 - `paths.resource_root`, `paths.lib_dirs`, and `loader.exec_path` MUST be relative to the pack root and MUST NOT be absolute.
 - These relative paths MUST be resolved at materialization time against the extracted pack root, and the resulting absolute paths MUST be written into the NAK Install Record.
@@ -2978,46 +2947,46 @@ The `META/nak.toml` file MUST contain the pack manifest. In this pack format:
 
 **Example (with loader):**
 
-```toml
-schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.example.nak"
-version = "3.0.2"
-
-[paths]
-resource_root = "resources" # Relative to pack root (defaults to ".")
-lib_dirs = ["lib"]          # Optional
-
-[environment]
-# NAH_NAK_FLAG = "1"
-
-[loader]
-exec_path = "bin/nah-runtime"
-args_template = [
-  "--app", "{NAH_APP_ENTRY}",
-  "--root", "{NAH_APP_ROOT}"
-]
-
-[execution]
-cwd = "{NAH_APP_ROOT}"
+```json
+{
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.0.2"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {},
+  "loader": {
+    "exec_path": "bin/nah-runtime",
+    "args_template": [
+      "--app", "{NAH_APP_ENTRY}",
+      "--root", "{NAH_APP_ROOT}"
+    ]
+  },
+  "execution": {
+    "cwd": "{NAH_APP_ROOT}"
+  }
+}
 ```
 
 **Example (libs-only NAK, no loader):**
 
-```toml
-schema = "nah.nak.pack.v1"
-
-[nak]
-id = "com.example.nak"
-version = "3.0.3"
-
-[paths]
-resource_root = "resources"
-lib_dirs = ["lib"]
-
-[environment]
-# NAH_NAK_FLAG = "1"
+```json
+{
+  "$schema": "nah.nak.pack.v2",
+  "nak": {
+    "id": "com.example.nak",
+    "version": "3.0.3"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {}
+}
 ```
 
 `nah nak install` MUST extract the pack and write a NAK Install Record
@@ -3073,13 +3042,13 @@ Signature verification MAY exist as build tooling, but NAH contract composition 
 
 ### Materializing NAK Packs (Normative)
 
-Given a NAK pack artifact reference that contains `META/nak.toml` (see “NAK Pack Format (Normative)”), the materializer MUST:
+Given a NAK pack artifact reference that contains `META/nak.json` (see “NAK Pack Format (Normative)”), the materializer MUST:
 
 1. Download (if HTTPS) and verify digest, or read from disk (if file).
 2. Extract the pack into:
    - `<TARGET_ROOT>/naks/<nak.id>/<nak.version>/`
 3. Write a NAK Install Record at:
-   - `<TARGET_ROOT>/registry/naks/<nak.id>@<nak.version>.toml`
+   - `<TARGET_ROOT>/registry/naks/<nak.id>@<nak.version>.json`
 4. In the written NAK Install Record:
    - `paths.root` MUST be the absolute path:
      - `<TARGET_ROOT>/naks/<nak.id>/<nak.version>`
@@ -3155,7 +3124,7 @@ NAH explicitly does NOT:
 ### Schema Evolution (Normative)
 
 - Schema identifiers ending in `.v1` are additive only; breaking changes MUST use a new schema identifier.
-- Implementations MUST ignore unknown keys/sections in TOML profiles and records.
+- Implementations MUST ignore unknown keys/sections in JSON profiles and records.
 - Warning identifiers are stable; new warnings MAY be added, but existing meanings MUST NOT change.
 - CLI/API stability: v1.x MAY add commands/flags/fields but MUST NOT remove or rename existing ones.
 
@@ -3174,12 +3143,12 @@ An implementation is NAH v1.0 compliant if it satisfies ALL of the following:
 - MUST implement `compose_contract` as a pure, non-interactive function over inputs.
 - MUST enforce path containment and placeholder expansion rules.
 - MUST emit warnings and critical errors as specified.
-- MUST ignore unknown TOML keys/sections.
+- MUST ignore unknown JSON keys/sections.
 - MUST support conformance testing with at least the following categories:
   - Unit tests for pure functions (TLV decode, SemVer requirement parsing/evaluation, NAK selection, variable expansion, path containment).
   - Integration tests for install record atomic write, registry scan, NAK install -> record write.
   - Golden tests for known inputs -> exact Launch Contract JSON/text output.
-  - Fuzz tests for TLV decode, TOML parse, variable expansion.
+  - Fuzz tests for TLV decode, JSON parse, variable expansion.
 
 Conformance criteria in v1.x MUST be additive only.
 

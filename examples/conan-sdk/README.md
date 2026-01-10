@@ -41,7 +41,7 @@ conan-sdk/
 ├── bin/                  # Loader source
 ├── resources/            # Engine resources
 └── META/
-    └── nak.toml.in       # NAK manifest template
+    └── nak.json.in       # NAK manifest template
 ```
 
 ## Dependencies
@@ -78,7 +78,7 @@ Output: `build/build/Release/com.example.gameengine-1.0.0.nak` (~9MB)
 ```
 com.example.gameengine-1.0.0.nak
 ├── META/
-│   └── nak.toml
+│   └── nak.json
 ├── lib/
 │   ├── libgameengine.a       # SDK library
 │   ├── libz.a                # zlib
@@ -118,12 +118,17 @@ int main() {
 
 The app's manifest:
 
-```toml
-id = "com.example.mygame"
-version = "1.0.0"
-nak_id = "com.example.gameengine"
-nak_version_req = ">=1.0.0 <2.0.0"
-entrypoint = "bin/mygame"
+```json
+{
+  "$schema": "nah.manifest.input.v2",
+  "app": {
+    "id": "com.example.mygame",
+    "version": "1.0.0",
+    "nak_id": "com.example.gameengine",
+    "nak_version_req": ">=1.0.0 <2.0.0",
+    "entrypoint": "bin/mygame"
+  }
+}
 ```
 
 ## Installing the NAK

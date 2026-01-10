@@ -43,17 +43,21 @@ nah_find_sdk(framework)
 nah_create_app(app src/main.c)
 
 # Generate manifest
-set(MANIFEST_CONTENT "id = \"${APP_ID}\"
-version = \"${APP_VERSION}\"
-nak_id = \"${NAK_ID}\"
-nak_version_req = \"${NAK_VERSION_REQ}\"
-entrypoint = \"bin/app\"
-lib_dirs = [\"lib\"]
-asset_dirs = [\"assets\"]
-
-[permissions]
-filesystem = [\"read:assets/*\"]
-")
+set(MANIFEST_CONTENT "{
+  \"$schema\": \"nah.manifest.input.v2\",
+  \"app\": {
+    \"id\": \"${APP_ID}\",
+    \"version\": \"${APP_VERSION}\",
+    \"nak_id\": \"${NAK_ID}\",
+    \"nak_version_req\": \"${NAK_VERSION_REQ}\",
+    \"entrypoint\": \"bin/app\",
+    \"lib_dirs\": [\"lib\"],
+    \"asset_dirs\": [\"assets\"],
+    \"permissions\": {
+      \"filesystem\": [\"read:assets/*\"]
+    }
+  }
+}")
 
 nah_generate_manifest(app "${MANIFEST_CONTENT}")
 

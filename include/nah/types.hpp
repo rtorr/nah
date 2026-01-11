@@ -125,6 +125,63 @@ struct WarningObject {
 };
 
 // ============================================================================
+// Environment Operations (per SPEC Environment Algebra)
+// ============================================================================
+
+enum class EnvOp {
+    Set,      // Default: replace/fill value
+    Prepend,  // Prepend to existing value with separator
+    Append,   // Append to existing value with separator
+    Unset     // Remove the variable
+};
+
+inline const char* env_op_to_string(EnvOp op) {
+    switch (op) {
+        case EnvOp::Set: return "set";
+        case EnvOp::Prepend: return "prepend";
+        case EnvOp::Append: return "append";
+        case EnvOp::Unset: return "unset";
+        default: return "set";
+    }
+}
+
+inline std::optional<EnvOp> parse_env_op(const std::string& s) {
+    if (s == "set") return EnvOp::Set;
+    if (s == "prepend") return EnvOp::Prepend;
+    if (s == "append") return EnvOp::Append;
+    if (s == "unset") return EnvOp::Unset;
+    return std::nullopt;
+}
+
+// Environment value: either a simple string or an operation
+struct EnvValue {
+    EnvOp op = EnvOp::Set;
+    std::string value;
+    std::string separator = ":";  // For prepend/append
+    
+    // Convenience constructors
+    EnvValue() = default;
+    EnvValue(const char* v) : op(EnvOp::Set), value(v) {}
+    EnvValue(const std::string& v) : op(EnvOp::Set), value(v) {}
+    EnvValue(EnvOp o, const std::string& v, const std::string& sep = ":")
+        : op(o), value(v), separator(sep) {}
+    
+    // Check if this is a simple string value (backward compatible)
+    bool is_simple() const { return op == EnvOp::Set; }
+    
+    // Comparison operators for testing convenience
+    bool operator==(const std::string& other) const { return value == other; }
+    bool operator==(const char* other) const { return value == other; }
+    bool operator==(const EnvValue& other) const { 
+        return op == other.op && value == other.value && separator == other.separator;
+    }
+    bool operator!=(const EnvValue& other) const { return !(*this == other); }
+};
+
+// Convenience type alias
+using EnvMap = std::unordered_map<std::string, EnvValue>;
+
+// ============================================================================
 // Trust State (per SPEC L470-L471)
 // ============================================================================
 
@@ -227,11 +284,24 @@ struct LaunchContract {
 // Trace Entry (per SPEC L1642-L1647)
 // ============================================================================
 
-struct TraceEntry {
+// Single contribution to a traced value
+struct TraceContribution {
     std::string value;
     std::string source_kind;   // profile | nak_record | manifest | install_record | process_env | overrides_file | standard
     std::string source_path;
     int precedence_rank;       // 1..7
+    EnvOp operation = EnvOp::Set;  // What operation was applied
+    bool accepted = false;     // Was this contribution used in final value?
+};
+
+struct TraceEntry {
+    std::string value;         // Final resolved value
+    std::string source_kind;   // Winning source kind
+    std::string source_path;   // Winning source path
+    int precedence_rank;       // Winning precedence
+    
+    // Full composition history (all contributions, in order applied)
+    std::vector<TraceContribution> history;
 };
 
 // ============================================================================

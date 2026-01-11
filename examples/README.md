@@ -36,11 +36,45 @@ cd examples
 # Set up a demo NAH host
 ./scripts/setup_host.sh
 
+# List installed packages
+nah --root demo_nah_root list
+
+# Check an app's status
+nah --root demo_nah_root status com.example.app
+
 # Run apps via NAH
 ./scripts/run_apps.sh
 
 # Or just show launch contracts
 ./scripts/run_apps.sh --contract
+```
+
+## Using the New CLI
+
+The NAH CLI auto-detects package types and simplifies common operations:
+
+```bash
+# Install a package (auto-detects .nap/.nak)
+nah install sdk/build/com.example.sdk-1.2.3.nak
+nah install apps/app/build/com.example.app-1.0.0.nap
+
+# List everything
+nah list                    # Shows both apps and NAKs
+nah list --apps             # Apps only
+nah list --naks             # NAKs only
+
+# Check status and diagnose issues
+nah status                  # Overview of root
+nah status com.example.app  # App contract details
+nah status com.example.app --trace  # With provenance
+
+# Create a new project
+nah init app ./my-new-app
+nah init nak ./my-new-sdk
+nah init root ./my-nah-root
+
+# Pack a directory (auto-detects type)
+nah pack ./my-new-app -o my-app.nap
 ```
 
 ## Scripts

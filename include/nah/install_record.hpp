@@ -59,7 +59,7 @@ struct AppInstallRecord {
     
     // [overrides] section
     struct {
-        std::unordered_map<std::string, std::string> environment;
+        EnvMap environment;
         struct {
             std::vector<std::string> prepend;
             std::vector<std::string> append;

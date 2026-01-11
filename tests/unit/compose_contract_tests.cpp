@@ -220,6 +220,154 @@ TEST_CASE("compose_contract: returns ENTRYPOINT_NOT_FOUND when entrypoint missin
 }
 
 // ============================================================================
+// Environment Algebra Tests (v1.2 - prepend/append/unset operations)
+// ============================================================================
+
+TEST_CASE("compose_contract: environment prepend operation") {
+    TempTestDir tmp;
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(tmp.app_root.string());
+    install_record.nak.id = "";
+    install_record.nak.version = "";
+    install_record.nak.record_ref = "";
+    
+    HostProfile profile = create_test_profile();
+    // Set a base value
+    profile.environment["MY_PATH"] = EnvValue(EnvOp::Set, "/base/path", ":");
+    // Prepend to it via install overrides
+    install_record.overrides.environment["MY_PATH"] = EnvValue(EnvOp::Prepend, "/prepended", ":");
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK(result.ok);
+    CHECK(result.envelope.contract.environment.count("MY_PATH") == 1);
+    CHECK(result.envelope.contract.environment.at("MY_PATH") == "/prepended:/base/path");
+}
+
+TEST_CASE("compose_contract: environment append operation") {
+    TempTestDir tmp;
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(tmp.app_root.string());
+    install_record.nak.id = "";
+    install_record.nak.version = "";
+    install_record.nak.record_ref = "";
+    
+    HostProfile profile = create_test_profile();
+    // Set a base value
+    profile.environment["MY_PATH"] = EnvValue(EnvOp::Set, "/base/path", ":");
+    // Append to it via install overrides
+    install_record.overrides.environment["MY_PATH"] = EnvValue(EnvOp::Append, "/appended", ":");
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK(result.ok);
+    CHECK(result.envelope.contract.environment.count("MY_PATH") == 1);
+    CHECK(result.envelope.contract.environment.at("MY_PATH") == "/base/path:/appended");
+}
+
+TEST_CASE("compose_contract: environment unset operation") {
+    TempTestDir tmp;
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(tmp.app_root.string());
+    install_record.nak.id = "";
+    install_record.nak.version = "";
+    install_record.nak.record_ref = "";
+    
+    HostProfile profile = create_test_profile();
+    // Set a value that will be unset
+    profile.environment["REMOVE_ME"] = EnvValue(EnvOp::Set, "should_be_removed", ":");
+    // Unset it via install overrides
+    install_record.overrides.environment["REMOVE_ME"] = EnvValue(EnvOp::Unset, "", ":");
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK(result.ok);
+    // Unset should remove the variable entirely
+    CHECK(result.envelope.contract.environment.count("REMOVE_ME") == 0);
+}
+
+TEST_CASE("compose_contract: environment prepend with custom separator") {
+    TempTestDir tmp;
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(tmp.app_root.string());
+    install_record.nak.id = "";
+    install_record.nak.version = "";
+    install_record.nak.record_ref = "";
+    
+    HostProfile profile = create_test_profile();
+    // Set a base value
+    profile.environment["MY_LIST"] = EnvValue(EnvOp::Set, "item1", ";");
+    // Prepend with semicolon separator (Windows-style)
+    install_record.overrides.environment["MY_LIST"] = EnvValue(EnvOp::Prepend, "item0", ";");
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK(result.ok);
+    CHECK(result.envelope.contract.environment.count("MY_LIST") == 1);
+    CHECK(result.envelope.contract.environment.at("MY_LIST") == "item0;item1");
+}
+
+TEST_CASE("compose_contract: environment prepend to empty creates new value") {
+    TempTestDir tmp;
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(tmp.app_root.string());
+    install_record.nak.id = "";
+    install_record.nak.version = "";
+    install_record.nak.record_ref = "";
+    
+    HostProfile profile = create_test_profile();
+    // No base value, just prepend
+    install_record.overrides.environment["NEW_PATH"] = EnvValue(EnvOp::Prepend, "/new/path", ":");
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK(result.ok);
+    CHECK(result.envelope.contract.environment.count("NEW_PATH") == 1);
+    // Prepend to non-existent should just use the value without separator
+    CHECK(result.envelope.contract.environment.at("NEW_PATH") == "/new/path");
+}
+
+// ============================================================================
 // Multi-Loader Tests
 // ============================================================================
 

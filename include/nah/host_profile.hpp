@@ -22,7 +22,7 @@ struct HostProfile {
     } nak;
     
     // [environment] section
-    std::unordered_map<std::string, std::string> environment;
+    EnvMap environment;
     
     // [paths] section
     struct {

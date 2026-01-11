@@ -106,8 +106,11 @@ Result<void> NahHost::setActiveHostProfile(const std::string& name) {
     
     // Verify profile exists
     if (!fs::exists(profile_path)) {
-        return Result<void>::err(Error(ErrorCode::PROFILE_MISSING,
-                                       "profile not found: " + name));
+        std::string hint = "profile not found: " + name + "\n\nAvailable profiles:\n";
+        for (const auto& p : listProfiles()) {
+            hint += "  " + p + "\n";
+        }
+        return Result<void>::err(Error(ErrorCode::PROFILE_MISSING, hint));
     }
     
     // Create parent directory if needed
@@ -149,8 +152,11 @@ Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
     
     std::string content = read_file(profile_path);
     if (content.empty()) {
-        return Result<HostProfile>::err(Error(ErrorCode::PROFILE_MISSING,
-                                              "profile not found: " + name));
+        std::string hint = "profile not found: " + name + "\n\nAvailable profiles:\n";
+        for (const auto& p : listProfiles()) {
+            hint += "  " + p + "\n";
+        }
+        return Result<HostProfile>::err(Error(ErrorCode::PROFILE_MISSING, hint));
     }
     
     auto parse_result = parse_host_profile_full(content, profile_path);

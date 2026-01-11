@@ -18,12 +18,141 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include <optional>
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
+
+// ============================================================================
+// Package Type Detection
+// ============================================================================
+
+enum class PackageType {
+    Unknown,
+    App,
+    Nak
+};
+
+// Detect package type from file extension or directory contents
+PackageType detect_package_type(const std::string& source) {
+    // Check file extension first
+    if (source.size() >= 4) {
+        std::string ext = source.substr(source.size() - 4);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".nap") return PackageType::App;
+        if (ext == ".nak") return PackageType::Nak;
+    }
+    
+    // Check URL extension
+    std::string url_path = source;
+    auto query_pos = url_path.find('?');
+    if (query_pos != std::string::npos) {
+        url_path = url_path.substr(0, query_pos);
+    }
+    if (url_path.size() >= 4) {
+        std::string ext = url_path.substr(url_path.size() - 4);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".nap") return PackageType::App;
+        if (ext == ".nak") return PackageType::Nak;
+    }
+    
+    // For directories, check contents
+    if (fs::exists(source) && fs::is_directory(source)) {
+        // NAK: has META/nak.json
+        if (fs::exists(fs::path(source) / "META" / "nak.json")) {
+            return PackageType::Nak;
+        }
+        // App: has manifest.json or embedded manifest in binary
+        if (fs::exists(fs::path(source) / "manifest.json")) {
+            return PackageType::App;
+        }
+        // Check for binary with embedded manifest
+        for (const auto& entry : fs::directory_iterator(source)) {
+            if (entry.is_regular_file()) {
+                auto result = nah::read_manifest_section(entry.path().string());
+                if (result.ok) {
+                    return PackageType::App;
+                }
+            }
+        }
+        // Check bin/ subdirectory
+        fs::path bin_dir = fs::path(source) / "bin";
+        if (fs::exists(bin_dir) && fs::is_directory(bin_dir)) {
+            for (const auto& entry : fs::directory_iterator(bin_dir)) {
+                if (entry.is_regular_file()) {
+                    auto result = nah::read_manifest_section(entry.path().string());
+                    if (result.ok) {
+                        return PackageType::App;
+                    }
+                }
+            }
+        }
+    }
+    
+    return PackageType::Unknown;
+}
+
+// Detect if an installed target is an app or NAK
+PackageType detect_installed_type(const std::string& nah_root, const std::string& id, const std::string& version) {
+    // Check app registry
+    auto host = nah::NahHost::create(nah_root);
+    auto app_result = host->findApplication(id, version);
+    bool is_app = app_result.isOk();
+    
+    // Check NAK registry
+    auto nak_entries = nah::scan_nak_registry(nah_root);
+    bool is_nak = false;
+    for (const auto& entry : nak_entries) {
+        if (entry.id == id && (version.empty() || entry.version == version)) {
+            is_nak = true;
+            break;
+        }
+    }
+    
+    if (is_app && is_nak) {
+        return PackageType::Unknown; // Ambiguous
+    }
+    if (is_app) return PackageType::App;
+    if (is_nak) return PackageType::Nak;
+    return PackageType::Unknown;
+}
+
+// ============================================================================
+// Root Auto-Detection
+// ============================================================================
+
+std::string auto_detect_nah_root(const std::string& explicit_root) {
+    // 1. Explicit --root flag
+    if (!explicit_root.empty() && explicit_root != "/nah") {
+        return explicit_root;
+    }
+    
+    // 2. NAH_ROOT environment variable (already handled by CLI11 envname)
+    // This is checked before this function via CLI11's envname feature
+    
+    // 3. Walk up from cwd looking for .nah/ marker or host/ directory
+    std::error_code ec;
+    fs::path current = fs::current_path(ec);
+    if (!ec) {
+        while (!current.empty() && current != current.root_path()) {
+            // Check for .nah marker directory
+            if (fs::exists(current / ".nah", ec)) {
+                return current.string();
+            }
+            // Check for host/ directory (NAH root structure)
+            if (fs::exists(current / "host", ec) && fs::is_directory(current / "host", ec)) {
+                return current.string();
+            }
+            current = current.parent_path();
+        }
+    }
+    
+    // 4. Default to /nah
+    return "/nah";
+}
 
 // ============================================================================
 // Global Options
@@ -248,24 +377,24 @@ void suggest_available_targets(const std::string& nah_root, const std::string& m
     
     std::vector<std::string> available;
     
-    if (entity_type == "application" || entity_type == "app") {
+    bool include_apps = (entity_type == "application" || entity_type == "app" || entity_type == "package");
+    bool include_naks = (entity_type == "NAK" || entity_type == "nak" || entity_type == "package");
+    
+    if (include_apps) {
         auto host = nah::NahHost::create(nah_root);
         for (const auto& app : host->listApplications()) {
             available.push_back(app.id);
         }
-    } else if (entity_type == "NAK" || entity_type == "nak") {
+    }
+    if (include_naks) {
         for (const auto& entry : nah::scan_nak_registry(nah_root)) {
             available.push_back(entry.id + "@" + entry.version);
         }
     }
     
     if (available.empty()) {
-        std::cerr << std::endl << "No " << entity_type << "s are currently installed." << std::endl;
-        if (entity_type == "application" || entity_type == "app") {
-            std::cerr << "Install one with: " << color::bold("nah app install <package.nap>") << std::endl;
-        } else {
-            std::cerr << "Install one with: " << color::bold("nah nak install <package.nak>") << std::endl;
-        }
+        std::cerr << std::endl << "No packages are currently installed." << std::endl;
+        std::cerr << "Install with: " << color::bold("nah install <package>") << std::endl;
         return;
     }
     
@@ -278,13 +407,13 @@ void suggest_available_targets(const std::string& nah_root, const std::string& m
             std::cerr << "  " << color::green(s) << std::endl;
         }
     } else if (available.size() <= 10) {
-        std::cerr << std::endl << "Available " << entity_type << "s:" << std::endl;
+        std::cerr << std::endl << "Available:" << std::endl;
         for (const auto& s : available) {
             std::cerr << "  " << s << std::endl;
         }
     } else {
-        std::cerr << std::endl << "Run " << color::bold("nah " + entity_type + " list") 
-                  << " to see all installed " << entity_type << "s." << std::endl;
+        std::cerr << std::endl << "Run " << color::bold("nah list") 
+                  << " to see all installed packages." << std::endl;
     }
 }
 
@@ -669,6 +798,7 @@ int cmd_nak_show(const GlobalOptions& opts, const std::string& target) {
     }
     
     print_error("NAK not found: " + target, opts.json);
+    suggest_available_targets(opts.root, target, "NAK", opts.json);
     return 1;
 }
 
@@ -734,6 +864,7 @@ int cmd_nak_path(const GlobalOptions& opts, const std::string& target) {
     }
     
     print_error("NAK not found: " + target, opts.json);
+    suggest_available_targets(opts.root, target, "NAK", opts.json);
     return 1;
 }
 
@@ -843,6 +974,993 @@ int cmd_nak_pack(const GlobalOptions& opts, const std::string& dir, const std::s
         std::cout << "Created: " << output << " (" << result.archive_data.size() << " bytes)" << std::endl;
     }
     
+    return 0;
+}
+
+// ============================================================================
+// Forward Declarations
+// ============================================================================
+
+// These are defined later but needed by unified commands
+int cmd_profile_init(const GlobalOptions& opts, const std::string& dir);
+int cmd_app_init(const GlobalOptions& opts, const std::string& dir);
+int cmd_nak_init(const GlobalOptions& opts, const std::string& dir);
+int cmd_doctor(const GlobalOptions& opts, const std::string& target, bool fix);
+
+// ============================================================================
+// Unified Commands (New CLI)
+// ============================================================================
+
+// Unified install command with auto-detection
+int cmd_install(const GlobalOptions& opts, const std::string& source, bool force,
+                std::optional<PackageType> force_type) {
+    // Detect package type
+    PackageType pkg_type = force_type.value_or(detect_package_type(source));
+    
+    if (pkg_type == PackageType::Unknown) {
+        ErrorContext ctx;
+        ctx.hint = "The source doesn't have a recognized extension (.nap or .nak)\n"
+                   "       and couldn't be detected from contents.\n\n"
+                   "       For apps: use .nap extension or create manifest.json\n"
+                   "       For NAKs: use .nak extension or create META/nak.json\n\n"
+                   "       To force a type: nah install " + source + " --app\n"
+                   "                         nah install " + source + " --nak";
+        print_error("Cannot detect package type for: " + source, opts.json, ctx);
+        return 1;
+    }
+    
+    if (pkg_type == PackageType::App) {
+        // Check if source is a directory - need to pack first
+        if (fs::exists(source) && fs::is_directory(source)) {
+            // Pack to temp file, then install
+            auto pack_result = nah::pack_nap(source);
+            if (!pack_result.ok) {
+                print_error("Failed to pack app: " + pack_result.error, opts.json);
+                return 1;
+            }
+            
+            // Create temp file
+            std::string temp_path = fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nap");
+            std::ofstream temp_file(temp_path, std::ios::binary);
+            if (!temp_file) {
+                print_error("Failed to create temp file", opts.json);
+                return 1;
+            }
+            temp_file.write(reinterpret_cast<const char*>(pack_result.archive_data.data()),
+                           static_cast<std::streamsize>(pack_result.archive_data.size()));
+            temp_file.close();
+            
+            // Install from temp file
+            nah::AppInstallOptions install_opts;
+            install_opts.nah_root = opts.root;
+            install_opts.profile_name = opts.profile;
+            install_opts.force = force;
+            install_opts.installed_by = "nah-cli";
+            
+            auto result = nah::install_app(temp_path, install_opts);
+            fs::remove(temp_path); // Clean up
+            
+            if (!result.ok) {
+                print_error(result.error, opts.json);
+                return 1;
+            }
+            
+            if (opts.json) {
+                nlohmann::json j;
+                j["success"] = true;
+                j["type"] = "app";
+                j["app_id"] = result.app_id;
+                j["app_version"] = result.app_version;
+                j["install_root"] = result.install_root;
+                if (!result.nak_id.empty()) {
+                    j["nak_id"] = result.nak_id;
+                    j["nak_version"] = result.nak_version;
+                }
+                std::cout << j.dump(2) << std::endl;
+            } else if (!opts.quiet) {
+                std::cout << "Installed: " << result.app_id << "@" << result.app_version << std::endl;
+                std::cout << "  Path: " << result.install_root << std::endl;
+                if (!result.nak_id.empty()) {
+                    std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+                }
+            }
+            return 0;
+        }
+        
+        // Install app from file or URL
+        nah::AppInstallOptions install_opts;
+        install_opts.nah_root = opts.root;
+        install_opts.profile_name = opts.profile;
+        install_opts.force = force;
+        install_opts.installed_by = "nah-cli";
+        
+        auto result = nah::install_app(source, install_opts);
+        
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "app";
+            j["app_id"] = result.app_id;
+            j["app_version"] = result.app_version;
+            j["install_root"] = result.install_root;
+            j["instance_id"] = result.instance_id;
+            if (!result.nak_id.empty()) {
+                j["nak_id"] = result.nak_id;
+                j["nak_version"] = result.nak_version;
+            }
+            if (!result.package_hash.empty()) {
+                j["package_hash"] = result.package_hash;
+            }
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Installed: " << result.app_id << "@" << result.app_version << std::endl;
+            std::cout << "  Path: " << result.install_root << std::endl;
+            std::cout << "  Instance: " << result.instance_id << std::endl;
+            if (!result.nak_id.empty()) {
+                std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+            }
+        }
+        return 0;
+    } else {
+        // Install NAK
+        // Check if source is a directory - need to pack first
+        if (fs::exists(source) && fs::is_directory(source)) {
+            auto pack_result = nah::pack_nak(source);
+            if (!pack_result.ok) {
+                print_error("Failed to pack NAK: " + pack_result.error, opts.json);
+                return 1;
+            }
+            
+            std::string temp_path = fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nak");
+            std::ofstream temp_file(temp_path, std::ios::binary);
+            if (!temp_file) {
+                print_error("Failed to create temp file", opts.json);
+                return 1;
+            }
+            temp_file.write(reinterpret_cast<const char*>(pack_result.archive_data.data()),
+                           static_cast<std::streamsize>(pack_result.archive_data.size()));
+            temp_file.close();
+            
+            nah::NakInstallOptions install_opts;
+            install_opts.nah_root = opts.root;
+            install_opts.force = force;
+            install_opts.installed_by = "nah-cli";
+            
+            auto result = nah::install_nak(temp_path, install_opts);
+            fs::remove(temp_path);
+            
+            if (!result.ok) {
+                print_error(result.error, opts.json);
+                return 1;
+            }
+            
+            if (opts.json) {
+                nlohmann::json j;
+                j["success"] = true;
+                j["type"] = "nak";
+                j["nak_id"] = result.nak_id;
+                j["nak_version"] = result.nak_version;
+                j["install_root"] = result.install_root;
+                std::cout << j.dump(2) << std::endl;
+            } else if (!opts.quiet) {
+                std::cout << "Installed: " << result.nak_id << "@" << result.nak_version << std::endl;
+                std::cout << "  Path: " << result.install_root << std::endl;
+            }
+            return 0;
+        }
+        
+        // Install NAK from file or URL
+        nah::NakInstallOptions install_opts;
+        install_opts.nah_root = opts.root;
+        install_opts.force = force;
+        install_opts.installed_by = "nah-cli";
+        
+        auto result = nah::install_nak(source, install_opts);
+        
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "nak";
+            j["nak_id"] = result.nak_id;
+            j["nak_version"] = result.nak_version;
+            j["install_root"] = result.install_root;
+            if (!result.package_hash.empty()) {
+                j["package_hash"] = result.package_hash;
+            }
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Installed: " << result.nak_id << "@" << result.nak_version << std::endl;
+            std::cout << "  Path: " << result.install_root << std::endl;
+        }
+        return 0;
+    }
+}
+
+// Unified uninstall command with auto-detection
+int cmd_uninstall(const GlobalOptions& opts, const std::string& target,
+                  std::optional<PackageType> force_type) {
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "package")) {
+        return 1;
+    }
+    
+    // Detect type from registry
+    PackageType pkg_type = force_type.value_or(detect_installed_type(opts.root, id, version));
+    
+    if (pkg_type == PackageType::Unknown) {
+        // Check if both exist (ambiguous) or neither exists
+        auto host = nah::NahHost::create(opts.root);
+        auto app_result = host->findApplication(id, version);
+        auto nak_entries = nah::scan_nak_registry(opts.root);
+        
+        bool app_exists = app_result.isOk();
+        bool nak_exists = false;
+        for (const auto& entry : nak_entries) {
+            if (entry.id == id && (version.empty() || entry.version == version)) {
+                nak_exists = true;
+                break;
+            }
+        }
+        
+        if (app_exists && nak_exists) {
+            ErrorContext ctx;
+            ctx.hint = "Both an app and a NAK exist with this ID.\n"
+                       "       Use --app or --nak to specify which to uninstall:\n"
+                       "         nah uninstall " + target + " --app\n"
+                       "         nah uninstall " + target + " --nak";
+            print_error("Ambiguous ID: " + target, opts.json, ctx);
+            return 1;
+        } else {
+            ErrorContext ctx;
+            ctx.hint = "Run 'nah list' to see installed packages.";
+            print_error("Not installed: " + target, opts.json, ctx);
+            suggest_available_targets(opts.root, id, "package", opts.json);
+            return 1;
+        }
+    }
+    
+    if (pkg_type == PackageType::App) {
+        auto result = nah::uninstall_app(opts.root, id, version);
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "app";
+            j["uninstalled"] = target;
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Uninstalled app: " << target << std::endl;
+        }
+        return 0;
+    } else {
+        // Uninstall NAK - need to implement or use existing function
+        // For now, we need to add NAK uninstall capability
+        ErrorContext ctx;
+        ctx.hint = "NAK uninstall is not yet implemented.\n"
+                   "       You can manually remove the NAK from the registry.";
+        print_error("Cannot uninstall NAK: " + target, opts.json, ctx);
+        return 1;
+    }
+}
+
+// Unified list command
+int cmd_list(const GlobalOptions& opts, bool apps_only, bool naks_only) {
+    if (!check_nah_root(opts.root, opts.json)) {
+        return 1;
+    }
+    
+    auto host = nah::NahHost::create(opts.root);
+    auto apps = host->listApplications();
+    auto nak_entries = nah::scan_nak_registry(opts.root);
+    
+    // Build NAK usage map
+    std::map<std::string, int> nak_usage; // nak_id@version -> count
+    for (const auto& app : apps) {
+        std::string record_content = read_file(app.record_path);
+        if (!record_content.empty()) {
+            auto record_result = nah::parse_app_install_record_full(record_content, app.record_path);
+            if (record_result.ok && !record_result.record.nak.version.empty()) {
+                std::string nak_key = record_result.record.app.nak_id + "@" + record_result.record.nak.version;
+                nak_usage[nak_key]++;
+            }
+        }
+    }
+    
+    if (opts.json) {
+        nlohmann::json j;
+        
+        if (!apps_only || (!apps_only && !naks_only)) {
+            nlohmann::json apps_arr = nlohmann::json::array();
+            for (const auto& app : apps) {
+                nlohmann::json a;
+                a["id"] = app.id;
+                a["version"] = app.version;
+                a["instance_id"] = app.instance_id;
+                a["install_root"] = app.install_root;
+                
+                // Get NAK info
+                std::string record_content = read_file(app.record_path);
+                if (!record_content.empty()) {
+                    auto record_result = nah::parse_app_install_record_full(record_content, app.record_path);
+                    if (record_result.ok && !record_result.record.nak.version.empty()) {
+                        a["nak_id"] = record_result.record.app.nak_id;
+                        a["nak_version"] = record_result.record.nak.version;
+                    }
+                }
+                apps_arr.push_back(a);
+            }
+            j["apps"] = apps_arr;
+        }
+        
+        if (!naks_only || (!apps_only && !naks_only)) {
+            nlohmann::json naks_arr = nlohmann::json::array();
+            for (const auto& entry : nak_entries) {
+                nlohmann::json n;
+                n["id"] = entry.id;
+                n["version"] = entry.version;
+                n["record_ref"] = entry.record_ref;
+                std::string nak_key = entry.id + "@" + entry.version;
+                n["used_by_apps"] = nak_usage[nak_key];
+                naks_arr.push_back(n);
+            }
+            j["naks"] = naks_arr;
+        }
+        
+        std::cout << j.dump(2) << std::endl;
+    } else {
+        bool show_apps = !naks_only;
+        bool show_naks = !apps_only;
+        
+        if (show_apps) {
+            std::cout << "Apps:" << std::endl;
+            if (apps.empty()) {
+                std::cout << "  (none installed)" << std::endl;
+            } else {
+                for (const auto& app : apps) {
+                    std::cout << "  " << app.id << "@" << app.version;
+                    
+                    // Get NAK info
+                    std::string record_content = read_file(app.record_path);
+                    if (!record_content.empty()) {
+                        auto record_result = nah::parse_app_install_record_full(record_content, app.record_path);
+                        if (record_result.ok && !record_result.record.nak.version.empty()) {
+                            std::cout << " -> " << record_result.record.app.nak_id 
+                                      << "@" << record_result.record.nak.version;
+                        }
+                    }
+                    std::cout << std::endl;
+                }
+            }
+        }
+        
+        if (show_apps && show_naks) {
+            std::cout << std::endl;
+        }
+        
+        if (show_naks) {
+            std::cout << "NAKs:" << std::endl;
+            if (nak_entries.empty()) {
+                std::cout << "  (none installed)" << std::endl;
+            } else {
+                for (const auto& entry : nak_entries) {
+                    std::cout << "  " << entry.id << "@" << entry.version;
+                    std::string nak_key = entry.id + "@" + entry.version;
+                    int usage = nak_usage[nak_key];
+                    if (usage > 0) {
+                        std::cout << " (used by " << usage << " app" << (usage > 1 ? "s" : "") << ")";
+                    } else {
+                        std::cout << " (unused)";
+                    }
+                    std::cout << std::endl;
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+// Unified pack command with auto-detection
+int cmd_pack(const GlobalOptions& opts, const std::string& dir, const std::string& output,
+             std::optional<PackageType> force_type) {
+    // Detect package type from directory contents
+    PackageType pkg_type = force_type.value_or(detect_package_type(dir));
+    
+    if (pkg_type == PackageType::Unknown) {
+        ErrorContext ctx;
+        ctx.hint = "The directory doesn't contain a recognized manifest.\n\n"
+                   "       For apps: create manifest.json or embed manifest in binary\n"
+                   "       For NAKs: create META/nak.json\n\n"
+                   "       To force a type: nah pack " + dir + " --app -o output.nap\n"
+                   "                         nah pack " + dir + " --nak -o output.nak";
+        print_error("Cannot detect package type for: " + dir, opts.json, ctx);
+        return 1;
+    }
+    
+    std::string output_path = output;
+    
+    // Generate default output filename if not specified
+    if (output_path.empty()) {
+        fs::path dir_path(dir);
+        std::string base_name = dir_path.filename().string();
+        if (base_name.empty() || base_name == ".") {
+            base_name = "package";
+        }
+        output_path = base_name + (pkg_type == PackageType::App ? ".nap" : ".nak");
+    }
+    
+    if (pkg_type == PackageType::App) {
+        auto result = nah::pack_nap(dir);
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        std::ofstream file(output_path, std::ios::binary);
+        if (!file) {
+            print_error("Failed to create output file: " + output_path, opts.json);
+            return 1;
+        }
+        
+        file.write(reinterpret_cast<const char*>(result.archive_data.data()),
+                   static_cast<std::streamsize>(result.archive_data.size()));
+        file.close();
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "app";
+            j["output"] = output_path;
+            j["size"] = result.archive_data.size();
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Created: " << output_path << " (" << result.archive_data.size() << " bytes)" << std::endl;
+        }
+        return 0;
+    } else {
+        auto result = nah::pack_nak(dir);
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        std::ofstream file(output_path, std::ios::binary);
+        if (!file) {
+            print_error("Failed to create output file: " + output_path, opts.json);
+            return 1;
+        }
+        
+        file.write(reinterpret_cast<const char*>(result.archive_data.data()),
+                   static_cast<std::streamsize>(result.archive_data.size()));
+        file.close();
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "nak";
+            j["output"] = output_path;
+            j["size"] = result.archive_data.size();
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Created: " << output_path << " (" << result.archive_data.size() << " bytes)" << std::endl;
+        }
+        return 0;
+    }
+}
+
+// Unified init command
+int cmd_init(const GlobalOptions& opts, const std::string& type, const std::string& dir) {
+    if (type == "app") {
+        return cmd_app_init(opts, dir);
+    } else if (type == "nak") {
+        return cmd_nak_init(opts, dir);
+    } else if (type == "root") {
+        return cmd_profile_init(opts, dir);
+    } else {
+        ErrorContext ctx;
+        ctx.hint = "Valid types: app, nak, root\n\n"
+                   "       nah init app ./myapp     Create app project\n"
+                   "       nah init nak ./mysdk     Create NAK project\n"
+                   "       nah init root ./my-nah   Create NAH root directory";
+        print_error("Unknown init type: " + type, opts.json, ctx);
+        return 1;
+    }
+}
+
+// Unified status command - combines contract show, doctor, validate, app show, nak show
+int cmd_status(const GlobalOptions& opts, const std::string& target, bool fix,
+               const std::string& diff_profile, const std::string& /*overrides_file*/) {
+    // If no target, show overview
+    if (target.empty()) {
+        if (!check_nah_root(opts.root, opts.json)) {
+            return 1;
+        }
+        
+        auto host = nah::NahHost::create(opts.root);
+        auto apps = host->listApplications();
+        auto nak_entries = nah::scan_nak_registry(opts.root);
+        auto profiles = host->listProfiles();
+        
+        // Get active profile
+        std::string active_profile = "default";
+        auto profile_result = host->getActiveHostProfile();
+        if (profile_result.isOk()) {
+            // Try to determine which profile is active
+            for (const auto& p : profiles) {
+                auto test = host->loadProfile(p);
+                if (test.isOk()) {
+                    // Simple heuristic - would need proper implementation
+                    active_profile = p;
+                    break;
+                }
+            }
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["root"] = opts.root;
+            j["active_profile"] = active_profile;
+            j["app_count"] = apps.size();
+            j["nak_count"] = nak_entries.size();
+            j["profile_count"] = profiles.size();
+            std::cout << j.dump(2) << std::endl;
+        } else {
+            std::cout << "NAH Status" << std::endl;
+            std::cout << "  Root: " << opts.root << std::endl;
+            std::cout << "  Active Profile: " << active_profile << std::endl;
+            std::cout << "  Apps: " << apps.size() << " installed" << std::endl;
+            std::cout << "  NAKs: " << nak_entries.size() << " installed" << std::endl;
+            std::cout << "  Profiles: " << profiles.size() << " available" << std::endl;
+            
+            if (!opts.quiet) {
+                std::cout << std::endl;
+                std::cout << "Run 'nah status <app-id>' to check a specific app." << std::endl;
+                std::cout << "Run 'nah list' to see all installed packages." << std::endl;
+            }
+        }
+        return 0;
+    }
+    
+    // Check if target is a file (validate mode)
+    if (fs::exists(target) && fs::is_regular_file(target)) {
+        // Detect file type and validate
+        std::string content = read_file(target);
+        if (content.empty()) {
+            print_error("Failed to read file: " + target, opts.json);
+            return 1;
+        }
+        
+        // Try to parse as JSON first
+        nlohmann::json j;
+        try {
+            j = nlohmann::json::parse(content);
+        } catch (const nlohmann::json::parse_error& e) {
+            // Not JSON - might be a binary with embedded manifest
+            auto manifest_result = nah::read_manifest_section(target);
+            if (manifest_result.ok) {
+                // Show embedded manifest
+                auto parse_result = nah::parse_manifest(manifest_result.data);
+                if (!parse_result.ok) {
+                    print_error("Manifest parse failed: " + parse_result.error, opts.json);
+                    return 1;
+                }
+                
+                const auto& m = parse_result.manifest;
+                if (opts.json) {
+                    nlohmann::json out;
+                    out["type"] = "embedded_manifest";
+                    out["file"] = target;
+                    out["id"] = m.id;
+                    out["version"] = m.version;
+                    out["nak_id"] = m.nak_id;
+                    out["entrypoint"] = m.entrypoint_path;
+                    out["valid"] = true;
+                    std::cout << out.dump(2) << std::endl;
+                } else {
+                    std::cout << "Embedded Manifest: " << target << std::endl;
+                    std::cout << "  ID: " << m.id << std::endl;
+                    std::cout << "  Version: " << m.version << std::endl;
+                    std::cout << "  NAK ID: " << m.nak_id << std::endl;
+                    std::cout << "  Entrypoint: " << m.entrypoint_path << std::endl;
+                    std::cout << std::endl << color::green("Valid") << std::endl;
+                }
+                return 0;
+            }
+            
+            print_error("Cannot parse file: " + std::string(e.what()), opts.json);
+            return 1;
+        }
+        
+        // Detect JSON file type
+        bool valid = true;
+        std::string error;
+        std::vector<std::string> warnings;
+        std::string file_type;
+        
+        if (j.contains("nak") && j["nak"].contains("binding_mode")) {
+            // Host profile
+            file_type = "profile";
+            auto result = nah::parse_host_profile_full(content, target);
+            valid = result.ok;
+            error = result.error;
+            warnings = result.warnings;
+        } else if (j.contains("app") && j.contains("nak") && j["nak"].contains("record_ref")) {
+            // App install record
+            file_type = "install_record";
+            auto result = nah::parse_app_install_record_full(content, target);
+            valid = result.ok;
+            error = result.error;
+            warnings = result.warnings;
+        } else if (j.contains("nak") && j.contains("paths")) {
+            // NAK manifest or record
+            file_type = "nak_record";
+            auto result = nah::parse_nak_install_record_full(content, target);
+            valid = result.ok;
+            error = result.error;
+            warnings = result.warnings;
+        } else if (j.contains("app") && j["app"].contains("id")) {
+            // App manifest input
+            file_type = "manifest_input";
+            valid = true; // Basic structure check
+        } else {
+            file_type = "unknown";
+            valid = true; // Can't validate unknown format
+        }
+        
+        // Handle --fix for formatting
+        if (fix && valid) {
+            std::string formatted = j.dump(2) + "\n";
+            if (formatted != content) {
+                std::ofstream out(target);
+                if (out) {
+                    out << formatted;
+                    out.close();
+                    if (!opts.quiet && !opts.json) {
+                        std::cout << "Formatted: " << target << std::endl;
+                    }
+                }
+            }
+        }
+        
+        if (opts.json) {
+            nlohmann::json out;
+            out["type"] = file_type;
+            out["file"] = target;
+            out["valid"] = valid;
+            if (!valid) out["error"] = error;
+            if (!warnings.empty()) out["warnings"] = warnings;
+            std::cout << out.dump(2) << std::endl;
+        } else {
+            std::cout << target << " (" << file_type << "): ";
+            if (valid) {
+                std::cout << color::green("valid") << std::endl;
+            } else {
+                std::cout << color::red("invalid") << " - " << error << std::endl;
+            }
+            for (const auto& w : warnings) {
+                std::cout << "  " << color::yellow("warning: ") << w << std::endl;
+            }
+        }
+        
+        return valid ? 0 : 1;
+    }
+    
+    // Check if target is a directory (packability check)
+    if (fs::exists(target) && fs::is_directory(target)) {
+        // Detect package type
+        PackageType pkg_type = detect_package_type(target);
+        
+        if (pkg_type == PackageType::Unknown) {
+            if (opts.json) {
+                nlohmann::json out;
+                out["type"] = "directory";
+                out["path"] = target;
+                out["packable"] = false;
+                out["error"] = "Cannot determine package type. Need manifest.nah (app) or META/nak.json (NAK).";
+                std::cout << out.dump(2) << std::endl;
+            } else {
+                std::cout << target << " (directory): ";
+                std::cout << color::red("not packable") << std::endl;
+                std::cout << "  Cannot determine package type." << std::endl;
+                std::cout << "  For an app: add manifest.nah or embed manifest in bin/" << std::endl;
+                std::cout << "  For a NAK: add META/nak.json" << std::endl;
+            }
+            return 1;
+        }
+        
+        // Try to pack (dry-run style validation)
+        nah::PackResult pack_result;
+        std::string pkg_type_str;
+        
+        if (pkg_type == PackageType::App) {
+            pkg_type_str = "app";
+            pack_result = nah::pack_nap(target);
+        } else {
+            pkg_type_str = "nak";
+            pack_result = nah::pack_nak(target);
+        }
+        
+        if (opts.json) {
+            nlohmann::json out;
+            out["type"] = "directory";
+            out["path"] = target;
+            out["package_type"] = pkg_type_str;
+            out["packable"] = pack_result.ok;
+            if (!pack_result.ok) {
+                out["error"] = pack_result.error;
+            } else {
+                out["archive_size"] = pack_result.archive_data.size();
+            }
+            std::cout << out.dump(2) << std::endl;
+        } else {
+            std::cout << target << " (" << pkg_type_str << "): ";
+            if (pack_result.ok) {
+                std::cout << color::green("packable") << std::endl;
+                if (!opts.quiet) {
+                    std::cout << "  Archive size: " << pack_result.archive_data.size() << " bytes" << std::endl;
+                    std::cout << std::endl;
+                    std::cout << "Run 'nah pack " << target << "' to create the package." << std::endl;
+                }
+            } else {
+                std::cout << color::red("not packable") << std::endl;
+                // Format multi-line errors nicely
+                std::string error = pack_result.error;
+                size_t pos = 0;
+                bool first = true;
+                while ((pos = error.find('\n')) != std::string::npos) {
+                    std::string line = error.substr(0, pos);
+                    if (first) {
+                        std::cout << "  " << line << std::endl;
+                        first = false;
+                    } else {
+                        std::cout << "  " << line << std::endl;
+                    }
+                    error.erase(0, pos + 1);
+                }
+                if (!error.empty()) {
+                    std::cout << "  " << error << std::endl;
+                }
+            }
+        }
+        
+        return pack_result.ok ? 0 : 1;
+    }
+    
+    // Target is an app or NAK ID - show contract/details
+    std::string id, version;
+    if (!parse_target(target, id, version, opts.json, "package")) {
+        return 1;
+    }
+    
+    // Detect if it's an app or NAK
+    PackageType pkg_type = detect_installed_type(opts.root, id, version);
+    
+    if (pkg_type == PackageType::Unknown) {
+        ErrorContext ctx;
+        ctx.hint = "Run 'nah list' to see installed packages.\n"
+                   "       Run 'nah status --trace' to diagnose issues.";
+        print_error("Not found: " + target, opts.json, ctx);
+        suggest_available_targets(opts.root, id, "package", opts.json);
+        return 1;
+    }
+    
+    if (pkg_type == PackageType::Nak) {
+        // Show NAK details
+        auto entries = nah::scan_nak_registry(opts.root);
+        for (const auto& entry : entries) {
+            if (entry.id == id && (version.empty() || entry.version == version)) {
+                std::string content = read_file(entry.record_path);
+                auto result = nah::parse_nak_install_record_full(content, entry.record_path);
+                
+                if (opts.json) {
+                    nlohmann::json j;
+                    j["type"] = "nak";
+                    j["id"] = result.record.nak.id;
+                    j["version"] = result.record.nak.version;
+                    j["root"] = result.record.paths.root;
+                    j["resource_root"] = result.record.paths.resource_root;
+                    j["lib_dirs"] = result.record.paths.lib_dirs;
+                    j["has_loaders"] = result.record.has_loaders();
+                    std::cout << j.dump(2) << std::endl;
+                } else {
+                    std::cout << "NAK: " << result.record.nak.id << " v" << result.record.nak.version << std::endl;
+                    std::cout << "  Root: " << result.record.paths.root << std::endl;
+                    std::cout << "  Resource Root: " << result.record.paths.resource_root << std::endl;
+                    std::cout << "  Lib Dirs:" << std::endl;
+                    for (const auto& lib : result.record.paths.lib_dirs) {
+                        std::cout << "    " << lib << std::endl;
+                    }
+                    if (result.record.has_loaders()) {
+                        std::cout << "  Loaders:" << std::endl;
+                        for (const auto& [name, loader] : result.record.loaders) {
+                            std::cout << "    " << name << ": " << loader.exec_path << std::endl;
+                        }
+                    }
+                }
+                return 0;
+            }
+        }
+        print_error("NAK not found: " + target, opts.json);
+        suggest_available_targets(opts.root, target, "NAK", opts.json);
+        return 1;
+    }
+    
+    // Show app contract (the main use case)
+    auto host = nah::NahHost::create(opts.root);
+    
+    // Handle --diff mode
+    if (!diff_profile.empty()) {
+        auto result_a = host->getLaunchContract(id, version, opts.profile, opts.trace);
+        auto result_b = host->getLaunchContract(id, version, diff_profile, opts.trace);
+        
+        if (result_a.isErr()) {
+            print_error("Profile A: " + result_a.error().message(), opts.json);
+            return 1;
+        }
+        if (result_b.isErr()) {
+            print_error("Profile B (" + diff_profile + "): " + result_b.error().message(), opts.json);
+            return 1;
+        }
+        
+        const auto& c_a = result_a.value().contract;
+        const auto& c_b = result_b.value().contract;
+        
+        std::vector<std::tuple<std::string, std::string, std::string>> diffs;
+        
+        if (c_a.execution.binary != c_b.execution.binary) {
+            diffs.emplace_back("execution.binary", c_a.execution.binary, c_b.execution.binary);
+        }
+        if (c_a.nak.version != c_b.nak.version) {
+            diffs.emplace_back("nak.version", c_a.nak.version, c_b.nak.version);
+        }
+        
+        std::set<std::string> all_keys;
+        for (const auto& [k, _] : c_a.environment) all_keys.insert(k);
+        for (const auto& [k, _] : c_b.environment) all_keys.insert(k);
+        
+        for (const auto& k : all_keys) {
+            std::string val_a = c_a.environment.count(k) ? c_a.environment.at(k) : "";
+            std::string val_b = c_b.environment.count(k) ? c_b.environment.at(k) : "";
+            if (val_a != val_b) {
+                diffs.emplace_back("environment." + k, val_a, val_b);
+            }
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["target"] = target;
+            j["profile_a"] = opts.profile.empty() ? "active" : opts.profile;
+            j["profile_b"] = diff_profile;
+            nlohmann::json diff_arr = nlohmann::json::array();
+            for (const auto& [path, val_a, val_b] : diffs) {
+                nlohmann::json d;
+                d["path"] = path;
+                d["value_a"] = val_a;
+                d["value_b"] = val_b;
+                diff_arr.push_back(d);
+            }
+            j["differences"] = diff_arr;
+            std::cout << j.dump(2) << std::endl;
+        } else {
+            std::cout << "Contract diff for " << target << std::endl;
+            std::cout << "  Current profile vs " << diff_profile << std::endl;
+            std::cout << std::endl;
+            
+            if (diffs.empty()) {
+                std::cout << "No differences found." << std::endl;
+            } else {
+                for (const auto& [path, val_a, val_b] : diffs) {
+                    std::cout << "  " << path << ":" << std::endl;
+                    std::cout << "    current: " << val_a << std::endl;
+                    std::cout << "    " << diff_profile << ": " << val_b << std::endl;
+                }
+            }
+        }
+        
+        return diffs.empty() ? 0 : 2;
+    }
+    
+    // Normal contract show
+    auto result = host->getLaunchContract(id, version, opts.profile, opts.trace);
+    
+    if (result.isErr()) {
+        if (opts.json) {
+            nlohmann::json j;
+            j["schema"] = "nah.launch.contract.v1";
+            j["critical_error"] = result.error().message();
+            j["warnings"] = nlohmann::json::array();
+            std::cout << j.dump(2) << std::endl;
+        } else {
+            print_error(result.error().message(), opts.json);
+            
+            // Add hint about --trace
+            if (!opts.trace) {
+                std::cerr << std::endl << color::blue("hint: ") 
+                          << "Run with --trace for detailed diagnostics" << std::endl;
+            }
+        }
+        return 1;
+    }
+    
+    const auto& envelope = result.value();
+    
+    if (opts.json) {
+        std::cout << nah::serialize_contract_json(envelope, opts.trace, std::nullopt) << std::endl;
+    } else {
+        const auto& c = envelope.contract;
+        
+        std::cout << "Application: " << c.app.id << " v" << c.app.version << std::endl;
+        if (!c.nak.id.empty()) {
+            std::cout << "NAK: " << c.nak.id << " v" << c.nak.version << std::endl;
+        }
+        std::cout << "Binary: " << c.execution.binary << std::endl;
+        std::cout << "CWD: " << c.execution.cwd << std::endl;
+        
+        if (!c.execution.arguments.empty()) {
+            std::cout << "Arguments:" << std::endl;
+            for (const auto& arg : c.execution.arguments) {
+                std::cout << "  " << arg << std::endl;
+            }
+        }
+        
+        std::cout << std::endl << "Library Paths (" << c.execution.library_path_env_key << "):" << std::endl;
+        for (const auto& p : c.execution.library_paths) {
+            std::cout << "  " << p << std::endl;
+        }
+        
+        std::cout << std::endl << "Environment (NAH_*):" << std::endl;
+        std::vector<std::string> env_keys;
+        for (const auto& [k, _] : c.environment) {
+            if (k.rfind("NAH_", 0) == 0) env_keys.push_back(k);
+        }
+        std::sort(env_keys.begin(), env_keys.end());
+        for (const auto& k : env_keys) {
+            std::cout << "  " << k << "=" << c.environment.at(k) << std::endl;
+        }
+        
+        if (!envelope.warnings.empty()) {
+            std::cout << std::endl << "Warnings:" << std::endl;
+            for (const auto& w : envelope.warnings) {
+                std::cout << "  [" << w.action << "] " << w.key << std::endl;
+            }
+        }
+        
+        // Show trace hint if not already using trace
+        if (!opts.trace && !opts.quiet) {
+            std::cout << std::endl << color::dim("Run with --trace to see where each value comes from.") << std::endl;
+        }
+    }
+    
+    // Handle --fix
+    if (fix) {
+        // Run doctor-style fixes
+        return cmd_doctor(opts, target, true);
+    }
+    
+    // Exit codes per SPEC
+    bool has_errors = false;
+    bool has_warnings = false;
+    for (const auto& w : envelope.warnings) {
+        if (w.action == "error") has_errors = true;
+        if (w.action == "warn") has_warnings = true;
+    }
+    
+    if (has_errors) return 1;
+    if (has_warnings) return 2;
     return 0;
 }
 
@@ -1004,7 +2122,20 @@ int cmd_profile_show(const GlobalOptions& opts, const std::string& name) {
         std::vector<std::string> env_keys;
         for (const auto& [k, _] : profile.environment) env_keys.push_back(k);
         std::sort(env_keys.begin(), env_keys.end());
-        for (const auto& k : env_keys) env[k] = profile.environment.at(k);
+        for (const auto& k : env_keys) {
+            const auto& ev = profile.environment.at(k);
+            if (ev.op == nah::EnvOp::Set) {
+                env[k] = ev.value;
+            } else {
+                nlohmann::json op_obj;
+                op_obj["op"] = nah::env_op_to_string(ev.op);
+                if (ev.op != nah::EnvOp::Unset) {
+                    op_obj["value"] = ev.value;
+                    if (ev.separator != ":") op_obj["separator"] = ev.separator;
+                }
+                env[k] = op_obj;
+            }
+        }
         j["environment"] = env;
         
         std::cout << j.dump(2) << std::endl;
@@ -1017,8 +2148,12 @@ int cmd_profile_show(const GlobalOptions& opts, const std::string& name) {
         }
         if (!profile.environment.empty()) {
             std::cout << "Environment:" << std::endl;
-            for (const auto& [k, v] : profile.environment) {
-                std::cout << "  " << k << "=" << v << std::endl;
+            for (const auto& [k, ev] : profile.environment) {
+                if (ev.op == nah::EnvOp::Set) {
+                    std::cout << "  " << k << "=" << ev.value << std::endl;
+                } else {
+                    std::cout << "  " << k << " (" << nah::env_op_to_string(ev.op) << "): " << ev.value << std::endl;
+                }
             }
         }
     }
@@ -1924,7 +3059,7 @@ int main(int argc, char** argv) {
     color::init();
     
     CLI::App app{"nah - Native Application Host CLI v" NAH_VERSION "\n\n"
-                 "Manage native applications, NAKs, profiles, and launch contracts."};
+                 "Manage native applications and NAKs with auto-detection."};
     app.require_subcommand(0, 1);
     app.set_version_flag("-V,--version", NAH_VERSION);
     app.footer("\nRun 'nah <command> --help' for more information on a command.\n"
@@ -1934,8 +3069,7 @@ int main(int argc, char** argv) {
     
     // Global flags
     app.add_option("--root", opts.root, 
-        "NAH root directory (default: /nah)\n"
-        "Can also be set via NAH_ROOT environment variable")->default_val("/nah")->envname("NAH_ROOT");
+        "NAH root directory (auto-detected from cwd or NAH_ROOT)")->default_val("/nah")->envname("NAH_ROOT");
     app.add_option("--profile", opts.profile, 
         "Use a specific profile instead of the active one");
     app.add_flag("--json", opts.json, 
@@ -1946,6 +3080,11 @@ int main(int argc, char** argv) {
         "Show detailed progress information");
     app.add_flag("-q,--quiet", opts.quiet, 
         "Suppress non-essential output");
+    
+    // Apply root auto-detection after parsing
+    app.parse_complete_callback([&]() {
+        opts.root = auto_detect_nah_root(opts.root);
+    });
     
     // Helper for subcommand failure messages with suggestions
     auto make_failure_handler = []() {
@@ -1988,7 +3127,7 @@ int main(int argc, char** argv) {
                 
                 // Show available commands if no close match
                 if (!valid_cmds.empty() && result.find("Did you mean") == std::string::npos) {
-                    result += "\nAvailable subcommands:\n";
+                    result += "\nAvailable commands:\n";
                     for (const auto& cmd : valid_cmds) {
                         result += "  " + cmd + "\n";
                     }
@@ -1997,7 +3136,7 @@ int main(int argc, char** argv) {
                 // Missing subcommand - show available options
                 result = error_msg + "\n";
                 if (!valid_cmds.empty()) {
-                    result += "\nAvailable subcommands:\n";
+                    result += "\nAvailable commands:\n";
                     for (const auto& cmd : valid_cmds) {
                         result += "  " + cmd + "\n";
                     }
@@ -2011,282 +3150,166 @@ int main(int argc, char** argv) {
         };
     };
     
-    // ========== App Commands ==========
-    auto app_cmd = app.add_subcommand("app", "Application lifecycle commands");
-    app_cmd->require_subcommand(1);  // Must specify a subcommand
-    app_cmd->failure_message(make_failure_handler());
-    app_cmd->footer("\nExamples:\n"
-                    "  nah app list                        # List all installed apps\n"
-                    "  nah app show com.example.myapp      # Show app details\n"
-                    "  nah app install ./myapp-1.0.0.nap   # Install from package\n"
-                    "  nah app verify com.example.myapp    # Verify installation");
-    
-    auto app_list = app_cmd->add_subcommand("list", "List all installed applications");
-    app_list->callback([&]() { std::exit(cmd_app_list(opts)); });
-    
-    std::string app_target;
-    auto app_show = app_cmd->add_subcommand("show", "Show details of an installed application");
-    app_show->add_option("target", app_target, 
-        "Application identifier, optionally with version\n"
-        "Examples: com.example.myapp, com.example.myapp@1.0.0")->required();
-    app_show->callback([&]() { std::exit(cmd_app_show(opts, app_target)); });
-    
-    std::string app_source;
-    bool app_force = false;
-    auto app_install = app_cmd->add_subcommand("install", "Install an application from a file or URL");
-    app_install->add_option("source", app_source, 
+    // ========== install - Unified install command ==========
+    std::string install_source;
+    bool install_force = false;
+    bool install_as_app = false;
+    bool install_as_nak = false;
+    auto install_cmd = app.add_subcommand("install", "Install an app or NAK (auto-detected)");
+    install_cmd->add_option("source", install_source, 
         "Source to install from:\n"
-        "  - Local file path: ./myapp-1.0.0.nap\n"
-        "  - file: URL: file:./myapp-1.0.0.nap\n"
-        "  - https: URL: https://example.com/app.nap")->required();
-    app_install->add_flag("-f,--force", app_force, 
-        "Overwrite existing installation if present");
-    app_install->footer("\nExamples:\n"
-                        "  nah app install ./myapp-1.0.0.nap\n"
-                        "  nah app install file:/path/to/app.nap\n"
-                        "  nah app install https://releases.example.com/app.nap");
-    app_install->callback([&]() { std::exit(cmd_app_install(opts, app_source, app_force)); });
+        "  - .nap file: installs as app\n"
+        "  - .nak file: installs as NAK\n"
+        "  - directory: packs and installs (type auto-detected)\n"
+        "  - URL: fetches and installs")->required();
+    install_cmd->add_flag("-f,--force", install_force, 
+        "Overwrite existing installation");
+    install_cmd->add_flag("--app", install_as_app, 
+        "Force install as app (skip auto-detection)");
+    install_cmd->add_flag("--nak", install_as_nak, 
+        "Force install as NAK (skip auto-detection)");
+    install_cmd->footer("\nExamples:\n"
+                        "  nah install myapp.nap              # Install app\n"
+                        "  nah install mysdk.nak              # Install NAK\n"
+                        "  nah install ./myapp/               # Pack and install\n"
+                        "  nah install https://example.com/app.nap");
+    install_cmd->callback([&]() {
+        std::optional<PackageType> force_type;
+        if (install_as_app) force_type = PackageType::App;
+        if (install_as_nak) force_type = PackageType::Nak;
+        std::exit(cmd_install(opts, install_source, install_force, force_type));
+    });
     
-    auto app_uninstall = app_cmd->add_subcommand("uninstall", "Remove an installed application");
-    app_uninstall->add_option("target", app_target, 
-        "Application to uninstall (id or id@version)")->required();
-    app_uninstall->callback([&]() { std::exit(cmd_app_uninstall(opts, app_target)); });
+    // ========== uninstall - Unified uninstall command ==========
+    std::string uninstall_target;
+    bool uninstall_as_app = false;
+    bool uninstall_as_nak = false;
+    auto uninstall_cmd = app.add_subcommand("uninstall", "Remove an installed app or NAK");
+    uninstall_cmd->add_option("target", uninstall_target, 
+        "Package to uninstall (id or id@version)")->required();
+    uninstall_cmd->add_flag("--app", uninstall_as_app, 
+        "Force uninstall as app");
+    uninstall_cmd->add_flag("--nak", uninstall_as_nak, 
+        "Force uninstall as NAK");
+    uninstall_cmd->footer("\nExamples:\n"
+                          "  nah uninstall com.example.app\n"
+                          "  nah uninstall com.example.sdk@1.0.0");
+    uninstall_cmd->callback([&]() {
+        std::optional<PackageType> force_type;
+        if (uninstall_as_app) force_type = PackageType::App;
+        if (uninstall_as_nak) force_type = PackageType::Nak;
+        std::exit(cmd_uninstall(opts, uninstall_target, force_type));
+    });
     
-    auto app_verify = app_cmd->add_subcommand("verify", "Verify an installed application is healthy");
-    app_verify->add_option("target", app_target, 
-        "Application to verify")->required();
-    app_verify->footer("\nChecks:\n"
-                       "  - Install record is valid\n"
-                       "  - App directory structure exists\n"
-                       "  - Manifest is present and valid\n"
-                       "  - Required NAK is available");
-    app_verify->callback([&]() { std::exit(cmd_app_verify(opts, app_target)); });
+    // ========== list - Unified list command ==========
+    bool list_apps_only = false;
+    bool list_naks_only = false;
+    auto list_cmd = app.add_subcommand("list", "List installed apps and NAKs");
+    list_cmd->add_flag("--apps", list_apps_only, 
+        "Show only apps");
+    list_cmd->add_flag("--naks", list_naks_only, 
+        "Show only NAKs");
+    list_cmd->footer("\nExamples:\n"
+                     "  nah list               # Show all\n"
+                     "  nah list --apps        # Apps only\n"
+                     "  nah list --naks        # NAKs only");
+    list_cmd->callback([&]() {
+        std::exit(cmd_list(opts, list_apps_only, list_naks_only));
+    });
     
-    std::string init_dir;
-    auto app_init = app_cmd->add_subcommand("init", "Create a new application project skeleton");
-    app_init->add_option("dir", init_dir, 
-        "Directory to create (will be created if it doesn't exist)")->required();
-    app_init->callback([&]() { std::exit(cmd_app_init(opts, init_dir)); });
-    
+    // ========== pack - Unified pack command ==========
     std::string pack_dir, pack_output;
-    auto app_pack = app_cmd->add_subcommand("pack", "Create a .nap package from a directory");
-    app_pack->add_option("dir", pack_dir, 
-        "Directory containing the application")->required()->check(CLI::ExistingDirectory);
-    app_pack->add_option("-o,--output", pack_output, 
-        "Output .nap file path")->required();
-    app_pack->callback([&]() { std::exit(cmd_app_pack(opts, pack_dir, pack_output)); });
+    bool pack_as_app = false;
+    bool pack_as_nak = false;
+    auto pack_cmd = app.add_subcommand("pack", "Create a .nap or .nak package");
+    pack_cmd->add_option("dir", pack_dir, 
+        "Directory to pack")->required()->check(CLI::ExistingDirectory);
+    pack_cmd->add_option("-o,--output", pack_output, 
+        "Output file path (optional, auto-generated if omitted)");
+    pack_cmd->add_flag("--app", pack_as_app, 
+        "Force pack as app");
+    pack_cmd->add_flag("--nak", pack_as_nak, 
+        "Force pack as NAK");
+    pack_cmd->footer("\nExamples:\n"
+                     "  nah pack ./myapp/                    # Auto-detect type\n"
+                     "  nah pack ./myapp/ -o myapp-1.0.0.nap");
+    pack_cmd->callback([&]() {
+        std::optional<PackageType> force_type;
+        if (pack_as_app) force_type = PackageType::App;
+        if (pack_as_nak) force_type = PackageType::Nak;
+        std::exit(cmd_pack(opts, pack_dir, pack_output, force_type));
+    });
     
-    // ========== NAK Commands ==========
-    auto nak_cmd = app.add_subcommand("nak", "Native App Kit (NAK) lifecycle commands");
-    nak_cmd->require_subcommand(1);
-    nak_cmd->failure_message(make_failure_handler());
-    nak_cmd->footer("\nExamples:\n"
-                    "  nah nak list                           # List installed NAKs\n"
-                    "  nah nak show com.example.sdk@1.0.0     # Show NAK details\n"
-                    "  nah nak install ./sdk-1.0.0.nak        # Install a NAK");
+    // ========== status - Unified diagnostic command ==========
+    std::string status_target;
+    bool status_fix = false;
+    std::string status_diff_profile;
+    std::string status_overrides;
+    auto status_cmd = app.add_subcommand("status", "Show status, validate, or diagnose");
+    status_cmd->add_option("target", status_target, 
+        "App/NAK ID, file path, or omit for overview");
+    status_cmd->add_flag("--fix", status_fix, 
+        "Attempt to fix issues (also formats files)");
+    status_cmd->add_option("--diff", status_diff_profile, 
+        "Compare contract with another profile");
+    status_cmd->add_option("--overrides", status_overrides, 
+        "Apply overrides file to contract");
+    status_cmd->footer("\nExamples:\n"
+                       "  nah status                          # Overview\n"
+                       "  nah status com.example.app          # App contract\n"
+                       "  nah status com.example.app --trace  # With provenance\n"
+                       "  nah status profile.json             # Validate file\n"
+                       "  nah status profile.json --fix       # Validate and format\n"
+                       "  nah status ./myapp/                 # Check if packable\n"
+                       "  nah status com.example.app --diff staging");
+    status_cmd->callback([&]() {
+        std::exit(cmd_status(opts, status_target, status_fix, status_diff_profile, status_overrides));
+    });
     
-    auto nak_list = nak_cmd->add_subcommand("list", "List all installed NAKs");
-    nak_list->callback([&]() { std::exit(cmd_nak_list(opts)); });
-    
-    std::string nak_target;
-    auto nak_show = nak_cmd->add_subcommand("show", "Show NAK details");
-    nak_show->add_option("target", nak_target, 
-        "NAK identifier with version (e.g., com.example.sdk@1.0.0)")->required();
-    nak_show->callback([&]() { std::exit(cmd_nak_show(opts, nak_target)); });
-    
-    std::string nak_source;
-    bool nak_force = false;
-    auto nak_install = nak_cmd->add_subcommand("install", "Install a NAK from a file or URL");
-    nak_install->add_option("source", nak_source, 
-        "Source to install from:\n"
-        "  - Local file path: ./sdk-1.0.0.nak\n"
-        "  - file: URL: file:./sdk-1.0.0.nak\n"
-        "  - https: URL: https://example.com/sdk.nak")->required();
-    nak_install->add_flag("-f,--force", nak_force, 
-        "Overwrite existing version if present");
-    nak_install->footer("\nExamples:\n"
-                        "  nah nak install ./sdk-1.0.0.nak\n"
-                        "  nah nak install file:/path/to/sdk.nak\n"
-                        "  nah nak install https://releases.example.com/sdk.nak");
-    nak_install->callback([&]() { std::exit(cmd_nak_install(opts, nak_source, nak_force)); });
-    
-    auto nak_path = nak_cmd->add_subcommand("path", "Print the installation path of a NAK");
-    nak_path->add_option("target", nak_target, 
-        "NAK id@version (version required)")->required();
-    nak_path->footer("\nUseful for build scripts that need the NAK location.");
-    nak_path->callback([&]() { std::exit(cmd_nak_path(opts, nak_target)); });
-    
-    std::string nak_init_dir;
-    auto nak_init = nak_cmd->add_subcommand("init", "Create a new NAK project skeleton");
-    nak_init->add_option("dir", nak_init_dir, 
+    // ========== init - Project initialization ==========
+    std::string init_type, init_dir;
+    auto init_cmd = app.add_subcommand("init", "Create a new project");
+    init_cmd->add_option("type", init_type, 
+        "Type of project: app, nak, or root")->required()
+        ->check(CLI::IsMember({"app", "nak", "root"}));
+    init_cmd->add_option("dir", init_dir, 
         "Directory to create")->required();
-    nak_init->callback([&]() { std::exit(cmd_nak_init(opts, nak_init_dir)); });
+    init_cmd->footer("\nExamples:\n"
+                     "  nah init app ./myapp      # Create app project\n"
+                     "  nah init nak ./mysdk      # Create NAK project\n"
+                     "  nah init root ./my-nah    # Create NAH root");
+    init_cmd->callback([&]() {
+        std::exit(cmd_init(opts, init_type, init_dir));
+    });
     
-    std::string nak_pack_dir, nak_pack_output;
-    auto nak_pack_cmd = nak_cmd->add_subcommand("pack", "Create a .nak pack from a directory");
-    nak_pack_cmd->add_option("dir", nak_pack_dir, 
-        "Directory containing the NAK")->required()->check(CLI::ExistingDirectory);
-    nak_pack_cmd->add_option("-o,--output", nak_pack_output, 
-        "Output .nak file path")->required();
-    nak_pack_cmd->callback([&]() { std::exit(cmd_nak_pack(opts, nak_pack_dir, nak_pack_output)); });
-    
-    // ========== Profile Commands ==========
-    auto profile_cmd = app.add_subcommand("profile", "Host profile management");
+    // ========== profile - Profile management (simplified) ==========
+    auto profile_cmd = app.add_subcommand("profile", "Manage host profiles");
     profile_cmd->require_subcommand(1);
     profile_cmd->failure_message(make_failure_handler());
-    profile_cmd->footer("\nProfiles control how NAH behaves for your host environment.\n"
-                        "\nExamples:\n"
-                        "  nah profile init ./my-nah-root    # Create new NAH root\n"
-                        "  nah profile list                  # List available profiles\n"
-                        "  nah profile set production        # Switch to production profile");
     
-    std::string profile_init_dir;
-    auto profile_init = profile_cmd->add_subcommand("init", "Initialize a new NAH root directory");
-    profile_init->add_option("dir", profile_init_dir, 
-        "Directory to initialize as a NAH root")->required();
-    profile_init->footer("\nCreates the required directory structure:\n"
-                         "  <dir>/host/profiles/default.json\n"
-                         "  <dir>/host/profile.current -> profiles/default.json\n"
-                         "  <dir>/apps/\n"
-                         "  <dir>/naks/\n"
-                         "  <dir>/registry/installs/\n"
-                         "  <dir>/registry/naks/");
-    profile_init->callback([&]() { std::exit(cmd_profile_init(opts, profile_init_dir)); });
-    
-    auto profile_list = profile_cmd->add_subcommand("list", "List all available profiles");
+    auto profile_list = profile_cmd->add_subcommand("list", "List available profiles");
     profile_list->callback([&]() { std::exit(cmd_profile_list(opts)); });
     
     std::string profile_name;
-    auto profile_show = profile_cmd->add_subcommand("show", "Display a profile's configuration");
-    profile_show->add_option("name", profile_name, 
-        "Profile name (omit for active profile)");
-    profile_show->callback([&]() { std::exit(cmd_profile_show(opts, profile_name)); });
-    
     auto profile_set = profile_cmd->add_subcommand("set", "Set the active profile");
     profile_set->add_option("name", profile_name, 
         "Profile name to activate")->required();
     profile_set->callback([&]() { std::exit(cmd_profile_set(opts, profile_name)); });
     
-    std::string profile_path;
-    auto profile_validate = profile_cmd->add_subcommand("validate", "Validate a profile file");
-    profile_validate->add_option("path", profile_path, 
-        "Path to profile JSON file")->required()->check(CLI::ExistingFile);
-    profile_validate->callback([&]() { std::exit(cmd_profile_validate(opts, profile_path)); });
-    
-    // ========== Contract Commands ==========
-    auto contract_cmd = app.add_subcommand("contract", "Launch contract inspection");
-    contract_cmd->require_subcommand(1);
-    contract_cmd->failure_message(make_failure_handler());
-    contract_cmd->footer("\nContracts define exactly how an application will be launched.\n"
-                         "They combine app manifest, NAK config, and host profile.\n"
-                         "\nExamples:\n"
-                         "  nah contract show com.example.app         # Show launch contract\n"
-                         "  nah contract show com.example.app --json  # Machine-readable output\n"
-                         "  nah contract explain com.example.app environment.PATH");
-    
-    std::string contract_target, overrides_file;
-    auto contract_show = contract_cmd->add_subcommand("show", "Show launch contract");
-    contract_show->add_option("target", contract_target, "Application id[@version]")->required();
-    contract_show->add_option("--overrides", overrides_file, "Overrides file");
-    contract_show->callback([&]() { std::exit(cmd_contract_show(opts, contract_target, overrides_file)); });
-    
-    std::string explain_path;
-    auto contract_explain = contract_cmd->add_subcommand("explain", "Explain contract value");
-    contract_explain->add_option("target", contract_target, "Application id[@version]")->required();
-    contract_explain->add_option("path", explain_path, "Field path")->required();
-    contract_explain->callback([&]() { std::exit(cmd_contract_explain(opts, contract_target, explain_path)); });
-    
-    std::string diff_profile_a, diff_profile_b;
-    auto contract_diff = contract_cmd->add_subcommand("diff", "Diff contracts between profiles");
-    contract_diff->add_option("target", contract_target, "Application id[@version]")->required();
-    contract_diff->add_option("profile_a", diff_profile_a, "First profile")->required();
-    contract_diff->add_option("profile_b", diff_profile_b, "Second profile")->required();
-    contract_diff->callback([&]() { std::exit(cmd_contract_diff(opts, contract_target, diff_profile_a, diff_profile_b)); });
-    
-    auto contract_resolve = contract_cmd->add_subcommand("resolve", "Explain NAK selection");
-    contract_resolve->add_option("target", contract_target, "Application id[@version]")->required();
-    contract_resolve->callback([&]() { std::exit(cmd_contract_resolve(opts, contract_target)); });
-    
-    // ========== Manifest Commands ==========
-    auto manifest_cmd = app.add_subcommand("manifest", "Binary manifest inspection and generation");
+    // ========== manifest generate - Build tool command ==========
+    auto manifest_cmd = app.add_subcommand("manifest", "Manifest tools");
     manifest_cmd->require_subcommand(1);
     manifest_cmd->failure_message(make_failure_handler());
-    manifest_cmd->footer("\nManifests are embedded in application binaries to declare dependencies.\n"
-                         "\nExamples:\n"
-                         "  nah manifest show ./myapp              # Extract manifest from binary\n"
-                         "  nah manifest generate manifest.json -o manifest.nah");
-    
-    std::string manifest_target;
-    auto manifest_show = manifest_cmd->add_subcommand("show", "Display manifest from a binary or installed app");
-    manifest_show->add_option("target", manifest_target, 
-        "Binary file path or installed app id[@version]")->required();
-    manifest_show->callback([&]() { std::exit(cmd_manifest_show(opts, manifest_target)); });
     
     std::string manifest_input, manifest_output;
     auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from JSON");
     manifest_generate->add_option("input", manifest_input, 
-        "Input JSON file with manifest definition")->required()->check(CLI::ExistingFile);
+        "Input JSON file")->required()->check(CLI::ExistingFile);
     manifest_generate->add_option("-o,--output", manifest_output, 
         "Output binary manifest file (.nah)")->required();
-    manifest_generate->footer("\nInput file format:\n"
-                               "  {\n"
-                               "    \"app\": {\n"
-                               "      \"id\": \"com.example.myapp\",\n"
-                               "      \"version\": \"1.0.0\",\n"
-                               "      \"nak_id\": \"com.example.sdk\",\n"
-                               "      \"nak_version_req\": \"^1.0.0\",\n"
-                               "      \"entrypoint\": \"bundle.js\"\n"
-                               "    }\n"
-                               "  }\n"
-                               "\nExample:\n"
+    manifest_generate->footer("\nExample:\n"
                                "  nah manifest generate manifest.json -o manifest.nah");
     manifest_generate->callback([&]() { std::exit(cmd_manifest_generate(opts, manifest_input, manifest_output)); });
-    
-    // ========== Doctor Command ==========
-    std::string doctor_target;
-    bool doctor_fix = false;
-    auto doctor_cmd = app.add_subcommand("doctor", "Diagnose and optionally fix issues");
-    doctor_cmd->add_option("target", doctor_target, 
-        "Application or binary to diagnose")->required();
-    doctor_cmd->add_flag("--fix", doctor_fix, 
-        "Attempt to automatically fix detected issues");
-    doctor_cmd->footer("\nDiagnoses common issues like:\n"
-                       "  - Missing or invalid manifests\n"
-                       "  - Missing NAK dependencies\n"
-                       "  - Invalid install records\n"
-                       "  - File permission problems");
-    doctor_cmd->callback([&]() { std::exit(cmd_doctor(opts, doctor_target, doctor_fix)); });
-    
-    // ========== Validate Command ==========
-    std::string validate_kind, validate_path;
-    bool validate_strict = false;
-    auto validate_cmd = app.add_subcommand("validate", "Validate configuration files");
-    validate_cmd->add_option("kind", validate_kind, 
-        "Type of file to validate")->required()
-        ->check(CLI::IsMember({"profile", "install-record", "nak-record", "package", "nak-pack", "capabilities"}));
-    validate_cmd->add_option("path", validate_path, 
-        "Path to file to validate")->required()->check(CLI::ExistingFile);
-    validate_cmd->add_flag("--strict", validate_strict, 
-        "Treat warnings as errors");
-    validate_cmd->footer("\nValidation kinds:\n"
-                         "  profile         Host profile JSON\n"
-                         "  install-record  App install record JSON\n"
-                         "  nak-record      NAK install record JSON\n"
-                         "  package         NAP package archive\n"
-                         "  nak-pack        NAK pack archive\n"
-                         "  capabilities    Capabilities declaration");
-    validate_cmd->callback([&]() { std::exit(cmd_validate(opts, validate_kind, validate_path, validate_strict)); });
-    
-    // ========== Format Command ==========
-    std::string format_path;
-    bool format_check = false;
-    auto format_cmd = app.add_subcommand("format", "Format JSON configuration files");
-    format_cmd->add_option("file", format_path, 
-        "JSON file to format")->required()->check(CLI::ExistingFile);
-    format_cmd->add_flag("--check", format_check, 
-        "Check if file needs formatting (exit 1 if changes needed)");
-    format_cmd->footer("\nUseful in CI to enforce consistent formatting.");
-    format_cmd->callback([&]() { std::exit(cmd_format(opts, format_path, format_check)); });
     
     // Custom failure handler for better error messages
     app.failure_message([](const CLI::App* failed_app, const CLI::Error& e) {
@@ -2297,7 +3320,6 @@ int main(int argc, char** argv) {
         const CLI::App* error_app = failed_app;
         std::vector<CLI::App*> parsed_subs = failed_app->get_subcommands();
         if (!parsed_subs.empty()) {
-            // Get the deepest parsed subcommand
             error_app = parsed_subs.back();
         }
         
@@ -2311,12 +3333,12 @@ int main(int argc, char** argv) {
         if (error_msg.find("subcommand is required") != std::string::npos) {
             result = error_msg + "\n";
             if (!valid_cmds.empty()) {
-                result += "\nAvailable subcommands:\n";
+                result += "\nAvailable commands:\n";
                 for (const auto& cmd : valid_cmds) {
                     result += "  " + cmd + "\n";
                 }
             }
-            result += "\nRun 'nah " + error_app->get_name() + " --help' for usage information.\n";
+            result += "\nRun 'nah " + error_app->get_name() + " --help' for usage.\n";
             return result;
         }
         
@@ -2324,13 +3346,10 @@ int main(int argc, char** argv) {
         if (error_msg.find("was not expected") != std::string::npos ||
             error_msg.find("could not be matched") != std::string::npos) {
             
-            // Try to extract the unknown command from error message
-            // Format is usually: "The following argument was not expected: xyz"
             std::string unknown_cmd;
             auto colon_pos = error_msg.rfind(':');
             if (colon_pos != std::string::npos && colon_pos + 2 < error_msg.size()) {
                 unknown_cmd = error_msg.substr(colon_pos + 2);
-                // Trim whitespace
                 while (!unknown_cmd.empty() && std::isspace(unknown_cmd.back())) {
                     unknown_cmd.pop_back();
                 }
@@ -2351,17 +3370,16 @@ int main(int argc, char** argv) {
             
             // Show available commands if no close match
             if (!valid_cmds.empty() && result.find("Did you mean") == std::string::npos) {
-                result += "\nAvailable subcommands:\n";
+                result += "\nAvailable commands:\n";
                 for (const auto& cmd : valid_cmds) {
                     result += "  " + cmd + "\n";
                 }
             }
         } else {
-            // For other errors, use default message
             result = CLI::FailureMessage::simple(failed_app, e);
         }
         
-        result += "\nRun '" + error_app->get_name() + " --help' for usage information.\n";
+        result += "\nRun '" + error_app->get_name() + " --help' for usage.\n";
         return result;
     });
     

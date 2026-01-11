@@ -83,8 +83,8 @@ TEST_CASE("host profile parses environment section") {
     })";
     auto result = parse_host_profile_full(json, "test.json");
     CHECK(result.ok);
-    CHECK(result.profile.environment.at("MY_VAR") == "my_value");
-    CHECK(result.profile.environment.at("OTHER_VAR") == "other_value");
+    CHECK(result.profile.environment.at("MY_VAR").value == "my_value");
+    CHECK(result.profile.environment.at("OTHER_VAR").value == "other_value");
 }
 
 TEST_CASE("host profile parses paths section") {

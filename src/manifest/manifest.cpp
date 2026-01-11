@@ -43,7 +43,7 @@ uint32_t read_le32(const uint8_t* p) {
 }
 
 uint16_t read_le16(const uint8_t* p) {
-    return static_cast<uint16_t>(p[0]) | static_cast<uint16_t>(p[1] << 8);
+    return static_cast<uint16_t>(p[0]) | static_cast<uint16_t>(static_cast<uint16_t>(p[1]) << 8);
 }
 
 ManifestHeader parse_header(const uint8_t* data) {

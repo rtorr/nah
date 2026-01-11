@@ -293,8 +293,10 @@ TEST_CASE("build_manifest_from_input: produces valid TLV") {
     CHECK(manifest_bytes.size() >= 16);
     
     // Check magic
-    uint32_t magic = manifest_bytes[0] | (manifest_bytes[1] << 8) | 
-                     (manifest_bytes[2] << 16) | (manifest_bytes[3] << 24);
+    uint32_t magic = static_cast<uint32_t>(manifest_bytes[0]) | 
+                     (static_cast<uint32_t>(manifest_bytes[1]) << 8) | 
+                     (static_cast<uint32_t>(manifest_bytes[2]) << 16) | 
+                     (static_cast<uint32_t>(manifest_bytes[3]) << 24);
     CHECK(magic == 0x4D48414E);  // "NAHM"
     
     // Parse and verify

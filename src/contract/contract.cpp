@@ -260,8 +260,11 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
                     result.envelope.warnings = warnings.get_warnings();
                     return result;
                 }
-                std::string relative = loader_config.exec_path.substr(nak_record.paths.root.size());
-                auto loader_result = normalize_under_root(nak_record.paths.root, relative, true);
+                // Use std::filesystem to get relative path in a cross-platform way
+                std::filesystem::path exec_p(loader_config.exec_path);
+                std::filesystem::path root_p(nak_record.paths.root);
+                std::string relative = exec_p.lexically_relative(root_p).string();
+                auto loader_result = normalize_under_root(nak_record.paths.root, relative, false);
                 if (!loader_result.ok) {
                     result.critical_error = CriticalError::PATH_TRAVERSAL;
                     result.envelope.warnings = warnings.get_warnings();

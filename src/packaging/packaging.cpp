@@ -260,16 +260,16 @@ static std::vector<uint8_t> gzip_compress(const std::vector<uint8_t>& data) {
     
     // Write gzip trailer: CRC32 + original size
     uint32_t crc = static_cast<uint32_t>(crc32(0, data.data(), static_cast<uInt>(data.size())));
-    result.push_back(crc & 0xff);
-    result.push_back((crc >> 8) & 0xff);
-    result.push_back((crc >> 16) & 0xff);
-    result.push_back((crc >> 24) & 0xff);
+    result.push_back(static_cast<uint8_t>(crc & 0xff));
+    result.push_back(static_cast<uint8_t>((crc >> 8) & 0xff));
+    result.push_back(static_cast<uint8_t>((crc >> 16) & 0xff));
+    result.push_back(static_cast<uint8_t>((crc >> 24) & 0xff));
     
     uint32_t size = static_cast<uint32_t>(data.size());
-    result.push_back(size & 0xff);
-    result.push_back((size >> 8) & 0xff);
-    result.push_back((size >> 16) & 0xff);
-    result.push_back((size >> 24) & 0xff);
+    result.push_back(static_cast<uint8_t>(size & 0xff));
+    result.push_back(static_cast<uint8_t>((size >> 8) & 0xff));
+    result.push_back(static_cast<uint8_t>((size >> 16) & 0xff));
+    result.push_back(static_cast<uint8_t>((size >> 24) & 0xff));
     
     return result;
 }

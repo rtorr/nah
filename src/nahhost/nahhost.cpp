@@ -310,7 +310,7 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
     auto compose_result = compose_contract(inputs);
     
     if (!compose_result.ok) {
-        ErrorCode code;
+        ErrorCode code = ErrorCode::IO_ERROR;  // Default fallback
         switch (*compose_result.critical_error) {
             case CriticalError::MANIFEST_MISSING:
                 code = ErrorCode::MANIFEST_MISSING;
@@ -339,7 +339,7 @@ Result<ContractEnvelope> NahHost::composeContract(const CompositionInputs& input
     auto result = compose_contract(inputs);
     
     if (!result.ok) {
-        ErrorCode code;
+        ErrorCode code = ErrorCode::IO_ERROR;  // Default fallback
         switch (*result.critical_error) {
             case CriticalError::MANIFEST_MISSING:
                 code = ErrorCode::MANIFEST_MISSING;

@@ -40,10 +40,6 @@ set(NAH_ALL_SOURCES
     api/nah_c_api.cpp
 )
 
-# Read version from VERSION file for C API
-file(READ "${PROJECT_SOURCE_DIR}/VERSION" NAH_VERSION_RAW)
-string(STRIP "${NAH_VERSION_RAW}" NAH_VERSION_FOR_API)
-
 # =============================================================================
 # Static Libraries (for CLI and users who prefer static linking)
 # =============================================================================
@@ -145,9 +141,6 @@ target_link_libraries(nahhost PUBLIC
     nah_platform
     nah_packaging
     nah_materializer
-)
-target_compile_definitions(nahhost PRIVATE
-    NAH_VERSION_STRING="${NAH_VERSION_FOR_API}"
 )
 
 # On Windows, rename static lib to avoid conflict with DLL import lib

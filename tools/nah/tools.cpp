@@ -1020,7 +1020,7 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             }
             
             // Create temp file
-            std::string temp_path = fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nap");
+            std::string temp_path = (fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nap")).string();
             std::ofstream temp_file(temp_path, std::ios::binary);
             if (!temp_file) {
                 print_error("Failed to create temp file", opts.json);
@@ -1116,7 +1116,7 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                 return 1;
             }
             
-            std::string temp_path = fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nak");
+            std::string temp_path = (fs::temp_directory_path() / ("nah_install_" + std::to_string(std::time(nullptr)) + ".nak")).string();
             std::ofstream temp_file(temp_path, std::ios::binary);
             if (!temp_file) {
                 print_error("Failed to create temp file", opts.json);

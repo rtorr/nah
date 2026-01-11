@@ -165,7 +165,7 @@ install_nak() {
     local name="$2"
 
     if [ -f "$nak_file" ]; then
-        $NAH_CLI --root "$NAH_ROOT" nak install "$nak_file"
+        $NAH_CLI --root "$NAH_ROOT" install "$nak_file"
         log_success "Installed $name NAK"
         return 0
     else
@@ -181,7 +181,7 @@ install_nap() {
     local name="$2"
 
     if [ -f "$nap_file" ]; then
-        $NAH_CLI --root "$NAH_ROOT" app install "$nap_file"
+        $NAH_CLI --root "$NAH_ROOT" install "$nap_file"
         log_success "Installed $name"
         return 0
     else

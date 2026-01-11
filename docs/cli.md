@@ -10,249 +10,197 @@ nah [OPTIONS] <COMMAND>
 
 | Option | Description |
 |--------|-------------|
-| `--root <PATH>` | NAH root directory (default: `/nah` or `$NAH_ROOT`) |
+| `--root <PATH>` | NAH root directory (auto-detected from cwd or `$NAH_ROOT`) |
 | `--profile <NAME>` | Use specific profile instead of active |
 | `--json` | Output in JSON format |
-| `--help` | Show help |
-| `--version` | Show version |
+| `--trace` | Include provenance information |
+| `-v, --verbose` | Show detailed progress |
+| `-q, --quiet` | Suppress non-essential output |
+| `-V, --version` | Show version |
+| `-h, --help` | Show help |
+
+## Root Auto-Detection
+
+NAH automatically finds the root directory:
+
+1. `--root` flag (explicit)
+2. `NAH_ROOT` environment variable
+3. Walk up from cwd looking for `.nah/` or `host/` directory
+4. Default: `/nah`
 
 ## Commands
 
-### Application Commands
+### `nah install`
 
-#### `nah app list`
-
-List all installed applications.
+Install an app or NAK package. Type is auto-detected from file extension.
 
 ```bash
-nah --root ./my-nah app list
+nah install myapp.nap              # Install app
+nah install mysdk.nak              # Install NAK
+nah install ./myapp/               # Pack and install directory
+nah install https://example.com/app.nap  # Install from URL
 ```
 
-#### `nah app show <APP_ID>`
+**Options:**
+- `-f, --force` - Overwrite existing installation
+- `--app` - Force install as app (skip auto-detection)
+- `--nak` - Force install as NAK (skip auto-detection)
 
-Show details of an installed application.
+**Detection logic:**
+- `.nap` extension → app
+- `.nak` extension → NAK
+- Directory with `META/nak.json` → NAK
+- Directory with `manifest.json` or embedded manifest → app
+
+---
+
+### `nah uninstall`
+
+Remove an installed app or NAK.
 
 ```bash
-nah --root ./my-nah app show com.example.myapp
+nah uninstall com.example.app
+nah uninstall com.example.sdk@1.0.0
 ```
 
-#### `nah app install <SOURCE>`
+**Options:**
+- `--app` - Force uninstall as app
+- `--nak` - Force uninstall as NAK
 
-Install an application from a `.nap` package. Source can be a local file path or an HTTPS URL.
+If both an app and NAK exist with the same ID, you must specify `--app` or `--nak`.
+
+---
+
+### `nah list`
+
+List installed apps and NAKs.
 
 ```bash
-# From local file
-nah --root ./my-nah app install myapp-1.0.0.nap
-
-# From URL
-nah --root ./my-nah app install https://example.com/myapp-1.0.0.nap
+nah list               # Show all
+nah list --apps        # Apps only
+nah list --naks        # NAKs only
+nah list --json        # Machine-readable output
 ```
 
-#### `nah app uninstall <APP_ID>`
-
-Remove an installed application.
-
-```bash
-nah --root ./my-nah app uninstall com.example.myapp
+**Output format:**
 ```
+Apps:
+  com.example.app@1.0.0      → com.example.sdk@2.1.0
+  com.other.tool@2.0.0       → com.example.sdk@2.1.0
 
-#### `nah app verify <APP_ID>`
-
-Verify an installed application is healthy.
-
-```bash
-nah --root ./my-nah app verify com.example.myapp
-```
-
-#### `nah app init <NAME>`
-
-Create a new application project skeleton.
-
-```bash
-nah app init myapp
-```
-
-#### `nah app pack <DIR> -o <OUTPUT>`
-
-Create a `.nap` package from a directory.
-
-```bash
-nah app pack ./myapp -o myapp-1.0.0.nap
+NAKs:
+  com.example.sdk@2.1.0      (used by 2 apps)
+  com.example.sdk@1.5.0      (unused)
 ```
 
 ---
 
-### NAK Commands
+### `nah pack`
 
-#### `nah nak list`
-
-List all installed NAKs.
+Create a `.nap` or `.nak` package from a directory.
 
 ```bash
-nah --root ./my-nah nak list
+nah pack ./myapp/                      # Auto-detect type
+nah pack ./myapp/ -o myapp-1.0.0.nap   # Specify output
+nah pack ./mysdk/ --nak                # Force NAK type
 ```
 
-#### `nah nak show <NAK_ID>`
+**Options:**
+- `-o, --output <FILE>` - Output file path (auto-generated if omitted)
+- `--app` - Force pack as app
+- `--nak` - Force pack as NAK
 
-Show NAK details.
+---
+
+### `nah status`
+
+Show status, validate files, or diagnose issues. This unified command replaces the old `contract show`, `doctor`, `validate`, and `format` commands.
 
 ```bash
-nah --root ./my-nah nak show com.example.sdk
+# Overview of NAH root
+nah status
+
+# App contract details
+nah status com.example.app
+
+# With provenance information
+nah status com.example.app --trace
+
+# Validate a configuration file
+nah status profile.json
+
+# Validate and format a file
+nah status profile.json --fix
+
+# Compare contract with another profile
+nah status com.example.app --diff staging
 ```
 
-Options:
-- `--version <VERSION>` - Show specific version
+**Options:**
+- `--fix` - Attempt to fix issues (also formats JSON files)
+- `--diff <PROFILE>` - Compare contract with another profile
+- `--overrides <FILE>` - Apply overrides file to contract
 
-#### `nah nak install <SOURCE>`
-
-Install a NAK from a `.nak` pack. Source can be a local file path or an HTTPS URL.
-
-```bash
-# From local file
-nah --root ./my-nah nak install mysdk-1.0.0.nak
-
-# From URL
-nah --root ./my-nah nak install https://example.com/mysdk-1.0.0.nak
+**Output for apps:**
 ```
+Application: com.example.app v1.0.0
+NAK: com.example.sdk v2.1.0
+Binary: /nah/apps/com.example.app-1.0.0/bin/myapp
+CWD: /nah/apps/com.example.app-1.0.0
 
-#### `nah nak path <NAK_ID@VERSION>`
+Library Paths (DYLD_LIBRARY_PATH):
+  /nah/naks/com.example.sdk/2.1.0/lib
 
-Print the installation path of a NAK.
+Environment (NAH_*):
+  NAH_APP_ID=com.example.app
+  NAH_APP_VERSION=1.0.0
+  NAH_NAK_ROOT=/nah/naks/com.example.sdk/2.1.0
 
-```bash
-nah --root ./my-nah nak path com.example.sdk@1.0.0
-```
-
-#### `nah nak init <NAME>`
-
-Create a new NAK project skeleton.
-
-```bash
-nah nak init mysdk
-```
-
-#### `nah nak pack <DIR> -o <OUTPUT>`
-
-Create a `.nak` pack from a directory.
-
-```bash
-nah nak pack ./mysdk -o mysdk-1.0.0.nak
+Run with --trace to see where each value comes from.
 ```
 
 ---
 
-### Profile Commands
+### `nah init`
 
-#### `nah profile init <PATH>`
-
-Initialize a new NAH root directory.
+Create a new project.
 
 ```bash
-nah profile init ./my-nah-root
+nah init app ./myapp      # Create app project skeleton
+nah init nak ./mysdk      # Create NAK project skeleton
+nah init root ./my-nah    # Create NAH root directory
 ```
 
-Options:
-- `--profile <NAME>` - Initial profile name (default: `default`)
+**Types:**
+- `app` - Application project with manifest template
+- `nak` - NAK (SDK) project with META/nak.json
+- `root` - NAH root with host/profiles and registry directories
 
-#### `nah profile list`
+---
 
-List all available profiles.
+### `nah profile`
 
-```bash
-nah --root ./my-nah profile list
-```
-
-#### `nah profile show [NAME]`
-
-Display a profile's configuration.
+Manage host profiles.
 
 ```bash
-nah --root ./my-nah profile show
-nah --root ./my-nah profile show staging
-```
-
-#### `nah profile set <NAME>`
-
-Set the active profile.
-
-```bash
-nah --root ./my-nah profile set production
-```
-
-#### `nah profile validate <FILE>`
-
-Validate a profile file.
-
-```bash
-nah profile validate host-profile.json
+nah profile list           # List available profiles
+nah profile set production # Set active profile
 ```
 
 ---
 
-### Contract Commands
+### `nah manifest generate`
 
-#### `nah contract show <APP_ID>`
-
-Show the launch contract for an application.
-
-```bash
-nah --root ./my-nah contract show com.example.myapp
-nah --root ./my-nah --json contract show com.example.myapp
-```
-
-#### `nah contract explain <APP_ID> <VALUE>`
-
-Explain where a contract value comes from.
-
-```bash
-nah --root ./my-nah contract explain com.example.myapp LD_LIBRARY_PATH
-```
-
-#### `nah contract diff <APP_ID> <PROFILE1> <PROFILE2>`
-
-Compare contracts between two profiles.
-
-```bash
-nah --root ./my-nah contract diff com.example.myapp default production
-```
-
-#### `nah contract resolve <APP_ID>`
-
-Explain NAK selection for an application.
-
-```bash
-nah --root ./my-nah contract resolve com.example.myapp
-```
-
----
-
-### Manifest Commands
-
-#### `nah manifest show <PATH>`
-
-Display manifest from a binary or installed app.
-
-```bash
-nah manifest show ./myapp
-nah --root ./my-nah manifest show com.example.myapp
-```
-
-#### `nah manifest generate <JSON_FILE> -o <OUTPUT>`
-
-Generate a binary TLV manifest from a JSON input file. This is used for bundle applications (JavaScript, Python, etc.) that cannot embed a manifest in a native binary.
+Generate a binary manifest from JSON input. Used for bundle applications (JavaScript, Python) that can't embed manifests in native binaries.
 
 ```bash
 nah manifest generate manifest.json -o manifest.nah
 ```
 
-Options:
-- `-o, --output` - Output file path (required)
-- `--json` - Output result as JSON
+**Options:**
+- `-o, --output <FILE>` - Output file path (required)
 
-**Input Format**
-
-The input file must use the `nah.manifest.input.v2` schema:
-
+**Input format:**
 ```json
 {
   "app": {
@@ -260,98 +208,10 @@ The input file must use the `nah.manifest.input.v2` schema:
     "version": "1.0.0",
     "nak_id": "com.example.runtime",
     "nak_version_req": ">=2.0.0",
-    "entrypoint": "bundle.js",
-    "description": "My application",
-    "author": "Developer Name",
-    "license": "MIT",
-    "homepage": "https://example.com",
-    "entrypoint_args": ["--mode", "production"],
-    "lib_dirs": ["lib"],
-    "asset_dirs": ["assets"],
-    "exports": [
-      {
-        "id": "config",
-        "path": "share/config.json",
-        "type": "application/json"
-      }
-    ],
-    "environment": {
-      "NODE_ENV": "production"
-    },
-    "permissions": {
-      "filesystem": ["read:app://assets/*"],
-      "network": ["connect:https://api.example.com:443"]
-    }
+    "entrypoint": "bundle.js"
   }
 }
 ```
-
-**Required Fields**
-
-| Field | Description |
-|-------|-------------|
-| `$schema` | Must be `nah.manifest.input.v2` |
-| `app.id` | Unique identifier (reverse domain notation) |
-| `app.version` | SemVer version string |
-| `app.nak_id` | NAK this app depends on |
-| `app.nak_version_req` | Version requirement (SemVer range) |
-| `app.entrypoint` | Relative path to entry file |
-
-**Path Validation**
-
-- All paths (`entrypoint`, `lib_dirs`, `asset_dirs`, `exports.path`) must be relative
-- Absolute paths cause validation failure
-- Paths containing `..` cause validation failure
-
-**Permission Format**
-
-- Filesystem: `<operation>:<selector>` where operation is `read`, `write`, or `execute`
-- Network: `<operation>:<selector>` where operation is `connect`, `listen`, or `bind`
-
-See [Getting Started: Bundle Apps](getting-started-bundle.md) for a complete workflow.
-
----
-
-### Diagnostic Commands
-
-#### `nah doctor <APP_ID>`
-
-Diagnose and report issues with an application.
-
-```bash
-nah --root ./my-nah doctor com.example.myapp
-```
-
-Options:
-- `--fix` - Attempt to fix issues automatically
-
-#### `nah validate <TYPE> <FILE>`
-
-Validate configuration files.
-
-Types: `profile`, `manifest`, `nak`
-
-```bash
-nah validate profile host-profile.json
-nah validate manifest manifest.json
-nah validate nak META/nak.json
-```
-
----
-
-### Utility Commands
-
-#### `nah format <FILE>`
-
-Format JSON configuration files.
-
-```bash
-nah format host-profile.json
-```
-
-Options:
-- `--check` - Check formatting without modifying
-- `--diff` - Show diff of changes
 
 ---
 
@@ -360,16 +220,62 @@ Options:
 | Variable | Description |
 |----------|-------------|
 | `NAH_ROOT` | Default NAH root directory |
-| `NAH_PROFILE` | Default profile name |
-| `NAH_JSON` | Set to `1` for JSON output by default |
+| `NAH_PROFILE` | Override active profile |
 
 ## Exit Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Invalid arguments |
-| 3 | File not found |
-| 4 | Validation error |
-| 5 | Contract composition error |
+| Code | Meaning |
+|------|---------|
+| 0 | Success, no warnings |
+| 1 | Error (critical failure or warning upgraded to error) |
+| 2 | Success with warnings |
+
+## Examples
+
+### Typical workflow
+
+```bash
+# Initialize a NAH root
+nah init root ./my-nah
+cd my-nah
+
+# Install SDK and app
+nah install ../vendor-sdk-2.1.0.nak
+nah install ../myapp-1.0.0.nap
+
+# Check status
+nah list
+nah status com.example.myapp
+
+# Diagnose issues
+nah status com.example.myapp --trace
+```
+
+### Creating and distributing an app
+
+```bash
+# Create app skeleton
+nah init app ./myapp
+cd myapp
+
+# ... develop your app ...
+
+# Pack for distribution
+nah pack . -o myapp-1.0.0.nap
+
+# Install elsewhere
+nah install myapp-1.0.0.nap
+```
+
+### Validating configuration
+
+```bash
+# Check if a profile is valid
+nah status profile.json
+
+# Format and validate
+nah status profile.json --fix
+
+# Check an install record
+nah status registry/installs/com.example.app-1.0.0-uuid.json
+```

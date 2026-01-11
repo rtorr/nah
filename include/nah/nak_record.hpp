@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nah/types.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -34,7 +36,7 @@ struct NakInstallRecord {
     } paths;
     
     // [environment] section
-    std::unordered_map<std::string, std::string> environment;
+    EnvMap environment;
     
     // [loaders] section (OPTIONAL - libs-only NAKs omit this)
     // Maps loader name -> loader configuration with absolute paths
@@ -99,7 +101,7 @@ struct NakPackManifest {
         std::vector<std::string> lib_dirs;  // Relative paths
     } paths;
     
-    std::unordered_map<std::string, std::string> environment;
+    EnvMap environment;
     
     // [loaders] section (OPTIONAL - libs-only NAKs omit this)
     // Maps loader name -> loader configuration with relative paths

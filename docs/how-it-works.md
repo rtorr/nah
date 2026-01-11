@@ -1,0 +1,231 @@
+# How NAH Works
+
+This document explains the internals of NAH's launch contract system.
+
+## The Core Problem
+
+Native applications need configuration to run:
+- Which binary to execute
+- What library paths to set
+- Which environment variables
+- What working directory
+
+Traditionally, this information lives in:
+- Documentation that drifts from reality
+- Install scripts that diverge between environments
+- Tribal knowledge that doesn't scale
+
+NAH solves this by making configuration **declarative** and **composable**.
+
+## Three Inputs, One Output
+
+NAH composes three inputs into a launch contract:
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   Manifest  │  │     NAK     │  │   Profile   │
+│   (App)     │  │   (SDK)     │  │   (Host)    │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                        ▼
+               ┌─────────────────┐
+               │ Launch Contract │
+               │   (Output)      │
+               └─────────────────┘
+```
+
+### 1. Manifest (from App)
+
+The manifest declares what the app needs:
+
+```json
+{
+  "id": "com.example.myapp",
+  "version": "1.0.0",
+  "nak_id": "com.vendor.sdk",
+  "nak_version_req": "^2.0.0",
+  "entrypoint": "bin/myapp"
+}
+```
+
+### 2. NAK Record (from SDK)
+
+The NAK record declares what the SDK provides:
+
+```json
+{
+  "nak": { "id": "com.vendor.sdk", "version": "2.1.0" },
+  "paths": {
+    "root": "/nah/naks/com.vendor.sdk/2.1.0",
+    "lib_dirs": ["lib"]
+  },
+  "environment": {
+    "SDK_DATA_PATH": "{NAK_RESOURCE_ROOT}/data"
+  }
+}
+```
+
+### 3. Profile (from Host)
+
+The profile declares host policy:
+
+```json
+{
+  "nak": {
+    "binding_mode": "canonical",
+    "allow_versions": ["2.1.0", "2.2.0"]
+  },
+  "environment": {
+    "LOG_LEVEL": "info"
+  }
+}
+```
+
+### Output: Launch Contract
+
+NAH composes these into a deterministic contract:
+
+```json
+{
+  "app": { "id": "com.example.myapp", "version": "1.0.0" },
+  "nak": { "id": "com.vendor.sdk", "version": "2.1.0" },
+  "execution": {
+    "binary": "/nah/apps/com.example.myapp-1.0.0/bin/myapp",
+    "cwd": "/nah/apps/com.example.myapp-1.0.0",
+    "library_paths": ["/nah/naks/com.vendor.sdk/2.1.0/lib"]
+  },
+  "environment": {
+    "NAH_APP_ID": "com.example.myapp",
+    "NAH_NAK_ROOT": "/nah/naks/com.vendor.sdk/2.1.0",
+    "SDK_DATA_PATH": "/nah/naks/com.vendor.sdk/2.1.0/resources/data",
+    "LOG_LEVEL": "info"
+  }
+}
+```
+
+## Install-Time Pinning
+
+A key design decision: NAK version is resolved at **install time**, not launch time.
+
+```
+Install Time                    Launch Time
+────────────────────────────────────────────────
+                                
+App v1.0.0 installed            App v1.0.0 runs
+    ↓                               ↓
+NAK requirement: ^2.0.0         NAK used: 2.1.0
+    ↓                           (from install record)
+Available: 2.0.0, 2.1.0, 2.2.0
+    ↓
+Selected: 2.1.0 (highest match)
+    ↓
+Pinned in install record
+```
+
+Benefits:
+- **Predictable**: Same NAK every time the app runs
+- **Independent updates**: Install new NAK without affecting running apps
+- **Rollback friendly**: Pin to older NAK by reinstalling app
+
+## Directory Layout
+
+```
+/nah/                           # NAH root
+├── host/
+│   ├── profiles/
+│   │   ├── default.json       # Default profile
+│   │   └── production.json    # Production profile
+│   └── profile.current        # Symlink to active profile
+├── apps/
+│   └── com.example.myapp-1.0.0/
+│       ├── bin/myapp          # Application binary
+│       └── manifest.nah       # Manifest copy
+├── naks/
+│   └── com.vendor.sdk/
+│       └── 2.1.0/
+│           ├── lib/           # SDK libraries
+│           └── resources/     # SDK resources
+└── registry/
+    ├── installs/
+    │   └── com.example.myapp-1.0.0-<uuid>.json
+    └── naks/
+        └── com.vendor.sdk@2.1.0.json
+```
+
+## Contract Composition Steps
+
+1. **Load app install record** - Find the app in the registry
+2. **Read manifest** - Get app requirements from manifest
+3. **Load NAK record** - Use pinned NAK version from install record
+4. **Load host profile** - Apply host policy
+5. **Resolve paths** - Convert relative paths to absolute
+6. **Substitute placeholders** - Replace `{NAH_*}` with values
+7. **Merge environment** - Layer manifest → NAK → profile
+8. **Apply warnings** - Generate warnings per host policy
+9. **Emit contract** - Output the final launch parameters
+
+## Placeholder Substitution
+
+NAK records and profiles can use placeholders:
+
+| Placeholder | Value |
+|-------------|-------|
+| `{NAH_APP_ROOT}` | App installation directory |
+| `{NAH_APP_ID}` | App identifier |
+| `{NAH_APP_VERSION}` | App version |
+| `{NAH_NAK_ROOT}` | NAK installation directory |
+| `{NAK_RESOURCE_ROOT}` | NAK resources directory |
+
+Example:
+```json
+"environment": {
+  "DATA_PATH": "{NAH_APP_ROOT}/data",
+  "SDK_CONFIG": "{NAK_RESOURCE_ROOT}/config.json"
+}
+```
+
+## Environment Precedence
+
+When the same variable is set in multiple places:
+
+```
+1. Process environment (if overrides enabled)
+2. Host profile
+3. NAK record
+4. Manifest
+```
+
+Higher numbers are lower priority (overwritten by lower numbers).
+
+## Trace Mode
+
+Use `--trace` to see the provenance of each value:
+
+```bash
+nah status com.example.app --trace
+```
+
+The trace shows:
+- Which source contributed each value
+- The precedence rank
+- The file path where it was defined
+
+## Determinism
+
+Given the same inputs (manifest, NAK, profile), NAH produces the same contract.
+
+This enables:
+- **Auditing**: Inspect contract before execution
+- **Testing**: Verify contract in CI
+- **Caching**: Contract can be cached if inputs haven't changed
+- **Reproducibility**: Same result across machines
+
+## What NAH Doesn't Do
+
+- **Execute applications** - NAH outputs a contract; you execute it
+- **Manage processes** - No supervision, restart, or monitoring
+- **Handle networking** - No service discovery or load balancing
+- **Package management** - No dependency resolution or downloads
+
+NAH is intentionally minimal. It answers one question: "How do I launch this app?"

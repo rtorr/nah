@@ -146,7 +146,7 @@ struct NakPackInfo {
     std::string nak_version;
     std::string resource_root;
     std::vector<std::string> lib_dirs;
-    std::unordered_map<std::string, std::string> environment;
+    EnvMap environment;
     std::unordered_map<std::string, LoaderConfig> loaders;
     std::string execution_cwd;
     

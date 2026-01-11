@@ -20,31 +20,62 @@ NAH eliminates this by making applications self-describing. Apps declare what th
 ## Example
 
 ```bash
-# Install from local files
-nah --root /opt/nah nak install vendor-sdk-2.1.0.nak
-nah --root /opt/nah app install myapp-1.0.0.nap
+# Install packages (auto-detects .nap/.nak)
+nah install vendor-sdk-2.1.0.nak
+nah install myapp-1.0.0.nap
 
 # Or install directly from URLs
-nah --root /opt/nah nak install https://example.com/vendor-sdk-2.1.0.nak
-nah --root /opt/nah app install https://example.com/myapp-1.0.0.nap
+nah install https://example.com/vendor-sdk-2.1.0.nak
+nah install https://example.com/myapp-1.0.0.nap
 
 # Query the launch contract
-nah --root /opt/nah contract show com.example.myapp
+nah status com.example.myapp
 ```
 
 ```
 Application: com.example.myapp v1.0.0
-SDK: com.vendor.sdk v2.1.0
+NAK: com.vendor.sdk v2.1.0
 Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
 CWD: /opt/nah/apps/com.example.myapp-1.0.0
 Library Paths: /opt/nah/naks/com.vendor.sdk/2.1.0/lib
-Environment:
+Environment (NAH_*):
   NAH_APP_ID=com.example.myapp
   NAH_APP_VERSION=1.0.0
   NAH_NAK_ROOT=/opt/nah/naks/com.vendor.sdk/2.1.0
 ```
 
 The contract is deterministic. Same inputs, same output. Auditable before execution.
+
+## CLI Overview
+
+```
+nah install <source>      Install app or NAK (auto-detected from .nap/.nak)
+nah uninstall <id>        Remove an installed package
+nah list                  List installed apps and NAKs
+nah pack <dir>            Create a .nap or .nak package
+nah status [target]       Show status, validate files, diagnose issues
+nah init <type> <dir>     Create new project (app, nak, or root)
+nah profile list|set      Manage host profiles
+```
+
+## Decision Flowchart
+
+```
+What are you building?
+│
+├─ An application that uses an SDK
+│  └─ Create an app with: nah init app ./myapp
+│     Then install with: nah install myapp.nap
+│
+├─ An SDK/framework for apps to use
+│  └─ Create a NAK with: nah init nak ./mysdk
+│     Then install with: nah install mysdk.nak
+│
+└─ A host to run NAH applications
+   └─ Create a root with: nah init root ./my-nah
+      Then install packages: nah install <package>
+      Then check status: nah status
+```
 
 ## Key Properties
 
@@ -99,11 +130,13 @@ target_link_libraries(your_target PRIVATE nahhost)
 
 | Document | Description |
 |----------|-------------|
+| [How It Works](docs/how-it-works.md) | Internals of the launch contract system |
 | [Concepts](docs/concepts.md) | Core terminology: manifests, NAKs, profiles, contracts |
 | [Getting Started: Host](docs/getting-started-host.md) | Set up a host and deploy applications |
 | [Getting Started: SDK](docs/getting-started-nak.md) | Package an SDK for distribution |
 | [Getting Started: App](docs/getting-started-app.md) | Build an application with a manifest |
 | [CLI Reference](docs/cli.md) | Command-line interface documentation |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
 | [Specification](SPEC.md) | Normative specification |
 | [Contributing](CONTRIBUTING.md) | Development setup and releasing |
 

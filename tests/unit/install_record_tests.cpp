@@ -177,5 +177,5 @@ TEST_CASE("app install record with overrides section parses correctly") {
     auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
     CHECK(rec.overrides.environment.size() == 1);
-    CHECK(rec.overrides.environment.at("MY_VAR") == "my_value");
+    CHECK(rec.overrides.environment.at("MY_VAR").value == "my_value");
 }

@@ -61,6 +61,40 @@ bool timestamp_before(const std::string& a, const std::string& b) {
     return norm_a < norm_b;
 }
 
+// Apply an environment operation to the current environment
+// Returns the new value for the key (or nullopt if unset)
+std::optional<std::string> apply_env_op(
+    const std::string& key,
+    const EnvValue& env_val,
+    const std::unordered_map<std::string, std::string>& current_env) {
+    
+    switch (env_val.op) {
+        case EnvOp::Set:
+            return env_val.value;
+            
+        case EnvOp::Prepend: {
+            auto it = current_env.find(key);
+            if (it != current_env.end() && !it->second.empty()) {
+                return env_val.value + env_val.separator + it->second;
+            }
+            return env_val.value;
+        }
+        
+        case EnvOp::Append: {
+            auto it = current_env.find(key);
+            if (it != current_env.end() && !it->second.empty()) {
+                return it->second + env_val.separator + env_val.value;
+            }
+            return env_val.value;
+        }
+        
+        case EnvOp::Unset:
+            return std::nullopt;
+    }
+    
+    return env_val.value;
+}
+
 } // namespace
 
 std::string get_library_path_env_key() {
@@ -262,53 +296,99 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     
     // =========================================================================
     // Step 5 & 6: Build effective_environment (per SPEC L978-L1016)
+    // Environment algebra: set, prepend, append, unset
     // =========================================================================
     
     std::unordered_map<std::string, std::string> effective_env;
     
-    // Layer 1: Host Profile defaults (fill-only)
-    for (const auto& [key, val] : profile.environment) {
-        if (effective_env.find(key) == effective_env.end()) {
-            effective_env[key] = val;
+    // Track history for trace output
+    std::unordered_map<std::string, std::vector<TraceContribution>> env_history;
+    
+    // Helper to record a contribution
+    auto record_contribution = [&](const std::string& key, const std::string& value,
+                                   const std::string& source_kind, const std::string& source_path,
+                                   int rank, EnvOp op, bool accepted) {
+        if (inputs.enable_trace) {
+            TraceContribution contrib;
+            contrib.value = value;
+            contrib.source_kind = source_kind;
+            contrib.source_path = source_path;
+            contrib.precedence_rank = rank;
+            contrib.operation = op;
+            contrib.accepted = accepted;
+            env_history[key].push_back(contrib);
+        }
+    };
+    
+    // Layer 1: Host Profile (apply operations)
+    for (const auto& [key, env_val] : profile.environment) {
+        auto op_result = apply_env_op(key, env_val, effective_env);
+        if (op_result.has_value()) {
+            effective_env[key] = op_result.value();
+            record_contribution(key, op_result.value(), "profile", "host_profile", 1, env_val.op, true);
+        } else {
+            effective_env.erase(key);
+            record_contribution(key, "", "profile", "host_profile", 1, env_val.op, true);
         }
     }
     
-    // Layer 2: NAK Install Record defaults (fill-only, if resolved)
+    // Layer 2: NAK Install Record (apply operations)
     if (nak_resolved) {
-        for (const auto& [key, val] : nak_record.environment) {
-            if (effective_env.find(key) == effective_env.end()) {
-                effective_env[key] = val;
+        for (const auto& [key, env_val] : nak_record.environment) {
+            auto op_result = apply_env_op(key, env_val, effective_env);
+            if (op_result.has_value()) {
+                effective_env[key] = op_result.value();
+                record_contribution(key, op_result.value(), "nak", install_record.nak.record_ref, 2, env_val.op, true);
+            } else {
+                effective_env.erase(key);
+                record_contribution(key, "", "nak", install_record.nak.record_ref, 2, env_val.op, true);
             }
         }
     }
     
-    // Layer 3: App Manifest defaults (fill-only)
+    // Layer 3: App Manifest defaults (string values, fill-only)
     for (const auto& env_var : manifest.env_vars) {
         auto eq = env_var.find('=');
         if (eq != std::string::npos) {
             std::string key = env_var.substr(0, eq);
             std::string val = env_var.substr(eq + 1);
-            if (effective_env.find(key) == effective_env.end()) {
+            bool accepted = (effective_env.find(key) == effective_env.end());
+            if (accepted) {
                 effective_env[key] = val;
             }
+            record_contribution(key, val, "manifest", "app_manifest", 3, EnvOp::Set, accepted);
         }
     }
     
-    // Layer 4: App Install Record overrides (overwrite)
-    for (const auto& [key, val] : install_record.overrides.environment) {
-        effective_env[key] = val;
+    // Layer 4: App Install Record overrides (apply operations)
+    for (const auto& [key, env_val] : install_record.overrides.environment) {
+        auto op_result = apply_env_op(key, env_val, effective_env);
+        if (op_result.has_value()) {
+            effective_env[key] = op_result.value();
+            record_contribution(key, op_result.value(), "install_override", install_record.source_path, 4, env_val.op, true);
+        } else {
+            effective_env.erase(key);
+            record_contribution(key, "", "install_override", install_record.source_path, 4, env_val.op, true);
+        }
     }
     
     // Layer 5: NAH standard variables (overwrite)
     effective_env["NAH_APP_ID"] = contract.app.id;
+    record_contribution("NAH_APP_ID", contract.app.id, "nah_standard", "nah", 5, EnvOp::Set, true);
     effective_env["NAH_APP_VERSION"] = contract.app.version;
+    record_contribution("NAH_APP_VERSION", contract.app.version, "nah_standard", "nah", 5, EnvOp::Set, true);
     effective_env["NAH_APP_ROOT"] = contract.app.root;
+    record_contribution("NAH_APP_ROOT", contract.app.root, "nah_standard", "nah", 5, EnvOp::Set, true);
     effective_env["NAH_APP_ENTRY"] = contract.app.entrypoint;
+    record_contribution("NAH_APP_ENTRY", contract.app.entrypoint, "nah_standard", "nah", 5, EnvOp::Set, true);
     
     if (nak_resolved) {
         effective_env["NAH_NAK_ID"] = contract.nak.id;
+        record_contribution("NAH_NAK_ID", contract.nak.id, "nah_standard", "nah", 5, EnvOp::Set, true);
         effective_env["NAH_NAK_VERSION"] = contract.nak.version;
+        record_contribution("NAH_NAK_VERSION", contract.nak.version, "nah_standard", "nah", 5, EnvOp::Set, true);
         effective_env["NAH_NAK_ROOT"] = contract.nak.root;
+        record_contribution("NAH_NAK_ROOT", contract.nak.root, "nah_standard", "nah", 5, EnvOp::Set, true);
     }
     
     // Layer 6 & 7: Process env and file overrides
@@ -751,6 +831,36 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     result.ok = true;
     result.envelope.warnings = warnings.get_warnings();
     
+    // Build trace if enabled
+    if (inputs.enable_trace) {
+        std::unordered_map<std::string, std::unordered_map<std::string, TraceEntry>> trace;
+        
+        // Environment trace entries
+        std::unordered_map<std::string, TraceEntry> env_entries;
+        for (const auto& [key, history] : env_history) {
+            TraceEntry entry;
+            // Find the final value
+            auto env_it = contract.environment.find(key);
+            if (env_it != contract.environment.end()) {
+                entry.value = env_it->second;
+            }
+            // Find the winning contribution (last accepted one)
+            for (auto it = history.rbegin(); it != history.rend(); ++it) {
+                if (it->accepted) {
+                    entry.source_kind = it->source_kind;
+                    entry.source_path = it->source_path;
+                    entry.precedence_rank = it->precedence_rank;
+                    break;
+                }
+            }
+            entry.history = history;
+            env_entries[key] = entry;
+        }
+        trace["environment"] = env_entries;
+        
+        result.envelope.trace = trace;
+    }
+    
     return result;
 }
 
@@ -903,6 +1013,23 @@ std::string serialize_contract_json(const ContractEnvelope& envelope,
                 entry_obj["source_kind"] = entry.source_kind;
                 entry_obj["source_path"] = entry.source_path;
                 entry_obj["precedence_rank"] = entry.precedence_rank;
+                
+                // Include history if present
+                if (!entry.history.empty()) {
+                    nlohmann::json history_arr = nlohmann::json::array();
+                    for (const auto& contrib : entry.history) {
+                        nlohmann::json contrib_obj;
+                        contrib_obj["value"] = contrib.value;
+                        contrib_obj["source_kind"] = contrib.source_kind;
+                        contrib_obj["source_path"] = contrib.source_path;
+                        contrib_obj["precedence_rank"] = contrib.precedence_rank;
+                        contrib_obj["operation"] = env_op_to_string(contrib.operation);
+                        contrib_obj["accepted"] = contrib.accepted;
+                        history_arr.push_back(contrib_obj);
+                    }
+                    entry_obj["history"] = history_arr;
+                }
+                
                 section_obj[key] = entry_obj;
             }
             trace_obj[section] = section_obj;

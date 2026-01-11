@@ -69,9 +69,10 @@ if [ ! -d "$NAH_ROOT" ]; then
     exit 1
 fi
 
-# Get list of installed apps (just the app id@version, not the path)
+# Get list of installed apps (id@version format)
 get_installed_apps() {
-    $NAH_CLI --root "$NAH_ROOT" app list 2>/dev/null | grep -oE '^[^ ]+' || true
+    $NAH_CLI --root "$NAH_ROOT" --json list 2>/dev/null | \
+        jq -r '.apps[] | "\(.id)@\(.version)"' 2>/dev/null || true
 }
 
 # Show contract for an app
@@ -80,7 +81,7 @@ show_contract() {
     echo ""
     echo "=== Contract: $app_id ==="
     echo ""
-    $NAH_CLI --root "$NAH_ROOT" contract show "$app_id" 2>&1 || {
+    $NAH_CLI --root "$NAH_ROOT" status "$app_id" 2>&1 || {
         log_warn "Could not show contract for $app_id"
     }
 }
@@ -94,7 +95,7 @@ run_app() {
 
     # Get contract as JSON
     local contract_json
-    contract_json=$($NAH_CLI --root "$NAH_ROOT" --json contract show "$app_id" 2>&1) || {
+    contract_json=$($NAH_CLI --root "$NAH_ROOT" --json status "$app_id" 2>&1) || {
         log_error "Failed to get contract for $app_id"
         echo "$contract_json"
         return 1

@@ -37,7 +37,12 @@ set(NAH_ALL_SOURCES
     packaging/packaging.cpp
     materializer/materializer.cpp
     nahhost/nahhost.cpp
+    api/nah_c_api.cpp
 )
+
+# Read version from VERSION file for C API
+file(READ "${PROJECT_SOURCE_DIR}/VERSION" NAH_VERSION_RAW)
+string(STRIP "${NAH_VERSION_RAW}" NAH_VERSION_FOR_API)
 
 # =============================================================================
 # Static Libraries (for CLI and users who prefer static linking)
@@ -128,6 +133,7 @@ target_link_libraries(nah_materializer PUBLIC
 
 add_library(nahhost STATIC
     nahhost/nahhost.cpp
+    api/nah_c_api.cpp
 )
 target_include_directories(nahhost PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -139,6 +145,9 @@ target_link_libraries(nahhost PUBLIC
     nah_platform
     nah_packaging
     nah_materializer
+)
+target_compile_definitions(nahhost PRIVATE
+    NAH_VERSION_STRING="${NAH_VERSION_FOR_API}"
 )
 
 # On Windows, rename static lib to avoid conflict with DLL import lib
@@ -190,8 +199,10 @@ if(NAH_BUILD_SHARED)
     # Define macros for DLL export/import
     # NAH_BUILDING_SHARED: defined when building the shared library
     # NAH_SHARED: defined by users when linking against the shared library
+    # NAH_VERSION_STRING: library version from VERSION file
     target_compile_definitions(nahhost_shared
         PRIVATE NAH_BUILDING_SHARED
+        PRIVATE NAH_VERSION_STRING="${NAH_VERSION_FOR_API}"
         PUBLIC $<BUILD_INTERFACE:NAH_SHARED>
     )
 endif()

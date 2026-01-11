@@ -229,12 +229,17 @@ The contract is deterministic: given the same inputs (manifest, install records,
 ### Viewing a Contract
 
 ```bash
-nah --root /nah contract show com.example.myapp
+nah status com.example.myapp
+```
+
+With full provenance trace:
+```bash
+nah status com.example.myapp --trace
 ```
 
 JSON output for scripting:
 ```bash
-nah --root /nah --json contract show com.example.myapp
+nah status com.example.myapp --json
 ```
 
 ## On-Disk Layout

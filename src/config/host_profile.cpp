@@ -52,6 +52,34 @@ std::vector<std::string> get_path_array(const nlohmann::json& j, const std::stri
     return result;
 }
 
+// Helper to parse EnvValue from JSON (string or object with op/value/separator)
+std::optional<EnvValue> parse_env_value(const nlohmann::json& val) {
+    if (val.is_string()) {
+        return EnvValue(val.get<std::string>());
+    }
+    if (val.is_object()) {
+        std::string op_str = "set";
+        if (val.contains("op") && val["op"].is_string()) {
+            op_str = val["op"].get<std::string>();
+        }
+        auto op = parse_env_op(op_str);
+        if (!op) return std::nullopt;
+        
+        std::string value;
+        if (val.contains("value") && val["value"].is_string()) {
+            value = val["value"].get<std::string>();
+        }
+        
+        std::string separator = ":";
+        if (val.contains("separator") && val["separator"].is_string()) {
+            separator = val["separator"].get<std::string>();
+        }
+        
+        return EnvValue(*op, value, separator);
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 HostProfile get_builtin_empty_profile() {
@@ -114,8 +142,8 @@ HostProfileParseResult parse_host_profile_full(const std::string& json_str,
         // "environment" section
         if (j.contains("environment") && j["environment"].is_object()) {
             for (auto& [key, val] : j["environment"].items()) {
-                if (val.is_string()) {
-                    result.profile.environment[key] = val.get<std::string>();
+                if (auto env_val = parse_env_value(val)) {
+                    result.profile.environment[key] = *env_val;
                 }
             }
         }

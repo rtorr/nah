@@ -399,11 +399,13 @@ PackResult create_deterministic_archive(const std::vector<TarEntry>& entries) {
     // Check for prohibited entry types
     for (const auto& entry : entries) {
         if (entry.type == TarEntryType::Symlink) {
-            result.error = "symlinks are not permitted: " + entry.path;
+            result.error = "symlinks are not permitted in packages: " + entry.path +
+                           "\n\nNAH packages must be portable. Replace symlinks with copies or remove them.";
             return result;
         }
         if (entry.type == TarEntryType::Hardlink) {
-            result.error = "hardlinks are not permitted: " + entry.path;
+            result.error = "hardlinks are not permitted in packages: " + entry.path +
+                           "\n\nNAH packages must be portable. Replace hardlinks with copies.";
             return result;
         }
         if (entry.type == TarEntryType::Other) {
@@ -471,7 +473,8 @@ CollectResult collect_directory_entries(const std::string& dir_path) {
             tar_entry.path = path_str;
             
             if (fs::is_symlink(entry.path())) {
-                result.error = "symlinks are not permitted: " + path_str;
+                result.error = "symlinks are not permitted in packages: " + path_str +
+                               "\n\nNAH packages must be portable. Replace symlinks with copies or remove them.";
                 return result;
             }
             
@@ -896,19 +899,32 @@ PackResult pack_nap(const std::string& dir_path) {
         return result;
     }
     
-    // Check for manifest (either embedded in binary or as manifest.nah)
-    bool has_manifest = path_exists(join_path(dir_path, "manifest.nah"));
+    // Find and parse manifest
+    std::vector<uint8_t> manifest_data;
+    std::string manifest_source;
+    
+    std::string manifest_file_path = join_path(dir_path, "manifest.nah");
+    if (path_exists(manifest_file_path)) {
+        std::ifstream mf(manifest_file_path, std::ios::binary);
+        if (mf) {
+            manifest_data = std::vector<uint8_t>(
+                (std::istreambuf_iterator<char>(mf)),
+                std::istreambuf_iterator<char>());
+            manifest_source = "file:manifest.nah";
+        }
+    }
     
     // If no manifest.nah, check for binaries with embedded manifests
-    if (!has_manifest) {
+    if (manifest_data.empty()) {
         std::string bin_dir = join_path(dir_path, "bin");
         if (is_directory(bin_dir)) {
             for (const auto& entry : list_directory(bin_dir)) {
                 std::string bin_path = join_path(bin_dir, entry);
                 if (is_regular_file(bin_path)) {
                     auto section_result = read_manifest_section(bin_path);
-                    if (section_result.ok) {
-                        has_manifest = true;
+                    if (section_result.ok && !section_result.data.empty()) {
+                        manifest_data = section_result.data;
+                        manifest_source = "embedded:" + entry;
                         break;
                     }
                 }
@@ -916,9 +932,93 @@ PackResult pack_nap(const std::string& dir_path) {
         }
     }
     
-    if (!has_manifest) {
+    if (manifest_data.empty()) {
         result.error = "no manifest found (need manifest.nah or embedded manifest in binary)";
         return result;
+    }
+    
+    // Parse manifest to validate fields
+    auto manifest_result = parse_manifest(manifest_data);
+    if (manifest_result.critical_missing) {
+        result.error = "invalid manifest (" + manifest_source + "): " + manifest_result.error;
+        return result;
+    }
+    
+    const auto& manifest = manifest_result.manifest;
+    
+    // Validate required fields
+    if (manifest.id.empty()) {
+        result.error = "manifest missing required field: app_id";
+        return result;
+    }
+    
+    if (manifest.version.empty()) {
+        result.error = "manifest missing required field: app_version";
+        return result;
+    }
+    
+    if (manifest.entrypoint_path.empty()) {
+        result.error = "manifest missing required field: entrypoint";
+        return result;
+    }
+    
+    // Validate entrypoint is not absolute
+    if (is_absolute_path(manifest.entrypoint_path)) {
+        result.error = "entrypoint must be a relative path, got: " + manifest.entrypoint_path;
+        return result;
+    }
+    
+    // Validate entrypoint doesn't escape root (path traversal)
+    if (manifest.entrypoint_path.find("..") != std::string::npos) {
+        result.error = "entrypoint contains path traversal: " + manifest.entrypoint_path;
+        return result;
+    }
+    
+    // Validate entrypoint exists in directory
+    std::string entrypoint_full = join_path(dir_path, manifest.entrypoint_path);
+    if (!is_regular_file(entrypoint_full)) {
+        result.error = "entrypoint not found: " + manifest.entrypoint_path + 
+                       "\n\nThe manifest declares entrypoint '" + manifest.entrypoint_path + 
+                       "' but this file does not exist in the package directory.";
+        return result;
+    }
+    
+    // Validate lib_dirs exist
+    for (const auto& lib_dir : manifest.lib_dirs) {
+        if (is_absolute_path(lib_dir)) {
+            result.error = "lib_dir must be a relative path, got: " + lib_dir;
+            return result;
+        }
+        if (lib_dir.find("..") != std::string::npos) {
+            result.error = "lib_dir contains path traversal: " + lib_dir;
+            return result;
+        }
+        std::string lib_full = join_path(dir_path, lib_dir);
+        if (!is_directory(lib_full)) {
+            result.error = "lib_dir not found: " + lib_dir +
+                           "\n\nThe manifest declares lib_dir '" + lib_dir +
+                           "' but this directory does not exist.";
+            return result;
+        }
+    }
+    
+    // Validate asset exports exist
+    for (const auto& exp : manifest.asset_exports) {
+        if (is_absolute_path(exp.path)) {
+            result.error = "asset_export path must be relative, got: " + exp.path;
+            return result;
+        }
+        if (exp.path.find("..") != std::string::npos) {
+            result.error = "asset_export contains path traversal: " + exp.path;
+            return result;
+        }
+        std::string asset_full = join_path(dir_path, exp.path);
+        if (!is_regular_file(asset_full)) {
+            result.error = "asset_export not found: " + exp.path + " (id: " + exp.id + ")" +
+                           "\n\nThe manifest exports '" + exp.id + "' at path '" + exp.path +
+                           "' but this file does not exist.";
+            return result;
+        }
     }
     
     // Collect and pack
@@ -1046,10 +1146,17 @@ NakPackInfo inspect_nak_pack(const std::string& pack_path) {
 PackResult pack_nak(const std::string& dir_path) {
     PackResult result;
     
+    // Validate directory exists
+    if (!path_exists(dir_path)) {
+        result.error = "directory not found: " + dir_path;
+        return result;
+    }
+    
     // Validate META/nak.json exists
     std::string nak_json_path = join_path(dir_path, "META/nak.json");
     if (!path_exists(nak_json_path)) {
-        result.error = "META/nak.json not found";
+        result.error = "META/nak.json not found\n\n"
+                       "NAK packages require a META/nak.json file with NAK metadata.";
         return result;
     }
     
@@ -1070,7 +1177,101 @@ PackResult pack_nak(const std::string& dir_path) {
         return result;
     }
     
-    // $schema is ignored - validation is structural
+    const auto& nak = pack_result.manifest;
+    
+    // Validate required fields
+    if (nak.nak.id.empty()) {
+        result.error = "META/nak.json missing required field: nak.id";
+        return result;
+    }
+    
+    if (nak.nak.version.empty()) {
+        result.error = "META/nak.json missing required field: nak.version";
+        return result;
+    }
+    
+    // Validate resource_root if specified
+    if (!nak.paths.resource_root.empty()) {
+        if (is_absolute_path(nak.paths.resource_root)) {
+            result.error = "resource_root must be a relative path, got: " + nak.paths.resource_root;
+            return result;
+        }
+        if (nak.paths.resource_root.find("..") != std::string::npos) {
+            result.error = "resource_root contains path traversal: " + nak.paths.resource_root;
+            return result;
+        }
+        std::string resource_full = join_path(dir_path, nak.paths.resource_root);
+        if (!is_directory(resource_full)) {
+            result.error = "resource_root not found: " + nak.paths.resource_root +
+                           "\n\nThe nak.json declares resource_root '" + nak.paths.resource_root +
+                           "' but this directory does not exist.";
+            return result;
+        }
+    }
+    
+    // Validate lib_dirs exist
+    for (const auto& lib_dir : nak.paths.lib_dirs) {
+        if (is_absolute_path(lib_dir)) {
+            result.error = "lib_dir must be a relative path, got: " + lib_dir;
+            return result;
+        }
+        if (lib_dir.find("..") != std::string::npos) {
+            result.error = "lib_dir contains path traversal: " + lib_dir;
+            return result;
+        }
+        std::string lib_full = join_path(dir_path, lib_dir);
+        if (!is_directory(lib_full)) {
+            result.error = "lib_dir not found: " + lib_dir +
+                           "\n\nThe nak.json declares lib_dir '" + lib_dir +
+                           "' but this directory does not exist.";
+            return result;
+        }
+    }
+    
+    // Validate loaders if specified
+    for (const auto& [loader_name, loader_config] : nak.loaders) {
+        if (loader_config.exec_path.empty()) {
+            result.error = "loader '" + loader_name + "' missing required field: exec_path";
+            return result;
+        }
+        
+        if (is_absolute_path(loader_config.exec_path)) {
+            result.error = "loader '" + loader_name + "' exec_path must be relative, got: " + 
+                           loader_config.exec_path;
+            return result;
+        }
+        
+        if (loader_config.exec_path.find("..") != std::string::npos) {
+            result.error = "loader '" + loader_name + "' exec_path contains path traversal: " + 
+                           loader_config.exec_path;
+            return result;
+        }
+        
+        std::string loader_full = join_path(dir_path, loader_config.exec_path);
+        if (!is_regular_file(loader_full)) {
+            result.error = "loader '" + loader_name + "' binary not found: " + loader_config.exec_path +
+                           "\n\nThe nak.json declares loader '" + loader_name + 
+                           "' with exec_path '" + loader_config.exec_path +
+                           "' but this file does not exist.";
+            return result;
+        }
+    }
+    
+    // Validate execution.cwd if specified
+    if (!nak.execution.cwd.empty()) {
+        // cwd can contain placeholders like {NAH_APP_ROOT}, so only validate if it's a literal path
+        std::string cwd = nak.execution.cwd;
+        if (cwd.find('{') == std::string::npos) {
+            if (is_absolute_path(cwd)) {
+                result.error = "execution.cwd must be a relative path or placeholder, got: " + cwd;
+                return result;
+            }
+            if (cwd.find("..") != std::string::npos) {
+                result.error = "execution.cwd contains path traversal: " + cwd;
+                return result;
+            }
+        }
+    }
     
     // Collect and pack
     return pack_directory(dir_path);
@@ -1183,7 +1384,8 @@ AppInstallResult install_nap_package(const std::string& package_path,
         std::ifstream pf(profile_path);
         if (!pf) {
             remove_directory(staging_dir);
-            result.error = "failed to load host profile: " + profile_path;
+            result.error = "failed to load host profile: " + profile_path + 
+                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + options.nah_root;
             return result;
         }
         std::string profile_json((std::istreambuf_iterator<char>(pf)),
@@ -1211,7 +1413,39 @@ AppInstallResult install_nap_package(const std::string& package_path,
                 // No NAK required, continue without
             } else {
                 remove_directory(staging_dir);
-                result.error = "NAK selection failed: no matching NAK found for " + manifest.nak_id;
+                
+                // Build a helpful error message
+                std::ostringstream err;
+                err << "NAK selection failed for " << manifest.nak_id;
+                
+                if (manifest.nak_version_req.has_value()) {
+                    err << " (requires " << manifest.nak_version_req->selection_key() << ")";
+                }
+                
+                // Check what versions are available
+                std::vector<std::string> available_versions;
+                for (const auto& entry : registry) {
+                    if (entry.id == manifest.nak_id) {
+                        available_versions.push_back(entry.version);
+                    }
+                }
+                
+                if (available_versions.empty()) {
+                    err << "\n\nNo versions of " << manifest.nak_id << " are installed.";
+                    err << "\nInstall a compatible NAK first: nah install <" << manifest.nak_id << ".nak>";
+                } else {
+                    err << "\n\nInstalled versions of " << manifest.nak_id << ":";
+                    for (const auto& v : available_versions) {
+                        err << "\n  " << v;
+                        // Check if denied by profile
+                        if (!version_allowed_by_profile(v, profile_result.profile)) {
+                            err << " (denied by profile)";
+                        }
+                    }
+                    err << "\n\nEither install a compatible version or update the app's version requirement.";
+                }
+                
+                result.error = err.str();
                 return result;
             }
         }
@@ -1398,7 +1632,8 @@ static AppInstallResult install_app_from_bytes(
         std::ifstream pf(profile_path);
         if (!pf) {
             remove_directory(staging_dir);
-            result.error = "failed to load host profile: " + profile_path;
+            result.error = "failed to load host profile: " + profile_path +
+                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + options.nah_root;
             return result;
         }
         std::string profile_json((std::istreambuf_iterator<char>(pf)),
@@ -1419,7 +1654,38 @@ static AppInstallResult install_app_from_bytes(
             selected_nak_pin = selection.pin;
         } else if (!manifest.nak_id.empty()) {
             remove_directory(staging_dir);
-            result.error = "NAK selection failed: no matching NAK found for " + manifest.nak_id;
+            
+            // Build a helpful error message
+            std::ostringstream err;
+            err << "NAK selection failed for " << manifest.nak_id;
+            
+            if (manifest.nak_version_req.has_value()) {
+                err << " (requires " << manifest.nak_version_req->selection_key() << ")";
+            }
+            
+            // Check what versions are available
+            std::vector<std::string> available_versions;
+            for (const auto& entry : registry) {
+                if (entry.id == manifest.nak_id) {
+                    available_versions.push_back(entry.version);
+                }
+            }
+            
+            if (available_versions.empty()) {
+                err << "\n\nNo versions of " << manifest.nak_id << " are installed.";
+                err << "\nInstall a compatible NAK first: nah install <" << manifest.nak_id << ".nak>";
+            } else {
+                err << "\n\nInstalled versions of " << manifest.nak_id << ":";
+                for (const auto& v : available_versions) {
+                    err << "\n  " << v;
+                    if (!version_allowed_by_profile(v, profile_result.profile)) {
+                        err << " (denied by profile)";
+                    }
+                }
+                err << "\n\nEither install a compatible version or update the app's version requirement.";
+            }
+            
+            result.error = err.str();
             return result;
         }
     }
@@ -1755,9 +2021,20 @@ static NakInstallResult install_nak_from_bytes(
     if (!pack_info.environment.empty()) {
         record << "\n";
         bool first_env = true;
-        for (const auto& [key, value] : pack_info.environment) {
+        for (const auto& [key, env_val] : pack_info.environment) {
             if (!first_env) record << ",\n";
-            record << "    \"" << key << "\": \"" << value << "\"";
+            if (env_val.op == EnvOp::Set) {
+                record << "    \"" << key << "\": \"" << env_val.value << "\"";
+            } else {
+                record << "    \"" << key << "\": {\"op\": \"" << env_op_to_string(env_val.op) << "\"";
+                if (env_val.op != EnvOp::Unset) {
+                    record << ", \"value\": \"" << env_val.value << "\"";
+                    if (env_val.separator != ":") {
+                        record << ", \"separator\": \"" << env_val.separator << "\"";
+                    }
+                }
+                record << "}";
+            }
             first_env = false;
         }
         record << "\n  ";

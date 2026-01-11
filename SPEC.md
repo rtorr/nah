@@ -677,6 +677,8 @@ If `default.json` parses but has a missing/mismatched schema, NAH MUST emit `pro
     "nak_pin_invalid": "warn",
     "nak_not_found": "error",
     "nak_version_unsupported": "error",
+    "nak_loader_required": "warn",
+    "nak_loader_missing": "warn",
     "binary_not_found": "warn",
     "capability_malformed": "warn",
     "capability_unknown": "warn",
@@ -865,6 +867,57 @@ If multiple inputs set the same key, the highest-precedence input MUST win.
 `effective_environment` MUST be constructed once using this order and used for all placeholder expansion in composition.
 
 The output of contract composition is the Launch Contract.
+
+### Environment Algebra (Normative)
+
+Environment values in Host Profile, NAK Install Record, and App Install Record overrides MAY specify an operation instead of a simple string value. This enables composable environment manipulation.
+
+**Value Format:**
+
+Environment values MUST be one of:
+
+1. **String value** (simple set operation):
+   ```json
+   "environment": {
+     "MY_VAR": "my_value"
+   }
+   ```
+
+2. **Object with operation**:
+   ```json
+   "environment": {
+     "PATH_VAR": { "op": "prepend", "value": "/new/path", "separator": ":" },
+     "OTHER_VAR": { "op": "append", "value": "/extra", "separator": ":" },
+     "REMOVE_ME": { "op": "unset" }
+   }
+   ```
+
+**Operations (Normative):**
+
+| Operation | Description | Fields |
+|-----------|-------------|--------|
+| `set` | Replace/set the value (default) | `value` (required) |
+| `prepend` | Prepend value to existing with separator | `value` (required), `separator` (default `:`) |
+| `append` | Append value to existing with separator | `value` (required), `separator` (default `:`) |
+| `unset` | Remove the variable entirely | none |
+
+**Application Rules:**
+
+1. When `op` is absent, default to `set`.
+2. When `separator` is absent, default to `:`.
+3. For `prepend`: result is `<new_value><separator><existing_value>`. If no existing value, result is `<new_value>`.
+4. For `append`: result is `<existing_value><separator><new_value>`. If no existing value, result is `<new_value>`.
+5. For `unset`: the variable MUST be removed from `effective_environment`.
+6. Operations apply in precedence order; each layer sees the result of all prior layers.
+
+**Example Composition:**
+
+Given:
+- Profile: `"PATH": { "op": "set", "value": "/usr/bin" }`
+- NAK: `"PATH": { "op": "prepend", "value": "/nak/bin" }`
+- Install override: `"PATH": { "op": "append", "value": "/custom" }`
+
+Result: `PATH=/nak/bin:/usr/bin:/custom`
 
 ### Algorithm (Normative)
 
@@ -1368,14 +1421,16 @@ enum class Warning {
     invalid_configuration,      // Invalid configuration or expansion limits exceeded
     profile_invalid,            // Use default profile
     profile_missing,            // Missing default profile
-    nak_pin_invalid,         // Pinned NAK record missing or invalid
-    nak_not_found,           // Install-time selection found no candidates; MUST NOT be emitted by contract composition
-    nak_version_unsupported, // No installed version satisfies requirement
-    binary_not_found,           // MAY be emitted by inspection/diagnostic commands (e.g., `nah doctor`) but MUST NOT be emitted by `compose_contract`; a missing entrypoint during composition is always CriticalError::ENTRYPOINT_NOT_FOUND.
+    profile_parse_error,        // Ignore invalid profile
+    nak_pin_invalid,            // Pinned NAK record missing or invalid
+    nak_not_found,              // Install-time only; MUST NOT be emitted by compose_contract
+    nak_version_unsupported,    // No installed version satisfies requirement
+    nak_loader_required,        // NAK has loaders but app didn't specify one
+    nak_loader_missing,         // App requested a loader that NAK doesn't have
+    binary_not_found,           // Diagnostic only; MUST NOT be emitted by compose_contract
     capability_missing,         // Continue without capability
     capability_malformed,       // Malformed permission string
     capability_unknown,         // Unknown permission operation
-    profile_parse_error,        // Ignore invalid profile
     missing_env_var,            // Variable expansion failed
     invalid_trust_state,        // Invalid trust state treated as unknown
     override_denied,            // NAH_OVERRIDE_* blocked by host policy
@@ -1395,6 +1450,7 @@ enum class CriticalError {
     ENTRYPOINT_NOT_FOUND,      // No binary to execute
     PATH_TRAVERSAL,            // Entrypoint or export escapes app root or NAK root
     INSTALL_RECORD_INVALID,    // Selected App Install Record missing/invalid; cannot compose
+    NAK_LOADER_INVALID,        // Pinned loader not found in NAK or loader binary missing
 };
 ```
 
@@ -1473,6 +1529,148 @@ public:
 - Only `nah app install` / `nah app verify` MAY load source plugins
 - ITrustSource MAY be called by `nah app install` and `nah app verify` to populate/update App Install Record [trust]
 - NAH MUST NOT block/allow based on trust results; any gating is via warning->error policy only
+
+---
+
+## Failure Modes
+
+NAH distinguishes between two categories of failures: **Critical Errors** that halt execution immediately, and **Warnings** that are policy-configurable.
+
+### Critical Errors (Hard Failures)
+
+Critical errors indicate unrecoverable conditions where NAH cannot safely proceed. These always halt execution regardless of warning policy.
+
+| Error Code | When Emitted | Effect |
+|------------|--------------|--------|
+| `MANIFEST_MISSING` | Manifest file does not exist, is unreadable, or CRC32 check fails | Contract composition fails; host MUST NOT exec |
+| `ENTRYPOINT_NOT_FOUND` | Resolved entrypoint path does not exist or is not executable | Contract composition fails; host MUST NOT exec |
+| `PATH_TRAVERSAL` | Any path in manifest, install record, or NAK attempts to escape its root via `..` or symlinks | Contract composition fails; host MUST NOT exec |
+| `INSTALL_RECORD_INVALID` | App Install Record is malformed, missing required fields, or references non-existent paths | Contract composition fails; host MUST NOT exec |
+| `NAK_LOADER_INVALID` | NAK loader entry is malformed, specifies non-existent binary, or fails validation | Contract composition fails; host MUST NOT exec |
+
+**Recovery:** Critical errors require user intervention. The host should display the error code and relevant details (path, expected location) to help the user diagnose and fix the issue.
+
+### Warnings (Policy-Configurable)
+
+Warnings indicate conditions that may or may not be problems depending on context. Hosts configure warning behavior via the `warning_policy` field in the Host Profile.
+
+#### Warning Policy Actions
+
+| Action | Behavior |
+|--------|----------|
+| `warn` | Emit warning in contract output, continue execution (default) |
+| `ignore` | Suppress warning entirely, continue execution |
+| `error` | Promote warning to error, halt execution |
+
+#### Warning Codes
+
+**Manifest Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `invalid_manifest` | Manifest has structural issues (bad TLV ordering, invalid semver, repeated non-repeatable tags) but is partially readable | Rebuild the application with a valid manifest |
+
+**Profile Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `profile_invalid` | Host Profile fails schema validation or contains invalid field values | Fix Host Profile JSON structure |
+| `profile_missing` | No Host Profile found at expected location | Create Host Profile or specify path explicitly |
+| `profile_parse_error` | Host Profile exists but cannot be parsed as JSON | Fix JSON syntax errors in Host Profile |
+| `invalid_configuration` | Configuration has semantic issues (conflicting settings, invalid combinations) | Review and correct Host Profile settings |
+
+**NAK Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `nak_pin_invalid` | App Install Record specifies a NAK pin that doesn't match available NAKs | Update NAK pin or install matching NAK |
+| `nak_not_found` | Pinned NAK directory does not exist (install-time only; MUST NOT be emitted by compose_contract) | Install the required NAK |
+| `nak_version_unsupported` | NAK exists but its version doesn't satisfy app's semver requirement | Install a compatible NAK version |
+| `nak_loader_required` | NAK declares loaders but app didn't specify which one to use | Add loader selection to App Install Record |
+| `nak_loader_missing` | App requests a loader that doesn't exist in the NAK | Use an available loader or install different NAK |
+
+**Binary/Path Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `binary_not_found` | Referenced binary doesn't exist (diagnostic only; MUST NOT be emitted by compose_contract) | Verify application installation |
+| `invalid_library_path` | Library path in env or manifest points to non-existent directory | Fix library path configuration |
+
+**Capability Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `capability_missing` | App requests a capability that Host Profile doesn't grant | Update Host Profile to grant capability or remove app's request |
+| `capability_malformed` | Capability specification is syntactically invalid | Fix capability format in manifest or install record |
+| `capability_unknown` | Capability name is not recognized | Check for typos; capability may not be supported |
+
+**Environment Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `missing_env_var` | Environment variable referenced but not defined in any source | Define the variable in Host Profile or NAK |
+
+**Override Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `override_denied` | App Install Record attempts an override that Host Profile doesn't allow | Add override to Host Profile allow_overrides or remove from install record |
+| `override_invalid` | Override specification is malformed | Fix override format in App Install Record |
+
+**Trust State Warnings:**
+
+| Warning Code | When Emitted | Recommended Fix |
+|--------------|--------------|-----------------|
+| `invalid_trust_state` | Trust state value is not a recognized enum | Fix trust state in App Install Record |
+| `trust_state_unknown` | Trust evaluation hasn't been performed | Run `nah app verify` to evaluate trust |
+| `trust_state_unverified` | Trust source returned unverified status | Application may need signing or verification |
+| `trust_state_failed` | Trust evaluation explicitly failed | Investigate trust failure; app may be tampered |
+| `trust_state_stale` | Trust evaluation is older than Host Profile's freshness threshold | Re-run `nah app verify` to refresh trust state |
+
+### Warning Policy Configuration
+
+Host Profiles configure warning behavior:
+
+```json
+{
+  "warning_policy": {
+    "capability_missing": "error",
+    "trust_state_unknown": "warn",
+    "profile_missing": "ignore"
+  }
+}
+```
+
+Unspecified warnings default to `"warn"`.
+
+### Machine-Readable Error Output
+
+When `--format json` is specified, NAH outputs structured error information:
+
+```json
+{
+  "critical_error": {
+    "code": "ENTRYPOINT_NOT_FOUND",
+    "path": "/app/bin/myapp",
+    "message": "Entrypoint does not exist or is not executable"
+  }
+}
+```
+
+Warning output format:
+
+```json
+{
+  "warnings": [
+    {
+      "key": "capability_missing",
+      "action": "warn",
+      "capability": "network",
+      "source": "manifest"
+    }
+  ]
+}
+```
 
 ---
 

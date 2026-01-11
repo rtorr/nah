@@ -20,6 +20,7 @@ add_executable(nah-tests
     profile_resolution_tests.cpp
     compose_contract_tests.cpp
     materializer_tests.cpp
+    c_api_tests.cpp
 )
 
 target_link_libraries(nah-tests PRIVATE doctest::doctest nahhost nah_contract nah_platform nah_config nah_manifest nah_packaging nah_materializer)

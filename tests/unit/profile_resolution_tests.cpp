@@ -40,7 +40,7 @@ TEST_CASE("profile resolution: profile with mapped mode parses correctly") {
     
     CHECK(result.ok);
     CHECK(result.profile.nak.binding_mode == BindingMode::Mapped);
-    CHECK(result.profile.environment["NAH_MODE"] == "development");
+    CHECK(result.profile.environment["NAH_MODE"].value == "development");
 }
 
 TEST_CASE("profile resolution: parse error returns error") {
@@ -144,7 +144,7 @@ TEST_CASE("host profile parses all sections") {
     CHECK(result.profile.nak.map.size() == 2);
     CHECK(result.profile.nak.map["3.0"] == "com.example.nak@3.0.7.json");
     CHECK(result.profile.environment.size() == 2);
-    CHECK(result.profile.environment["NAH_HOST_VERSION"] == "1.0");
+    CHECK(result.profile.environment["NAH_HOST_VERSION"].value == "1.0");
     CHECK(result.profile.warnings.size() == 2);
     CHECK(result.profile.warnings["nak_not_found"] == WarningAction::Error);
     CHECK(result.profile.capabilities.size() == 1);

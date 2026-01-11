@@ -342,9 +342,9 @@ TEST_CASE("inspect_nak_pack extracts environment section") {
     CHECK(info.ok);
     CHECK(info.nak_id == "com.example.nak-with-env");
     CHECK(info.environment.size() == 3);
-    CHECK(info.environment.at("NAK_HOME") == "{NAH_NAK_ROOT}");
-    CHECK(info.environment.at("NAK_VERSION") == "1.0.0");
-    CHECK(info.environment.at("CUSTOM_VAR") == "custom_value");
+    CHECK(info.environment.at("NAK_HOME").value == "{NAH_NAK_ROOT}");
+    CHECK(info.environment.at("NAK_VERSION").value == "1.0.0");
+    CHECK(info.environment.at("CUSTOM_VAR").value == "custom_value");
 }
 
 TEST_CASE("inspect_nak_pack handles empty environment section") {
@@ -599,6 +599,7 @@ TEST_CASE("inspect_nak_pack handles ./ prefix in archive entries") {
     
     fs::create_directories(temp.path() + "/META");
     fs::create_directories(temp.path() + "/lib");
+    fs::create_directories(temp.path() + "/resources");  // Must exist for pack validation
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
   "nak": {

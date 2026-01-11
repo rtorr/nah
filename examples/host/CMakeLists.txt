@@ -69,33 +69,4 @@ target_link_libraries(contract_inspector PRIVATE
     nah_config
 )
 
-# =============================================================================
-# Host C API Demo (Pure C)
-# =============================================================================
-
-add_executable(host_c_api_demo
-    src/host_c_api_demo.c
-)
-
-target_include_directories(host_c_api_demo PRIVATE ${NAH_INCLUDE_DIR})
-target_link_directories(host_c_api_demo PRIVATE ${NAH_LIB_DIR})
-
-# Link against static library - requires C++ standard library
-target_link_libraries(host_c_api_demo PRIVATE
-    nahhost
-    nah_contract
-    nah_packaging
-    nah_materializer
-    nah_manifest
-    nah_platform
-    nah_config
-)
-
-# Need to link C++ runtime since nahhost is C++ internally
-if(APPLE)
-    target_link_libraries(host_c_api_demo PRIVATE "-lc++")
-elseif(UNIX)
-    target_link_libraries(host_c_api_demo PRIVATE stdc++)
-endif()
-
 message(STATUS "Host examples configured.")

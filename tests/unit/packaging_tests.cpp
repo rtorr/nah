@@ -252,26 +252,6 @@ TEST_CASE("pack_nak validates META/nak.json presence") {
     CHECK(result.error.find("META/nak.json") != std::string::npos);
 }
 
-TEST_CASE("pack_nak validates schema in META/nak.json") {
-    TempDir temp;
-    
-    fs::create_directories(temp.path() + "/META");
-    
-    // Invalid schema
-    std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v1",
-        "nak": {
-            "id": "com.example.nak",
-            "version": "1.0.0"
-        }
-    })";
-    
-    auto result = pack_nak(temp.path());
-    
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
-}
-
 TEST_CASE("pack_nak succeeds with valid structure") {
     TempDir temp;
     
@@ -279,7 +259,6 @@ TEST_CASE("pack_nak succeeds with valid structure") {
     fs::create_directories(temp.path() + "/lib");
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v2",
         "nak": {
             "id": "com.example.nak",
             "version": "1.0.0"
@@ -307,7 +286,6 @@ TEST_CASE("inspect_nak_pack extracts metadata") {
     fs::create_directories(temp.path() + "/META");
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v2",
         "nak": {
             "id": "com.example.nak",
             "version": "2.1.0"
@@ -327,7 +305,6 @@ TEST_CASE("inspect_nak_pack extracts metadata") {
     auto info = inspect_nak_pack(pack_result.archive_data);
     
     CHECK(info.ok);
-    CHECK(info.schema == "nah.nak.pack.v2");
     CHECK(info.nak_id == "com.example.nak");
     CHECK(info.nak_version == "2.1.0");
     CHECK(info.resource_root == "resources");
@@ -339,7 +316,6 @@ TEST_CASE("inspect_nak_pack extracts environment section") {
     fs::create_directories(temp.path() + "/META");
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v2",
         "nak": {
             "id": "com.example.nak-with-env",
             "version": "1.0.0"
@@ -377,7 +353,6 @@ TEST_CASE("inspect_nak_pack handles empty environment section") {
     fs::create_directories(temp.path() + "/META");
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v2",
         "nak": {
             "id": "com.example.nak-no-env",
             "version": "1.0.0"
@@ -408,7 +383,6 @@ TEST_CASE("inspect_nak_pack handles missing environment section") {
     
     // No environment section at all
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-        "$schema": "nah.nak.pack.v2",
         "nak": {
             "id": "com.example.nak-missing-env",
             "version": "1.0.0"
@@ -627,7 +601,6 @@ TEST_CASE("inspect_nak_pack handles ./ prefix in archive entries") {
     fs::create_directories(temp.path() + "/lib");
     
     std::ofstream(temp.path() + "/META/nak.json") << R"({
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.example.dotprefix",
     "version": "1.0.0"

@@ -13,8 +13,6 @@ namespace nah {
 // ============================================================================
 
 struct HostProfile {
-    std::string schema;  // MUST be "nah.host.profile.v1"
-    
     // [nak] section (per SPEC L637-L652)
     struct {
         BindingMode binding_mode = BindingMode::Canonical;
@@ -96,7 +94,6 @@ bool is_override_permitted(const std::string& target, const HostProfile& profile
 
 // Legacy API for backward compatibility
 struct HostProfileRecord {
-    std::string schema;
     std::string binding_mode;
 };
 

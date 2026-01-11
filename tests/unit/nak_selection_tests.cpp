@@ -23,7 +23,6 @@ Manifest make_manifest(const std::string& nak_id, const std::string& nak_version
 
 HostProfile make_profile(BindingMode mode = BindingMode::Canonical) {
     HostProfile p;
-    p.schema = "nah.host.profile.v1";
     p.nak.binding_mode = mode;
     return p;
 }

@@ -207,7 +207,6 @@ std::vector<uint8_t> create_test_nak_pack(const std::string& nak_id, const std::
     
     std::ofstream(pack_dir.path() + "/META/nak.json") << 
         "{\n"
-        "  \"$schema\": \"nah.nak.pack.v2\",\n"
         "  \"nak\": {\n"
         "    \"id\": \"" << nak_id << "\",\n"
         "    \"version\": \"" << version << "\"\n"

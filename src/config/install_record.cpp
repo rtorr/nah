@@ -1,4 +1,5 @@
 #include "nah/install_record.hpp"
+#include "nah/platform.hpp"
 
 #include <cctype>
 #include <optional>
@@ -42,6 +43,27 @@ std::vector<std::string> get_string_array(const nlohmann::json& j, const std::st
     return result;
 }
 
+// Helper to get a path string from JSON, normalized to forward slashes
+std::optional<std::string> get_path_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return to_portable_path(j[key].get<std::string>());
+    }
+    return std::nullopt;
+}
+
+// Helper to get a path array from JSON, normalized to forward slashes
+std::vector<std::string> get_path_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(to_portable_path(elem.get<std::string>()));
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 AppInstallRecordParseResult parse_app_install_record_full(const std::string& json_str,
@@ -58,20 +80,7 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& jso
             return result;
         }
         
-        // $schema (REQUIRED)
-        if (auto schema = get_string(j, "$schema")) {
-            result.record.schema = trim(*schema);
-        } else {
-            result.error = "$schema missing";
-            result.is_critical_error = true;
-            return result;
-        }
-        
-        if (result.record.schema != "nah.app.install.v2") {
-            result.error = "$schema mismatch: expected nah.app.install.v2";
-            result.is_critical_error = true;
-            return result;
-        }
+        // $schema is ignored - it's for editor tooling only
         
         // "install" section
         if (j.contains("install") && j["install"].is_object()) {
@@ -134,7 +143,7 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& jso
         // "paths" section (REQUIRED)
         if (j.contains("paths") && j["paths"].is_object()) {
             const auto& paths = j["paths"];
-            if (auto root = get_string(paths, "install_root")) {
+            if (auto root = get_path_string(paths, "install_root")) {
                 if (is_empty_after_trim(*root)) {
                     result.error = "paths.install_root empty";
                     result.is_critical_error = true;
@@ -240,7 +249,7 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& jso
             // "paths"
             if (ovr.contains("paths") && ovr["paths"].is_object()) {
                 const auto& paths = ovr["paths"];
-                result.record.overrides.paths.library_prepend = get_string_array(paths, "library_prepend");
+                result.record.overrides.paths.library_prepend = get_path_array(paths, "library_prepend");
             }
         }
         
@@ -259,10 +268,7 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& jso
 }
 
 bool validate_app_install_record(const AppInstallRecord& record, std::string& error) {
-    if (record.schema != "nah.app.install.v2") {
-        error = "schema mismatch";
-        return false;
-    }
+    // Note: $schema is optional (for editor tooling only), so we don't validate it
     if (is_empty_after_trim(record.install.instance_id)) {
         error = "install.instance_id empty or missing";
         return false;

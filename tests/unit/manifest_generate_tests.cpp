@@ -11,7 +11,6 @@
 
 TEST_CASE("parse_manifest_input: valid minimal input") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -33,7 +32,6 @@ TEST_CASE("parse_manifest_input: valid minimal input") {
 
 TEST_CASE("parse_manifest_input: valid full input") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -88,43 +86,9 @@ TEST_CASE("parse_manifest_input: valid full input") {
     CHECK(result.input.permissions_network.size() == 1);
 }
 
-TEST_CASE("parse_manifest_input: missing schema fails") {
-    const char* json = R"({
-        "app": {
-            "id": "com.example.myapp",
-            "version": "1.0.0",
-            "nak_id": "com.example.runtime",
-            "nak_version_req": ">=2.0.0",
-            "entrypoint": "bundle.js"
-        }
-    })";
-    
-    auto result = nah::parse_manifest_input(json);
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
-}
-
-TEST_CASE("parse_manifest_input: wrong schema fails") {
-    const char* json = R"({
-        "$schema": "nah.manifest.input.v1",
-        "app": {
-            "id": "com.example.myapp",
-            "version": "1.0.0",
-            "nak_id": "com.example.runtime",
-            "nak_version_req": ">=2.0.0",
-            "entrypoint": "bundle.js"
-        }
-    })";
-    
-    auto result = nah::parse_manifest_input(json);
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
-}
-
 TEST_CASE("parse_manifest_input: missing required field fails") {
     // Missing id
     const char* json1 = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "version": "1.0.0",
             "nak_id": "com.example.runtime",
@@ -138,7 +102,6 @@ TEST_CASE("parse_manifest_input: missing required field fails") {
     
     // Missing entrypoint
     const char* json2 = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -153,7 +116,6 @@ TEST_CASE("parse_manifest_input: missing required field fails") {
 
 TEST_CASE("parse_manifest_input: absolute entrypoint path fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -170,7 +132,6 @@ TEST_CASE("parse_manifest_input: absolute entrypoint path fails") {
 
 TEST_CASE("parse_manifest_input: path traversal in entrypoint fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -187,7 +148,6 @@ TEST_CASE("parse_manifest_input: path traversal in entrypoint fails") {
 
 TEST_CASE("parse_manifest_input: absolute lib_dir fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -205,7 +165,6 @@ TEST_CASE("parse_manifest_input: absolute lib_dir fails") {
 
 TEST_CASE("parse_manifest_input: invalid filesystem permission format fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -225,7 +184,6 @@ TEST_CASE("parse_manifest_input: invalid filesystem permission format fails") {
 
 TEST_CASE("parse_manifest_input: invalid filesystem operation fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -245,7 +203,6 @@ TEST_CASE("parse_manifest_input: invalid filesystem operation fails") {
 
 TEST_CASE("parse_manifest_input: invalid network operation fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.myapp",
             "version": "1.0.0",
@@ -265,7 +222,6 @@ TEST_CASE("parse_manifest_input: invalid network operation fails") {
 
 TEST_CASE("parse_manifest_input: invalid JSON syntax fails") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "broken
     })";
@@ -352,7 +308,6 @@ TEST_CASE("build_manifest_from_input: includes all optional fields") {
 
 TEST_CASE("end-to-end: JSON input to parsed manifest") {
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.bundle-app",
             "version": "2.0.0",
@@ -402,7 +357,6 @@ TEST_CASE("end-to-end: bundle app with no permissions") {
     // This is the typical case for bundle apps - no permissions declared
     // because the NAK runtime is the sandbox
     const char* json = R"({
-        "$schema": "nah.manifest.input.v2",
         "app": {
             "id": "com.example.my-rn-app",
             "version": "1.0.0",

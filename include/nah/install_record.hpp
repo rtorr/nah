@@ -13,8 +13,6 @@ namespace nah {
 // ============================================================================
 
 struct AppInstallRecord {
-    std::string schema;  // MUST be "nah.app.install.v1"
-    
     // [install] section
     struct {
         std::string instance_id;  // UUID string, unique per install

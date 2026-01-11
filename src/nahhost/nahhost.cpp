@@ -44,10 +44,11 @@ std::vector<AppInfo> NahHost::listApplications() const {
             continue;
         }
         
-        std::string content = read_file(entry.path().string());
+        std::string entry_path = to_portable_path(entry.path().string());
+        std::string content = read_file(entry_path);
         if (content.empty()) continue;
         
-        auto parse_result = parse_app_install_record_full(content, entry.path().string());
+        auto parse_result = parse_app_install_record_full(content, entry_path);
         if (!parse_result.ok) continue;
         
         AppInfo info;
@@ -55,7 +56,7 @@ std::vector<AppInfo> NahHost::listApplications() const {
         info.version = parse_result.record.app.version;
         info.instance_id = parse_result.record.install.instance_id;
         info.install_root = parse_result.record.paths.install_root;
-        info.record_path = entry.path().string();
+        info.record_path = entry_path;
         
         apps.push_back(std::move(info));
     }
@@ -110,10 +111,10 @@ Result<void> NahHost::setActiveHostProfile(const std::string& name) {
     }
     
     // Create parent directory if needed
-    create_directories((fs::path(root_) / "host").string());
+    create_directories(to_portable_path((fs::path(root_) / "host").string()));
     
     // Update symlink atomically
-    auto result = atomic_update_symlink(link_path.string(), target);
+    auto result = atomic_update_symlink(to_portable_path(link_path.string()), target);
     if (!result.ok) {
         return Result<void>::err(Error(ErrorCode::IO_ERROR, result.error));
     }
@@ -144,15 +145,15 @@ std::vector<std::string> NahHost::listProfiles() const {
 }
 
 Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
-    fs::path profile_path = fs::path(root_) / "host" / "profiles" / (name + ".json");
+    std::string profile_path = to_portable_path((fs::path(root_) / "host" / "profiles" / (name + ".json")).string());
     
-    std::string content = read_file(profile_path.string());
+    std::string content = read_file(profile_path);
     if (content.empty()) {
         return Result<HostProfile>::err(Error(ErrorCode::PROFILE_MISSING,
                                               "profile not found: " + name));
     }
     
-    auto parse_result = parse_host_profile_full(content, profile_path.string());
+    auto parse_result = parse_host_profile_full(content, profile_path);
     if (!parse_result.ok) {
         return Result<HostProfile>::err(Error(ErrorCode::PROFILE_PARSE_ERROR,
                                               parse_result.error));
@@ -161,11 +162,8 @@ Result<HostProfile> NahHost::loadProfile(const std::string& name) const {
     return Result<HostProfile>::ok(parse_result.profile);
 }
 
-Result<void> NahHost::validateProfile(const HostProfile& profile) const {
-    if (profile.schema != "nah.host.profile.v2") {
-        return Result<void>::err(Error(ErrorCode::PROFILE_PARSE_ERROR,
-                                       "invalid schema"));
-    }
+Result<void> NahHost::validateProfile(const HostProfile& /*profile*/) const {
+    // $schema is ignored - validation is structural, not string-based
     return Result<void>::ok();
 }
 
@@ -182,20 +180,20 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
     }
     
     // 2. Check profile.current symlink
-    fs::path link_path = fs::path(root_) / "host" / "profile.current";
+    std::string link_path = to_portable_path((fs::path(root_) / "host" / "profile.current").string());
     if (fs::exists(link_path)) {
         if (!fs::is_symlink(link_path)) {
             // profile.current exists but is not a symlink - emit profile_invalid, fall back
         } else {
-            auto target = read_symlink(link_path.string());
+            auto target = read_symlink(link_path);
             if (target) {
                 // Resolve relative to profiles directory
-                fs::path profile_path = fs::path(root_) / "host" / *target;
-                std::string content = read_file(profile_path.string());
+                std::string profile_path = to_portable_path((fs::path(root_) / "host" / *target).string());
+                std::string content = read_file(profile_path);
                 
                 if (!content.empty()) {
-                    auto parse_result = parse_host_profile_full(content, profile_path.string());
-                    if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v2") {
+                    auto parse_result = parse_host_profile_full(content, profile_path);
+                    if (parse_result.ok) {
                         return Result<HostProfile>::ok(parse_result.profile);
                     }
                 }
@@ -204,12 +202,12 @@ Result<HostProfile> NahHost::resolveActiveProfile(const std::string& explicit_na
     }
     
     // 3. Fall back to default.json
-    fs::path default_path = fs::path(root_) / "host" / "profiles" / "default.json";
-    std::string content = read_file(default_path.string());
+    std::string default_path = to_portable_path((fs::path(root_) / "host" / "profiles" / "default.json").string());
+    std::string content = read_file(default_path);
     
     if (!content.empty()) {
-        auto parse_result = parse_host_profile_full(content, default_path.string());
-        if (parse_result.ok && parse_result.profile.schema == "nah.host.profile.v2") {
+        auto parse_result = parse_host_profile_full(content, default_path);
+        if (parse_result.ok) {
             return Result<HostProfile>::ok(parse_result.profile);
         }
     }
@@ -266,12 +264,12 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
     
     // Try to find binary with embedded manifest
     if (!manifest_loaded) {
-        fs::path bin_dir = fs::path(app_info.install_root) / "bin";
+        std::string bin_dir = to_portable_path((fs::path(app_info.install_root) / "bin").string());
         if (fs::exists(bin_dir) && fs::is_directory(bin_dir)) {
             for (const auto& entry : fs::directory_iterator(bin_dir)) {
                 if (!entry.is_regular_file()) continue;
                 
-                auto section_result = read_manifest_section(entry.path().string());
+                auto section_result = read_manifest_section(to_portable_path(entry.path().string()));
                 if (section_result.ok) {
                     auto parse_result = parse_manifest(section_result.data);
                     if (!parse_result.critical_missing) {

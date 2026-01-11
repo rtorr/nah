@@ -528,7 +528,7 @@ Derived output-only paths MUST be recomputable from (`paths.install_root` + `man
 **Storage:** .json files
 **Format:** JSON text format
 
-**Schema Field (Normative):** The top-level `$schema` field is REQUIRED and MUST equal `nah.host.profile.v2`. Missing or mismatched schema MUST emit `profile_invalid` (or be a validation error for `nah validate`) and MUST trigger the fallback rules in Active Host Profile Resolution exactly as written.
+**Schema Field (Informative):** The top-level `$schema` field is OPTIONAL and is intended for editor tooling (autocomplete, validation). It is NOT validated at runtime - the JSON structure itself defines validity.
 
 **What it is (Normative):** The host-owned policy and binding document that governs NAK selection, warning policy, and capability mapping for contract composition.
 
@@ -1878,7 +1878,7 @@ Semantics:
 - `nah profile init` MUST create: `<dir>/host/profiles/default.json`, `<dir>/host/profile.current` symlink, `<dir>/apps/`, `<dir>/naks/`, `<dir>/registry/installs/`, `<dir>/registry/naks/`.
 - `nah profile init` MUST generate a README.md in `<dir>` documenting next steps.
 - `nah profile init` MUST fail if `<dir>` already exists and contains a `host/` directory.
-- The generated `default.json` MUST be a valid profile with `"$schema": "nah.host.profile.v2"` and `binding_mode = "canonical"`.
+- The generated `default.json` MUST be a valid profile with `binding_mode = "canonical"`.
 
 #### Contract (launch UX)
 
@@ -2916,10 +2916,11 @@ A NAK pack (`.nak`) MUST be a gzip-compressed tar archive and MUST follow the De
 - Absolute paths in `paths.*` or `loader.exec_path`
 - Compose-time selection logic
 
-**Schema Field (Normative):** The top-level `$schema` field in `META/nak.json` is REQUIRED and MUST equal `nah.nak.pack.v2`. Missing or mismatched schema MUST cause `nah nak install` to fail with an error because the pack cannot be safely materialized.
-If `META/nak.json` is missing, unreadable, fails JSON parsing, has a missing/mismatched schema, or is missing REQUIRED fields, `nah nak install` MUST fail with a non-zero exit and MUST NOT write any filesystem outputs (no partial install).
+**Schema Field (Informative):** The top-level `$schema` field in `META/nak.json` is OPTIONAL and is intended for editor tooling (autocomplete, validation). It is NOT validated at runtime - the JSON structure itself defines validity.
 
-**Required fields (Normative):** `schema`, `[nak].id`, and `[nak].version` MUST be present per Presence semantics.
+If `META/nak.json` is missing, unreadable, fails JSON parsing, or is missing REQUIRED fields, `nah nak install` MUST fail with a non-zero exit and MUST NOT write any filesystem outputs (no partial install).
+
+**Required fields (Normative):** `[nak].id` and `[nak].version` MUST be present per Presence semantics.
 
 The archive root MUST contain:
 

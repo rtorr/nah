@@ -1,5 +1,7 @@
 #include "nah/nak_record.hpp"
+#include "nah/platform.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <optional>
 
@@ -42,6 +44,27 @@ std::vector<std::string> get_string_array(const nlohmann::json& j, const std::st
     return result;
 }
 
+// Helper to get a path string from JSON, normalized to forward slashes
+std::optional<std::string> get_path_string(const nlohmann::json& j, const std::string& key) {
+    if (j.contains(key) && j[key].is_string()) {
+        return to_portable_path(j[key].get<std::string>());
+    }
+    return std::nullopt;
+}
+
+// Helper to get a path array from JSON, normalized to forward slashes
+std::vector<std::string> get_path_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(to_portable_path(elem.get<std::string>()));
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 NakInstallRecordParseResult parse_nak_install_record_full(const std::string& json_str,
@@ -57,18 +80,7 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
             return result;
         }
         
-        // $schema (REQUIRED)
-        if (auto schema = get_string(j, "$schema")) {
-            result.record.schema = trim(*schema);
-        } else {
-            result.error = "$schema missing";
-            return result;
-        }
-        
-        if (result.record.schema != "nah.nak.install.v2") {
-            result.error = "$schema mismatch: expected nah.nak.install.v2";
-            return result;
-        }
+        // $schema is ignored - it's for editor tooling only
         
         // "nak" section (REQUIRED)
         if (j.contains("nak") && j["nak"].is_object()) {
@@ -104,7 +116,7 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
         if (j.contains("paths") && j["paths"].is_object()) {
             const auto& paths = j["paths"];
             
-            if (auto root = get_string(paths, "root")) {
+            if (auto root = get_path_string(paths, "root")) {
                 if (is_empty_after_trim(*root)) {
                     result.error = "paths.root empty";
                     return result;
@@ -116,14 +128,14 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
             }
             
             // resource_root (defaults to root if omitted)
-            if (auto res = get_string(paths, "resource_root")) {
+            if (auto res = get_path_string(paths, "resource_root")) {
                 result.record.paths.resource_root = *res;
             } else {
                 result.record.paths.resource_root = result.record.paths.root;
             }
             
             // lib_dirs
-            result.record.paths.lib_dirs = get_string_array(paths, "lib_dirs");
+            result.record.paths.lib_dirs = get_path_array(paths, "lib_dirs");
         } else {
             result.error = "paths section missing";
             return result;
@@ -143,7 +155,7 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
             for (auto& [name, loader_json] : j["loaders"].items()) {
                 if (loader_json.is_object()) {
                     LoaderConfig config;
-                    if (auto exec = get_string(loader_json, "exec_path")) {
+                    if (auto exec = get_path_string(loader_json, "exec_path")) {
                         if (is_empty_after_trim(*exec)) {
                             result.error = "loaders." + name + ".exec_path empty";
                             return result;
@@ -200,10 +212,6 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
 }
 
 bool validate_nak_install_record(const NakInstallRecord& record, std::string& error) {
-    if (record.schema != "nah.nak.install.v2") {
-        error = "schema mismatch";
-        return false;
-    }
     if (is_empty_after_trim(record.nak.id)) {
         error = "nak.id empty or missing";
         return false;
@@ -230,18 +238,7 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& json_str) 
             return result;
         }
         
-        // $schema (REQUIRED)
-        if (auto schema = get_string(j, "$schema")) {
-            result.manifest.schema = trim(*schema);
-        } else {
-            result.error = "$schema missing";
-            return result;
-        }
-        
-        if (result.manifest.schema != "nah.nak.pack.v2") {
-            result.error = "$schema mismatch: expected nah.nak.pack.v2";
-            return result;
-        }
+        // $schema is ignored - it's for editor tooling only
         
         // "nak" section (REQUIRED)
         if (j.contains("nak") && j["nak"].is_object()) {

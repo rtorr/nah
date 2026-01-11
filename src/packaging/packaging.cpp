@@ -1014,13 +1014,8 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
     
     const auto& pack = pack_result.manifest;
     
-    // Validate schema
-    if (pack.schema != "nah.nak.pack.v2") {
-        result.error = "invalid schema: expected nah.nak.pack.v2, got " + pack.schema;
-        return result;
-    }
+    // $schema is ignored - validation is structural
     
-    result.schema = pack.schema;
     result.nak_id = pack.nak.id;
     result.nak_version = pack.nak.version;
     result.resource_root = pack.paths.resource_root;
@@ -1075,10 +1070,7 @@ PackResult pack_nak(const std::string& dir_path) {
         return result;
     }
     
-    if (pack_result.manifest.schema != "nah.nak.pack.v2") {
-        result.error = "invalid schema: expected nah.nak.pack.v2";
-        return result;
-    }
+    // $schema is ignored - validation is structural
     
     // Collect and pack
     return pack_directory(dir_path);
@@ -1179,7 +1171,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
                 auto target = std::filesystem::read_symlink(current_link, ec);
                 if (!ec) {
                     // Resolve relative to host/ directory
-                    profile_path = join_path(options.nah_root, "host/" + target.string());
+                    profile_path = join_path(options.nah_root, "host/" + to_portable_path(target.string()));
                 }
             }
             // Fall back to default.json
@@ -1395,7 +1387,7 @@ static AppInstallResult install_app_from_bytes(
             if (std::filesystem::is_symlink(current_link, ec)) {
                 auto target = std::filesystem::read_symlink(current_link, ec);
                 if (!ec) {
-                    profile_path = join_path(options.nah_root, "host/" + target.string());
+                    profile_path = join_path(options.nah_root, "host/" + to_portable_path(target.string()));
                 }
             }
             if (profile_path.empty() || !path_exists(profile_path)) {

@@ -142,7 +142,6 @@ struct NakPackInfo {
     std::string error;
     
     // From META/nak.json
-    std::string schema;
     std::string nak_id;
     std::string nak_version;
     std::string resource_root;

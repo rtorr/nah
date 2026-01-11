@@ -1,4 +1,5 @@
 #include "nah/host_profile.hpp"
+#include "nah/platform.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -15,14 +16,6 @@ std::string to_lower(const std::string& s) {
     std::transform(result.begin(), result.end(), result.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return result;
-}
-
-std::string trim(const std::string& s) {
-    size_t start = 0;
-    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) ++start;
-    size_t end = s.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) --end;
-    return s.substr(start, end - start);
 }
 
 // Helper to safely get a string from JSON
@@ -46,11 +39,23 @@ std::vector<std::string> get_string_array(const nlohmann::json& j, const std::st
     return result;
 }
 
+// Helper to get a path array from JSON, normalized to forward slashes
+std::vector<std::string> get_path_array(const nlohmann::json& j, const std::string& key) {
+    std::vector<std::string> result;
+    if (j.contains(key) && j[key].is_array()) {
+        for (const auto& elem : j[key]) {
+            if (elem.is_string()) {
+                result.push_back(to_portable_path(elem.get<std::string>()));
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 HostProfile get_builtin_empty_profile() {
     HostProfile profile;
-    profile.schema = "nah.host.profile.v2";
     profile.nak.binding_mode = BindingMode::Canonical;
     // Default warning actions per SPEC Built-in Empty Profile
     profile.warnings["nak_not_found"] = WarningAction::Warn;
@@ -73,18 +78,7 @@ HostProfileParseResult parse_host_profile_full(const std::string& json_str,
             return result;
         }
         
-        // $schema (REQUIRED)
-        if (auto schema = get_string(j, "$schema")) {
-            result.profile.schema = trim(*schema);
-        } else {
-            result.error = "$schema missing";
-            return result;
-        }
-        
-        if (result.profile.schema != "nah.host.profile.v2") {
-            result.error = "$schema mismatch: expected nah.host.profile.v2";
-            return result;
-        }
+        // $schema is ignored - it's for editor tooling only
         
         // "nak" section
         if (j.contains("nak") && j["nak"].is_object()) {
@@ -129,8 +123,8 @@ HostProfileParseResult parse_host_profile_full(const std::string& json_str,
         // "paths" section
         if (j.contains("paths") && j["paths"].is_object()) {
             const auto& paths = j["paths"];
-            result.profile.paths.library_prepend = get_string_array(paths, "library_prepend");
-            result.profile.paths.library_append = get_string_array(paths, "library_append");
+            result.profile.paths.library_prepend = get_path_array(paths, "library_prepend");
+            result.profile.paths.library_append = get_path_array(paths, "library_append");
         }
         
         // "warnings" section
@@ -277,7 +271,6 @@ HostProfileValidation parse_host_profile(const std::string& json_str, HostProfil
     if (!result.ok) {
         return {false, result.error};
     }
-    out.schema = result.profile.schema;
     out.binding_mode = binding_mode_to_string(result.profile.nak.binding_mode);
     return {true, {}};
 }

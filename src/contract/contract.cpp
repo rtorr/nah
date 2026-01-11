@@ -3,6 +3,7 @@
 #include "nah/capabilities.hpp"
 #include "nah/nak_selection.hpp"
 #include "nah/path_utils.hpp"
+#include "nah/platform.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -28,10 +29,6 @@ std::string read_file(const std::string& path) {
 
 bool file_exists(const std::string& path) {
     return fs::exists(path) && fs::is_regular_file(path);
-}
-
-bool is_absolute_path(const std::string& path) {
-    return !path.empty() && path[0] == '/';
 }
 
 // Normalize RFC3339 timestamp to comparable form
@@ -240,12 +237,10 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         contract.nak.resource_root = nak_record.paths.resource_root;
         contract.nak.record_ref = pin.record_ref;
         
-        // Validate NAK paths
+        // Validate NAK paths - lib_dirs must be absolute and under paths.root
+        // Paths are already normalized to forward slashes by config parsers
         for (const auto& lib_dir : nak_record.paths.lib_dirs) {
-            auto lib_result = normalize_under_root(nak_record.paths.root, 
-                                                    lib_dir.substr(nak_record.paths.root.size()),
-                                                    true);
-            if (!lib_result.ok) {
+            if (!is_absolute_path(lib_dir) || !is_path_under_root(nak_record.paths.root, lib_dir)) {
                 result.critical_error = CriticalError::PATH_TRAVERSAL;
                 result.envelope.warnings = warnings.get_warnings();
                 return result;
@@ -255,17 +250,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         // Validate all loader exec_paths are under NAK root
         for (const auto& [loader_name, loader_config] : nak_record.loaders) {
             if (!loader_config.exec_path.empty()) {
-                if (!is_absolute_path(loader_config.exec_path)) {
-                    result.critical_error = CriticalError::PATH_TRAVERSAL;
-                    result.envelope.warnings = warnings.get_warnings();
-                    return result;
-                }
-                // Use std::filesystem to get relative path in a cross-platform way
-                std::filesystem::path exec_p(loader_config.exec_path);
-                std::filesystem::path root_p(nak_record.paths.root);
-                std::string relative = exec_p.lexically_relative(root_p).string();
-                auto loader_result = normalize_under_root(nak_record.paths.root, relative, false);
-                if (!loader_result.ok) {
+                if (!is_absolute_path(loader_config.exec_path) || 
+                    !is_path_under_root(nak_record.paths.root, loader_config.exec_path)) {
                     result.critical_error = CriticalError::PATH_TRAVERSAL;
                     result.envelope.warnings = warnings.get_warnings();
                     return result;

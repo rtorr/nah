@@ -4,9 +4,8 @@
 using nah::parse_app_install_record;
 using nah::AppInstallRecord;
 
-TEST_CASE("app install record valid schema and required fields") {
+TEST_CASE("app install record valid required fields") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -17,43 +16,12 @@ TEST_CASE("app install record valid schema and required fields") {
     AppInstallRecord rec;
     auto v = parse_app_install_record(json, rec);
     CHECK(v.ok);
-    CHECK(rec.schema == "nah.app.install.v2");
     CHECK(rec.install.instance_id == "uuid-123");
     CHECK(rec.paths.install_root == "/nah/apps/app-1.0");
 }
 
-TEST_CASE("app install record missing schema invalid") {
-    const char* json = R"({
-        "install": {
-            "instance_id": "uuid-123"
-        },
-        "paths": {
-            "install_root": "/nah/apps/app-1.0"
-        }
-    })";
-    AppInstallRecord rec;
-    auto v = parse_app_install_record(json, rec);
-    CHECK_FALSE(v.ok);
-}
-
-TEST_CASE("app install record schema mismatch invalid") {
-    const char* json = R"({
-        "$schema": "nah.app.install.v1",
-        "install": {
-            "instance_id": "uuid-123"
-        },
-        "paths": {
-            "install_root": "/nah/apps/app-1.0"
-        }
-    })";
-    AppInstallRecord rec;
-    auto v = parse_app_install_record(json, rec);
-    CHECK_FALSE(v.ok);
-}
-
 TEST_CASE("app install record missing required fields invalid") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {},
         "paths": {
             "install_root": "/nah/apps/app-1.0"
@@ -66,7 +34,6 @@ TEST_CASE("app install record missing required fields invalid") {
 
 TEST_CASE("app install record empty required field invalid") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": ""
         },
@@ -86,7 +53,6 @@ TEST_CASE("app install record empty required field invalid") {
 TEST_CASE("app install record nak.record_ref MAY be absent") {
     // Per SPEC L377: nak.record_ref MAY be absent
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -102,7 +68,6 @@ TEST_CASE("app install record nak.record_ref MAY be absent") {
 
 TEST_CASE("app install record with nak section but no record_ref is valid") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -124,7 +89,6 @@ TEST_CASE("app install record with nak section but no record_ref is valid") {
 
 TEST_CASE("app install record with full nak section parses correctly") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -147,7 +111,6 @@ TEST_CASE("app install record with full nak section parses correctly") {
 
 TEST_CASE("app install record trust section is optional") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -163,7 +126,6 @@ TEST_CASE("app install record trust section is optional") {
 
 TEST_CASE("app install record with trust section parses correctly") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -184,7 +146,6 @@ TEST_CASE("app install record with trust section parses correctly") {
 
 TEST_CASE("app install record overrides section is optional") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },
@@ -200,7 +161,6 @@ TEST_CASE("app install record overrides section is optional") {
 
 TEST_CASE("app install record with overrides section parses correctly") {
     const char* json = R"({
-        "$schema": "nah.app.install.v2",
         "install": {
             "instance_id": "uuid-123"
         },

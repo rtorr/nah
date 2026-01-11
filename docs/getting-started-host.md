@@ -30,7 +30,6 @@ Edit `host/profiles/default.json`:
 
 ```json
 {
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },

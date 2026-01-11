@@ -20,8 +20,6 @@ struct LoaderConfig {
 // ============================================================================
 
 struct NakInstallRecord {
-    std::string schema;  // MUST be "nah.nak.install.v2"
-    
     // [nak] section
     struct {
         std::string id;
@@ -91,8 +89,6 @@ bool validate_nak_install_record(const NakInstallRecord& record, std::string& er
 // ============================================================================
 
 struct NakPackManifest {
-    std::string schema;  // MUST be "nah.nak.pack.v2"
-    
     struct {
         std::string id;
         std::string version;

@@ -744,7 +744,6 @@ int cmd_nak_init(const GlobalOptions& opts, const std::string& dir) {
     fs::create_directories(dir + "/bin");
     
     std::string nak_json = R"({
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.example.nak",
     "version": "1.0.0"
@@ -875,7 +874,6 @@ int cmd_profile_init(const GlobalOptions& opts, const std::string& dir) {
     
     // Create default.json
     std::string default_profile = R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical",
     "allow_versions": [],
@@ -998,7 +996,6 @@ int cmd_profile_show(const GlobalOptions& opts, const std::string& name) {
     
     if (opts.json) {
         nlohmann::json j;
-        j["schema"] = profile.schema;
         j["binding_mode"] = nah::binding_mode_to_string(profile.nak.binding_mode);
         j["allow_versions"] = profile.nak.allow_versions;
         j["deny_versions"] = profile.nak.deny_versions;
@@ -1012,7 +1009,6 @@ int cmd_profile_show(const GlobalOptions& opts, const std::string& name) {
         
         std::cout << j.dump(2) << std::endl;
     } else {
-        std::cout << "Schema: " << profile.schema << std::endl;
         std::cout << "Binding Mode: " << nah::binding_mode_to_string(profile.nak.binding_mode) << std::endl;
         if (!profile.nak.allow_versions.empty()) {
             std::cout << "Allow Versions: ";
@@ -1479,7 +1475,7 @@ int cmd_manifest_generate(const GlobalOptions& opts, const std::string& input_pa
     if (!result.ok) {
         ErrorContext ctx;
         ctx.file_path = input_path;
-        ctx.hint = "The input file must use $schema: \"nah.manifest.input.v2\" with an \"app\" section.\n"
+        ctx.hint = "The input file must have an \"app\" section with required fields.\n"
                    "       See 'nah manifest generate --help' for the expected format.";
         print_error(result.error, opts.json, ctx);
         return 1;
@@ -2229,13 +2225,11 @@ int main(int argc, char** argv) {
     std::string manifest_input, manifest_output;
     auto manifest_generate = manifest_cmd->add_subcommand("generate", "Generate binary manifest from JSON");
     manifest_generate->add_option("input", manifest_input, 
-        "Input JSON file with manifest definition\n"
-        "Must use $schema: \"nah.manifest.input.v2\"")->required()->check(CLI::ExistingFile);
+        "Input JSON file with manifest definition")->required()->check(CLI::ExistingFile);
     manifest_generate->add_option("-o,--output", manifest_output, 
         "Output binary manifest file (.nah)")->required();
-    manifest_generate->footer("\nInput file format (nah.manifest.input.v2):\n"
+    manifest_generate->footer("\nInput file format:\n"
                                "  {\n"
-                               "    \"$schema\": \"nah.manifest.input.v2\",\n"
                                "    \"app\": {\n"
                                "      \"id\": \"com.example.myapp\",\n"
                                "      \"version\": \"1.0.0\",\n"

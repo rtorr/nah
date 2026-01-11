@@ -6,7 +6,6 @@
 using namespace nah;
 
 const char* VALID_PROFILE = R"({
-    "$schema": "nah.host.profile.v2",
     "nak": {
         "binding_mode": "canonical"
     },
@@ -16,7 +15,6 @@ const char* VALID_PROFILE = R"({
 })";
 
 const char* DEVELOPMENT_PROFILE = R"({
-    "$schema": "nah.host.profile.v2",
     "nak": {
         "binding_mode": "mapped"
     },
@@ -34,7 +32,6 @@ TEST_CASE("profile resolution: valid profile parses successfully") {
     auto result = parse_host_profile_full(VALID_PROFILE, "/test/profile.json");
     
     CHECK(result.ok);
-    CHECK(result.profile.schema == "nah.host.profile.v2");
     CHECK(result.profile.nak.binding_mode == BindingMode::Canonical);
 }
 
@@ -44,20 +41,6 @@ TEST_CASE("profile resolution: profile with mapped mode parses correctly") {
     CHECK(result.ok);
     CHECK(result.profile.nak.binding_mode == BindingMode::Mapped);
     CHECK(result.profile.environment["NAH_MODE"] == "development");
-}
-
-TEST_CASE("profile resolution: missing schema fails") {
-    // Per SPEC L605-L606
-    const char* no_schema = R"({
-        "nak": {
-            "binding_mode": "canonical"
-        }
-    })";
-    
-    auto result = parse_host_profile_full(no_schema);
-    
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
 }
 
 TEST_CASE("profile resolution: parse error returns error") {
@@ -70,30 +53,9 @@ TEST_CASE("profile resolution: parse error returns error") {
     CHECK(result.error.find("parse") != std::string::npos);
 }
 
-TEST_CASE("profile resolution: schema mismatch fails") {
-    // Per SPEC L609-L610
-    const char* wrong_schema = R"({
-        "$schema": "nah.host.profile.v1",
-        "nak": {
-            "binding_mode": "canonical"
-        }
-    })";
-    
-    auto result = parse_host_profile_full(wrong_schema);
-    
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
-}
-
 // ============================================================================
 // Built-in Empty Profile Tests (per SPEC L614-L630)
 // ============================================================================
-
-TEST_CASE("built-in empty profile has correct schema") {
-    // Per SPEC L617
-    HostProfile empty = get_builtin_empty_profile();
-    CHECK(empty.schema == "nah.host.profile.v2");
-}
 
 TEST_CASE("built-in empty profile has canonical binding_mode") {
     // Per SPEC L620
@@ -145,7 +107,6 @@ TEST_CASE("binding_mode_to_string returns correct strings") {
 
 TEST_CASE("host profile parses all sections") {
     const char* full_profile = R"({
-        "$schema": "nah.host.profile.v2",
         "nak": {
             "binding_mode": "mapped",
             "allow_versions": ["3.*"],
@@ -175,7 +136,6 @@ TEST_CASE("host profile parses all sections") {
     auto result = parse_host_profile_full(full_profile);
     
     CHECK(result.ok);
-    CHECK(result.profile.schema == "nah.host.profile.v2");
     CHECK(result.profile.nak.binding_mode == BindingMode::Mapped);
     CHECK(result.profile.nak.allow_versions.size() == 1);
     CHECK(result.profile.nak.allow_versions[0] == "3.*");

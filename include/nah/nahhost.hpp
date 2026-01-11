@@ -65,6 +65,7 @@ enum class ErrorCode {
     INSTALL_RECORD_INVALID,
     PATH_TRAVERSAL,
     ENTRYPOINT_NOT_FOUND,
+    NAK_LOADER_INVALID,
 
     // Profile load failures
     PROFILE_MISSING,

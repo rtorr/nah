@@ -15,6 +15,7 @@ struct ManifestInput {
     std::string version;
     std::string nak_id;
     std::string nak_version_req;
+    std::string nak_loader;  // Optional: requested loader name
     std::string entrypoint;
     
     std::vector<std::string> entrypoint_args;

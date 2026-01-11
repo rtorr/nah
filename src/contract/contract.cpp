@@ -251,19 +251,21 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
             }
         }
         
-        if (nak_record.loader.present && !nak_record.loader.exec_path.empty()) {
-            // Validate loader exec_path is under NAK root
-            if (!is_absolute_path(nak_record.loader.exec_path)) {
-                result.critical_error = CriticalError::PATH_TRAVERSAL;
-                result.envelope.warnings = warnings.get_warnings();
-                return result;
-            }
-            std::string relative = nak_record.loader.exec_path.substr(nak_record.paths.root.size());
-            auto loader_result = normalize_under_root(nak_record.paths.root, relative, true);
-            if (!loader_result.ok) {
-                result.critical_error = CriticalError::PATH_TRAVERSAL;
-                result.envelope.warnings = warnings.get_warnings();
-                return result;
+        // Validate all loader exec_paths are under NAK root
+        for (const auto& [loader_name, loader_config] : nak_record.loaders) {
+            if (!loader_config.exec_path.empty()) {
+                if (!is_absolute_path(loader_config.exec_path)) {
+                    result.critical_error = CriticalError::PATH_TRAVERSAL;
+                    result.envelope.warnings = warnings.get_warnings();
+                    return result;
+                }
+                std::string relative = loader_config.exec_path.substr(nak_record.paths.root.size());
+                auto loader_result = normalize_under_root(nak_record.paths.root, relative, true);
+                if (!loader_result.ok) {
+                    result.critical_error = CriticalError::PATH_TRAVERSAL;
+                    result.envelope.warnings = warnings.get_warnings();
+                    return result;
+                }
             }
         }
     }
@@ -464,16 +466,20 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     
     expand_environment_map(effective_env, warnings);
     
-    // Expand NAK loader templates if resolved and present
+    // Expand NAK loader templates if resolved and loader selected
     std::vector<std::string> expanded_args_template;
     std::string expanded_cwd;
+    const LoaderConfig* selected_loader = nullptr;
     
     if (nak_resolved) {
-        if (nak_record.loader.present) {
+        // Look up the pinned loader from App Install Record
+        const std::string& pinned_loader = install_record.nak.loader;
+        if (!pinned_loader.empty() && nak_record.loaders.count(pinned_loader)) {
+            selected_loader = &nak_record.loaders.at(pinned_loader);
             expanded_args_template = expand_string_vector(
-                nak_record.loader.args_template,
+                selected_loader->args_template,
                 effective_env,
-                "nak_record.loader.args_template",
+                "nak_record.loaders." + pinned_loader + ".args_template",
                 warnings);
         }
         
@@ -545,10 +551,34 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     // Step 10: Determine execution binary and arguments (per SPEC L1068-L1078)
     // =========================================================================
     
-    if (nak_resolved && nak_record.loader.present) {
-        contract.execution.binary = nak_record.loader.exec_path;
-        contract.execution.arguments = expanded_args_template;
+    // Read pinned loader from App Install Record (host-resolved at install time)
+    const std::string& pinned_loader = install_record.nak.loader;
+    
+    if (nak_resolved && nak_record.has_loaders()) {
+        if (pinned_loader.empty()) {
+            // No loader pinned but NAK has loaders - validation should have caught this at install
+            warnings.emit(Warning::nak_loader_required, {
+                {"reason", "NAK has loaders but no loader was pinned at install time"}
+            });
+            contract.execution.binary = contract.app.entrypoint;
+        } else {
+            auto it = nak_record.loaders.find(pinned_loader);
+            if (it == nak_record.loaders.end()) {
+                // Pinned loader no longer exists in NAK (NAK was updated?)
+                warnings.emit(Warning::nak_loader_missing, {
+                    {"requested", pinned_loader},
+                    {"reason", "pinned loader not found in NAK"}
+                });
+                result.critical_error = CriticalError::NAK_LOADER_INVALID;
+                result.envelope.warnings = warnings.get_warnings();
+                return result;
+            }
+            // Found the loader - use it
+            contract.execution.binary = it->second.exec_path;
+            contract.execution.arguments = expanded_args_template;
+        }
     } else {
+        // libs-only NAK or not resolved - use app entrypoint
         contract.execution.binary = contract.app.entrypoint;
     }
     

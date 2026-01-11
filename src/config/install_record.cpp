@@ -121,6 +121,9 @@ AppInstallRecordParseResult parse_app_install_record_full(const std::string& jso
             if (auto ref = get_string(nak, "record_ref")) {
                 result.record.nak.record_ref = *ref;
             }
+            if (auto loader = get_string(nak, "loader")) {
+                result.record.nak.loader = *loader;
+            }
             if (auto reason = get_string(nak, "selection_reason")) {
                 result.record.nak.selection_reason = *reason;
             }

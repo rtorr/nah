@@ -637,7 +637,17 @@ int cmd_nak_show(const GlobalOptions& opts, const std::string& target) {
                 j["root"] = result.record.paths.root;
                 j["resource_root"] = result.record.paths.resource_root;
                 j["lib_dirs"] = result.record.paths.lib_dirs;
-                j["has_loader"] = result.record.loader.present;
+                j["has_loaders"] = result.record.has_loaders();
+                if (result.record.has_loaders()) {
+                    nlohmann::json loaders_json;
+                    for (const auto& [name, loader] : result.record.loaders) {
+                        loaders_json[name] = {
+                            {"exec_path", loader.exec_path},
+                            {"args_template", loader.args_template}
+                        };
+                    }
+                    j["loaders"] = loaders_json;
+                }
                 std::cout << j.dump(2) << std::endl;
             } else {
                 std::cout << "NAK: " << result.record.nak.id << " v" << result.record.nak.version << std::endl;
@@ -647,8 +657,11 @@ int cmd_nak_show(const GlobalOptions& opts, const std::string& target) {
                 for (const auto& lib : result.record.paths.lib_dirs) {
                     std::cout << "  " << lib << std::endl;
                 }
-                if (result.record.loader.present) {
-                    std::cout << "Loader: " << result.record.loader.exec_path << std::endl;
+                if (result.record.has_loaders()) {
+                    std::cout << "Loaders:" << std::endl;
+                    for (const auto& [name, loader] : result.record.loaders) {
+                        std::cout << "  " << name << ": " << loader.exec_path << std::endl;
+                    }
                 }
             }
             return 0;

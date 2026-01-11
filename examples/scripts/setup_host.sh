@@ -80,6 +80,7 @@ log_info "Installing apps..."
 
 install_nap "$EXAMPLES_DIR/apps/app/build/com.example.app-1.0.0.nap" "app" || true
 install_nap "$EXAMPLES_DIR/apps/app_c/build/com.example.app_c-1.0.0.nap" "app_c" || true
+install_nap "$EXAMPLES_DIR/apps/script-app/build/com.example.script-app-1.0.0.nap" "script-app" || true
 install_nap "$EXAMPLES_DIR/apps/game-app/build/com.example.mygame-1.0.0.nap" "game-app" || true
 
 # Summary

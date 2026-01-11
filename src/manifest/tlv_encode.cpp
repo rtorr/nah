@@ -15,6 +15,7 @@ enum ManifestTag : uint16_t {
     VERSION = 11,
     NAK_ID = 12,
     NAK_VERSION_REQ = 13,
+    NAK_LOADER = 14,
     ENTRYPOINT_PATH = 20,
     ENTRYPOINT_ARG = 21,
     ENV_VAR = 30,
@@ -89,6 +90,11 @@ ManifestBuilder& ManifestBuilder::nak_id(const std::string& value) {
 
 ManifestBuilder& ManifestBuilder::nak_version_req(const std::string& value) {
     nak_version_req_ = value;
+    return *this;
+}
+
+ManifestBuilder& ManifestBuilder::nak_loader(const std::string& value) {
+    nak_loader_ = value;
     return *this;
 }
 
@@ -177,6 +183,9 @@ std::vector<uint8_t> ManifestBuilder::build() const {
     }
     if (!nak_version_req_.empty()) {
         entries.push_back({NAK_VERSION_REQ, nak_version_req_});
+    }
+    if (!nak_loader_.empty()) {
+        entries.push_back({NAK_LOADER, nak_loader_});
     }
     
     // Execution

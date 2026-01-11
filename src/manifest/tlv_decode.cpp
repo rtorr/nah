@@ -19,6 +19,7 @@ enum ManifestTag : uint16_t {
     VERSION = 11,
     NAK_ID = 12,
     NAK_VERSION_REQ = 13,
+    NAK_LOADER = 14,
     ENTRYPOINT_PATH = 20,
     ENTRYPOINT_ARG = 21,
     ENV_VAR = 30,

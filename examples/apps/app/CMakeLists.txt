@@ -50,6 +50,7 @@ set(MANIFEST_CONTENT "{
     \"version\": \"${APP_VERSION}\",
     \"nak_id\": \"${NAK_ID}\",
     \"nak_version_req\": \"${NAK_VERSION_REQ}\",
+    \"nak_loader\": \"default\",
     \"entrypoint\": \"bin/app\",
     \"lib_dirs\": [\"lib\"],
     \"asset_dirs\": [\"assets\"],

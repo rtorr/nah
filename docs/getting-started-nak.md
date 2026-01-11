@@ -27,7 +27,6 @@ Open `META/nak.json`:
 
 ```json
 {
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.yourcompany.mysdk",
     "version": "1.0.0"

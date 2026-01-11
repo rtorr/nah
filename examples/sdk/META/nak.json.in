@@ -1,5 +1,4 @@
 {
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "@NAK_ID@",
     "version": "@NAK_VERSION@"

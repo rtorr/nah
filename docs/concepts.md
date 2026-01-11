@@ -56,7 +56,6 @@ For bundle applications (JavaScript, Python, etc.), create a `manifest.json` and
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.example.myapp",
     "version": "1.0.0",
@@ -99,7 +98,6 @@ NAKs are installed on the host and referenced by apps via `nak_id` and a version
 Example `META/nak.json`:
 ```json
 {
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.example.sdk",
     "version": "2.1.0"
@@ -162,7 +160,6 @@ The host's configuration for NAH behavior.
 Example:
 ```json
 {
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical",
     "allow_versions": ["2.*"]

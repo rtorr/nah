@@ -91,7 +91,6 @@ Instead of embedding, use a separate `manifest.json`:
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.yourcompany.myapp",
     "version": "1.0.0",

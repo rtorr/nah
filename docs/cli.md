@@ -255,7 +255,6 @@ The input file must use the `nah.manifest.input.v2` schema:
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.example.myapp",
     "version": "1.0.0",

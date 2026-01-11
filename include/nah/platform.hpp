@@ -71,6 +71,14 @@ AtomicWriteResult atomic_update_symlink(const std::string& link_path, const std:
 // in tar archives, manifests, and all stored paths.
 std::string to_portable_path(const std::string& path);
 
+// Check if a path is an absolute path (Unix or Windows style)
+bool is_absolute_path(const std::string& path);
+
+// Check if child path is contained under root path
+// Both paths must already be normalized (forward slashes, no trailing slash)
+// Returns true if child is directly under root or in a subdirectory
+bool is_path_under_root(const std::string& root, const std::string& child);
+
 // Get the directory containing a file path
 std::string get_parent_directory(const std::string& path);
 

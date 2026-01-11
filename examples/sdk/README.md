@@ -114,7 +114,6 @@ The app's manifest:
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.example.app",
     "version": "1.0.0",

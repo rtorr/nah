@@ -1,5 +1,4 @@
 {
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },

@@ -103,7 +103,6 @@ public:
         
         // Create default profile (per SPEC, profiles are in host/profiles/)
         std::ofstream(root_ / "host" / "profiles" / "default.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -136,7 +135,6 @@ std::vector<uint8_t> create_test_nak_pack(const std::string& id, const std::stri
     
     std::ofstream(temp / "META" / "nak.json") << 
         "{\n"
-        "  \"$schema\": \"nah.nak.pack.v2\",\n"
         "  \"nak\": {\n"
         "    \"id\": \"" << id << "\",\n"
         "    \"version\": \"" << version << "\"\n"
@@ -182,7 +180,6 @@ void create_test_app(const std::string& nah_root, const std::string& id,
     std::string record_path = nah_root + "/registry/installs/" + id + "@" + version + ".json";
     std::ofstream(record_path) <<
         "{\n"
-        "  \"$schema\": \"nah.app.install.v2\",\n"
         "  \"install\": {\n"
         "    \"installed_at\": \"2024-01-01T00:00:00Z\",\n"
         "    \"instance_id\": \"test-instance-" << id << "\",\n"
@@ -413,11 +410,10 @@ TEST_CASE("Profile management workflow") {
     // Get active profile
     auto active_result = host->getActiveHostProfile();
     CHECK(active_result.isOk());
-    CHECK(active_result.value().schema == "nah.host.profile.v2");
+    CHECK(active_result.value().nak.binding_mode == BindingMode::Canonical);
     
     // Create a new profile
     std::ofstream(root.path() + "/host/profiles/development.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -457,7 +453,6 @@ TEST_CASE("Verify app detects missing NAK") {
     fs::create_directories(root.path() + "/registry/installs");
     std::string record_path = root.path() + "/registry/installs/com.test.app-1.0.0-0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f.json";
     std::ofstream(record_path) << R"({
-  "$schema": "nah.app.install.v2",
   "install": {
     "installed_at": "2024-01-01T00:00:00Z",
     "instance_id": "0f9c9d2a-8c7b-4b2a-9e9e-5c2a3b6b2c2f",
@@ -502,7 +497,6 @@ TEST_CASE("Deterministic packaging produces identical archives") {
     std::ofstream(temp1 / "bin" / "app") << "binary content here";
     std::ofstream(temp1 / "lib" / "libfoo.so") << "library content";
     std::ofstream(temp1 / "META" / "nak.json") << R"({
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.example.nak",
     "version": "1.0.0"
@@ -578,7 +572,6 @@ TEST_CASE("profile_invalid when profile.current is not a symlink") {
     // Create profile.current as a regular file instead of symlink
     fs::path current_path = root.path() + "/host/profile.current";
     std::ofstream(current_path) << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   }
@@ -605,7 +598,6 @@ TEST_CASE("setActiveHostProfile creates symlink") {
     
     // Create a new profile
     std::ofstream(root.path() + "/host/profiles/test.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -659,7 +651,6 @@ TEST_CASE("NahHost findApplication finds installed app") {
     fs::create_directories(root.path() + "/registry/installs");
     std::string record_path = root.path() + "/registry/installs/com.test.app@1.0.0.json";
     std::ofstream(record_path) << R"({
-  "$schema": "nah.app.install.v2",
   "install": {
     "installed_at": "2024-01-01T00:00:00Z",
     "instance_id": "test-instance-123",
@@ -701,7 +692,6 @@ TEST_CASE("NahHost listApplications returns all installed apps") {
         std::string record_path = root.path() + "/registry/installs/" + id + "@" + version + ".json";
         std::ofstream(record_path) << 
             "{\n"
-            "  \"$schema\": \"nah.app.install.v2\",\n"
             "  \"install\": {\n"
             "    \"installed_at\": \"2024-01-01T00:00:00Z\",\n"
             "    \"instance_id\": \"instance-" << id << "\",\n"
@@ -737,7 +727,6 @@ TEST_CASE("NahHost loadProfile loads named profile") {
     
     // Create a custom profile
     std::ofstream(root.path() + "/host/profiles/custom.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "mapped"
   },
@@ -769,7 +758,6 @@ TEST_CASE("NahHost validateProfile validates profile structure") {
     auto host = NahHost::create(root.path());
     
     HostProfile valid_profile;
-    valid_profile.schema = "nah.host.profile.v2";
     valid_profile.nak.binding_mode = BindingMode::Canonical;
     
     auto result = host->validateProfile(valid_profile);
@@ -887,28 +875,7 @@ TEST_CASE("profile show displays active profile") {
     auto result = host->getActiveHostProfile();
     
     CHECK(result.isOk());
-    CHECK(result.value().schema == "nah.host.profile.v2");
-}
-
-TEST_CASE("profile validate detects invalid profile") {
-    TestNahRoot root;
-    
-    // Create an invalid profile (missing schema)
-    std::string invalid_path = root.path() + "/host/profiles/invalid.json";
-    std::ofstream(invalid_path) << R"({
-  "nak": {
-    "binding_mode": "canonical"
-  }
-})";
-    
-    std::ifstream file(invalid_path);
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-    
-    auto result = parse_host_profile_full(content, invalid_path);
-    
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("schema") != std::string::npos);
+    CHECK(result.value().nak.binding_mode == BindingMode::Canonical);
 }
 
 TEST_CASE("profile validate accepts valid profile") {
@@ -916,7 +883,6 @@ TEST_CASE("profile validate accepts valid profile") {
     
     std::string valid_path = root.path() + "/host/profiles/valid.json";
     std::ofstream(valid_path) << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -964,7 +930,6 @@ TEST_CASE("nak init creates META/nak.json") {
     fs::create_directories(temp / "bin");
     
     std::ofstream(temp / "META" / "nak.json") << R"({
-  "$schema": "nah.nak.pack.v2",
   "nak": {
     "id": "com.example.nak",
     "version": "1.0.0"
@@ -1008,7 +973,6 @@ TEST_CASE("profile init creates NAH root structure") {
     
     // Create default.json
     std::ofstream(temp / "host" / "profiles" / "default.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   }
@@ -1205,7 +1169,6 @@ TEST_CASE("contract diff profiles have different environments") {
     
     // Create two different profiles
     std::ofstream(root.path() + "/host/profiles/profile_a.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -1215,7 +1178,6 @@ TEST_CASE("contract diff profiles have different environments") {
 })";
     
     std::ofstream(root.path() + "/host/profiles/profile_b.json") << R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   },
@@ -1252,7 +1214,6 @@ TEST_CASE("contract resolve shows NAK candidates") {
     // Create a NAK record
     fs::create_directories(root.path() + "/naks/com.test.nak/1.0.0");
     std::ofstream(root.path() + "/registry/naks/com.test.nak@1.0.0.json") << R"({
-  "$schema": "nah.nak.install.v2",
   "nak": {
     "id": "com.test.nak",
     "version": "1.0.0"
@@ -1313,7 +1274,6 @@ TEST_CASE("format parses valid JSON") {
     
     std::string test_file = root.path() + "/test_format.json";
     std::ofstream(test_file) << R"({
-  "$schema": "test",
   "section": {
     "key": "value"
   }
@@ -1321,7 +1281,6 @@ TEST_CASE("format parses valid JSON") {
     
     // Verify file can be parsed
     auto result = parse_host_profile_full(R"({
-  "$schema": "nah.host.profile.v2",
   "nak": {
     "binding_mode": "canonical"
   }

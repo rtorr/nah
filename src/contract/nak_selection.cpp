@@ -1,4 +1,5 @@
 #include "nah/nak_selection.hpp"
+#include "nah/platform.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -151,7 +152,7 @@ PinnedNakLoadResult load_pinned_nak(
     }
     
     // Construct path to NAK record
-    std::string record_path = (fs::path(nah_root) / "registry" / "naks" / pin.record_ref).string();
+    std::string record_path = to_portable_path((fs::path(nah_root) / "registry" / "naks" / pin.record_ref).string());
     
     // Read and parse the record
     std::string json_content = read_file(record_path);
@@ -170,11 +171,7 @@ PinnedNakLoadResult load_pinned_nak(
     
     const auto& nak_record = parse_result.record;
     
-    // Validate schema
-    if (nak_record.schema != "nah.nak.install.v2") {
-        warnings.emit(Warning::nak_pin_invalid, {{"reason", "schema_mismatch"}});
-        return result;
-    }
+    // $schema is ignored - validation is structural
     
     // Validate required fields
     std::string validation_error;
@@ -264,16 +261,17 @@ std::vector<NakRegistryEntry> scan_nak_registry(const std::string& nah_root) {
         }
         
         // Parse the record to get id and version
-        std::string content = read_file(entry.path().string());
+        std::string entry_path = to_portable_path(entry.path().string());
+        std::string content = read_file(entry_path);
         if (content.empty()) continue;
         
-        auto parse_result = parse_nak_install_record_full(content, entry.path().string());
+        auto parse_result = parse_nak_install_record_full(content, entry_path);
         if (!parse_result.ok) continue;
         
         NakRegistryEntry reg_entry;
         reg_entry.id = parse_result.record.nak.id;
         reg_entry.version = parse_result.record.nak.version;
-        reg_entry.record_path = entry.path().string();
+        reg_entry.record_path = entry_path;
         reg_entry.record_ref = filename;
         
         entries.push_back(std::move(reg_entry));

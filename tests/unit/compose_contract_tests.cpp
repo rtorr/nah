@@ -144,7 +144,6 @@ Manifest create_test_manifest() {
 
 AppInstallRecord create_test_install_record(const std::string& app_root) {
     AppInstallRecord r;
-    r.schema = "nah.app.install.v1";
     r.app.id = "com.example.app";
     r.app.version = "1.0.0";
     r.paths.install_root = app_root;
@@ -239,7 +238,6 @@ std::string build_nak_record_json(const std::string& nak_root,
                                    const std::vector<std::pair<std::string, std::pair<std::string, std::vector<std::string>>>>& loaders) {
     std::ostringstream json;
     json << "{\n";
-    json << "  \"$schema\": \"nah.nak.install.v2\",\n";
     json << "  \"nak\": { \"id\": \"com.example.nak\", \"version\": \"3.0.0\" },\n";
     json << "  \"paths\": {\n";
     json << "    \"root\": \"" << nak_root << "\",\n";

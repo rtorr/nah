@@ -233,13 +233,35 @@ std::string to_portable_path(const std::string& path) {
     return result;
 }
 
+bool is_absolute_path(const std::string& path) {
+    if (path.empty()) return false;
+    // Unix absolute path
+    if (path[0] == '/') return true;
+    // Windows absolute path: C:/ or C:\ (drive letter + colon + slash)
+    if (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) && 
+        path[1] == ':' && (path[2] == '/' || path[2] == '\\')) {
+        return true;
+    }
+    return false;
+}
+
+bool is_path_under_root(const std::string& root, const std::string& child) {
+    // Both paths should already be normalized to forward slashes
+    // Check that child starts with root + "/"
+    if (child.size() <= root.size()) return false;
+    if (child.compare(0, root.size(), root) != 0) return false;
+    // Must have a separator after root (not just a prefix match like /foo vs /foobar)
+    return child[root.size()] == '/';
+}
+
 std::string get_parent_directory(const std::string& path) {
     fs::path p(path);
-    return p.parent_path().string();
+    return to_portable_path(p.parent_path().string());
 }
 
 std::string get_filename(const std::string& path) {
     fs::path p(path);
+    // Filenames don't have path separators, but normalize anyway for consistency
     return p.filename().string();
 }
 
@@ -267,7 +289,7 @@ bool is_symlink(const std::string& path) {
 
 std::optional<std::string> read_symlink(const std::string& path) {
     try {
-        return fs::read_symlink(path).string();
+        return to_portable_path(fs::read_symlink(path).string());
     } catch (...) {
         return std::nullopt;
     }

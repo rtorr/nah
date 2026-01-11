@@ -37,12 +37,8 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
     try {
         auto j = nlohmann::json::parse(json_content);
         
-        // Check schema
-        auto schema = get_string(j, "$schema");
-        if (!schema || *schema != "nah.manifest.input.v2") {
-            result.error = "missing or invalid $schema (expected nah.manifest.input.v2)";
-            return result;
-        }
+        // $schema (optional, for editor tooling only)
+        // We don't validate it - the JSON structure itself defines validity
         
         // Parse "app" section
         if (!j.contains("app") || !j["app"].is_object()) {

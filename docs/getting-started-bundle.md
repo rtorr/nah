@@ -27,7 +27,6 @@ Create a `manifest.json` file describing your application:
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.yourcompany.myapp",
     "version": "1.0.0",
@@ -49,7 +48,6 @@ Create a `manifest.json` file describing your application:
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `$schema` | Schema version | `nah.manifest.input.v2` |
 | `app.id` | Unique identifier | `com.yourcompany.myapp` |
 | `app.version` | SemVer version | `1.0.0` |
 | `app.nak_id` | Runtime NAK ID | `com.example.js-runtime` |
@@ -170,7 +168,6 @@ nah --root ./test-nah contract show com.yourcompany.myapp
 
 ```json
 {
-  "$schema": "nah.manifest.input.v2",
   "app": {
     "id": "com.example.rnapp",
     "version": "2.1.0",
@@ -270,15 +267,6 @@ Bundle apps run inside the NAK runtime's sandbox:
 This mirrors mobile platforms: React Native JS runs inside a native container that defines the security boundary.
 
 ## Troubleshooting
-
-### "missing or invalid schema"
-
-Ensure your manifest.json has the correct schema:
-```json
-{
-  "$schema": "nah.manifest.input.v2"
-}
-```
 
 ### "entrypoint must be a relative path"
 

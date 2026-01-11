@@ -1,10 +1,10 @@
 #include "nah/manifest_generate.hpp"
 #include "nah/manifest_builder.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <optional>
+
+#include <nlohmann/json.hpp>
 
 namespace nah {
 

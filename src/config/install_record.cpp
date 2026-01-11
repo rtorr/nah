@@ -1,7 +1,9 @@
 #include "nah/install_record.hpp"
 
-#include <nlohmann/json.hpp>
 #include <cctype>
+#include <optional>
+
+#include <nlohmann/json.hpp>
 
 namespace nah {
 

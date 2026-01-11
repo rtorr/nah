@@ -4,12 +4,13 @@
 #include "nah/nak_selection.hpp"
 #include "nah/path_utils.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
+
+#include <nlohmann/json.hpp>
 
 namespace nah {
 

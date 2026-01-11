@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <sstream>
 
 namespace nah {

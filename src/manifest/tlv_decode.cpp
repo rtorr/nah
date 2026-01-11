@@ -1,6 +1,7 @@
 #include "nah/manifest_tlv.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 

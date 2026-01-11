@@ -1,8 +1,10 @@
 #include "nah/host_profile.hpp"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
+#include <optional>
+
+#include <nlohmann/json.hpp>
 
 namespace nah {
 

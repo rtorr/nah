@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 namespace nah {

@@ -56,7 +56,7 @@ if build_conan_project "$EXAMPLES_DIR/conan-sdk" "Game Engine SDK (NAK)"; then
 fi
 
 # 3. Build apps
-for app_dir in "$EXAMPLES_DIR"/apps/app "$EXAMPLES_DIR"/apps/app_c; do
+for app_dir in "$EXAMPLES_DIR"/apps/app "$EXAMPLES_DIR"/apps/app_c "$EXAMPLES_DIR"/apps/script-app; do
     if [ -d "$app_dir" ]; then
         app_name=$(basename "$app_dir")
         build_cmake_project "$app_dir" "App: $app_name" || exit 1

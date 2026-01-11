@@ -33,6 +33,7 @@ struct AppInstallRecord {
         std::string id;
         std::string version;
         std::string record_ref;  // "<nak_id>@<version>.json"
+        std::string loader;      // Pinned loader name (resolved at install time)
         std::string selection_reason;  // optional audit-only string
     } nak;
     

@@ -16,6 +16,7 @@ public:
     ManifestBuilder& version(const std::string& value);
     ManifestBuilder& nak_id(const std::string& value);
     ManifestBuilder& nak_version_req(const std::string& value);
+    ManifestBuilder& nak_loader(const std::string& value);
     ManifestBuilder& entrypoint(const std::string& value);
     ManifestBuilder& entrypoint_arg(const std::string& value);
     ManifestBuilder& env(const std::string& key, const std::string& value);
@@ -38,6 +39,7 @@ private:
     std::string version_;
     std::string nak_id_;
     std::string nak_version_req_;
+    std::string nak_loader_;
     std::string entrypoint_;
     std::vector<std::string> entrypoint_args_;
     std::vector<std::string> env_vars_;

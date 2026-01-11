@@ -7,11 +7,20 @@
 namespace nah {
 
 // ============================================================================
+// Loader Configuration (shared between NAK Pack and NAK Install Record)
+// ============================================================================
+
+struct LoaderConfig {
+    std::string exec_path;  // Relative in pack, absolute in install record
+    std::vector<std::string> args_template;  // Template with {NAME} placeholders
+};
+
+// ============================================================================
 // NAK Install Record (per SPEC L381-L468)
 // ============================================================================
 
 struct NakInstallRecord {
-    std::string schema;  // MUST be "nah.nak.install.v1"
+    std::string schema;  // MUST be "nah.nak.install.v2"
     
     // [nak] section
     struct {
@@ -29,12 +38,12 @@ struct NakInstallRecord {
     // [environment] section
     std::unordered_map<std::string, std::string> environment;
     
-    // [loader] section (OPTIONAL per SPEC L395)
-    struct {
-        bool present = false;
-        std::string exec_path;  // Absolute path to loader executable
-        std::vector<std::string> args_template;  // Template with {NAME} placeholders
-    } loader;
+    // [loaders] section (OPTIONAL - libs-only NAKs omit this)
+    // Maps loader name -> loader configuration with absolute paths
+    std::unordered_map<std::string, LoaderConfig> loaders;
+    
+    // Helper methods
+    bool has_loaders() const { return !loaders.empty(); }
     
     // [execution] section (OPTIONAL per SPEC L402)
     struct {
@@ -82,7 +91,7 @@ bool validate_nak_install_record(const NakInstallRecord& record, std::string& er
 // ============================================================================
 
 struct NakPackManifest {
-    std::string schema;  // MUST be "nah.nak.pack.v1"
+    std::string schema;  // MUST be "nah.nak.pack.v2"
     
     struct {
         std::string id;
@@ -96,11 +105,12 @@ struct NakPackManifest {
     
     std::unordered_map<std::string, std::string> environment;
     
-    struct {
-        bool present = false;
-        std::string exec_path;  // Relative path
-        std::vector<std::string> args_template;
-    } loader;
+    // [loaders] section (OPTIONAL - libs-only NAKs omit this)
+    // Maps loader name -> loader configuration with relative paths
+    std::unordered_map<std::string, LoaderConfig> loaders;
+    
+    // Helper methods
+    bool has_loaders() const { return !loaders.empty(); }
     
     struct {
         bool present = false;

@@ -324,6 +324,9 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
             case CriticalError::INSTALL_RECORD_INVALID:
                 code = ErrorCode::INSTALL_RECORD_INVALID;
                 break;
+            case CriticalError::NAK_LOADER_INVALID:
+                code = ErrorCode::NAK_LOADER_INVALID;
+                break;
         }
         return Result<ContractEnvelope>::err(
             Error(code, critical_error_to_string(*compose_result.critical_error)));
@@ -349,6 +352,9 @@ Result<ContractEnvelope> NahHost::composeContract(const CompositionInputs& input
                 break;
             case CriticalError::INSTALL_RECORD_INVALID:
                 code = ErrorCode::INSTALL_RECORD_INVALID;
+                break;
+            case CriticalError::NAK_LOADER_INVALID:
+                code = ErrorCode::NAK_LOADER_INVALID;
                 break;
         }
         return Result<ContractEnvelope>::err(

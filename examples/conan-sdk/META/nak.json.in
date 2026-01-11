@@ -8,14 +8,16 @@
     "lib_dirs": ["lib"],
     "resource_root": "resources"
   },
-  "loader": {
-    "exec_path": "bin/engine-loader",
-    "args_template": [
-      "--app-entry", "{NAH_APP_ENTRY}",
-      "--app-root", "{NAH_APP_ROOT}",
-      "--app-id", "{NAH_APP_ID}",
-      "--engine-root", "{NAH_NAK_ROOT}"
-    ]
+  "loaders": {
+    "default": {
+      "exec_path": "bin/engine-loader",
+      "args_template": [
+        "--app-entry", "{NAH_APP_ENTRY}",
+        "--app-root", "{NAH_APP_ROOT}",
+        "--app-id", "{NAH_APP_ID}",
+        "--engine-root", "{NAH_NAK_ROOT}"
+      ]
+    }
   },
   "execution": {
     "cwd": "{NAH_APP_ROOT}"

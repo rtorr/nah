@@ -3,6 +3,7 @@
 #include <nah/manifest.hpp>
 #include <nah/manifest_tlv.hpp>
 #include <nah/install_record.hpp>
+#include <nah/nak_record.hpp>
 #include <nah/host_profile.hpp>
 #include <nah/platform.hpp>
 #include <nah/types.hpp>
@@ -12,10 +13,73 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
 using namespace nah;
+
+// ============================================================================
+// Test Diagnostics - Helpers for debugging test failures
+// ============================================================================
+
+namespace {
+
+// Dump all warnings from a composition result to stderr
+// Call this when a test fails unexpectedly to understand what went wrong
+void dump_warnings(const CompositionResult& result, const std::string& context = "") {
+    if (!context.empty()) {
+        std::cerr << "\n=== " << context << " ===\n";
+    }
+    std::cerr << "CompositionResult: ok=" << result.ok;
+    if (result.critical_error) {
+        std::cerr << ", critical_error=" << static_cast<int>(*result.critical_error);
+    }
+    std::cerr << "\n";
+    
+    if (result.envelope.warnings.empty()) {
+        std::cerr << "  (no warnings)\n";
+    } else {
+        std::cerr << "  Warnings (" << result.envelope.warnings.size() << "):\n";
+        for (const auto& w : result.envelope.warnings) {
+            std::cerr << "    - " << w.key << " [" << w.action << "]";
+            if (!w.fields.empty()) {
+                std::cerr << " {";
+                bool first = true;
+                for (const auto& [k, v] : w.fields) {
+                    if (!first) std::cerr << ", ";
+                    std::cerr << k << "=" << v;
+                    first = false;
+                }
+                std::cerr << "}";
+            }
+            std::cerr << "\n";
+        }
+    }
+    std::cerr << "  execution.binary: " << result.envelope.contract.execution.binary << "\n";
+}
+
+// Helper macro to dump warnings on CHECK failure
+// Usage: CHECK_WITH_DIAG(result.ok, result, "loader selection test")
+#define CHECK_WITH_DIAG(expr, result, context) \
+    do { \
+        if (!(expr)) { \
+            dump_warnings(result, context); \
+        } \
+        CHECK(expr); \
+    } while(0)
+
+// Helper macro to require with diagnostics
+#define REQUIRE_WITH_DIAG(expr, result, context) \
+    do { \
+        if (!(expr)) { \
+            dump_warnings(result, context); \
+        } \
+        REQUIRE(expr); \
+    } while(0)
+
+} // anonymous namespace
 
 // ============================================================================
 // Test Fixtures - Helper functions to create test inputs
@@ -73,6 +137,7 @@ Manifest create_test_manifest() {
     m.id = "com.example.app";
     m.version = "1.0.0";
     m.entrypoint_path = "bin/myapp";
+    m.nak_id = "com.example.nak";
     m.nak_version_req = parse_range(">=3.0.0 <4.0.0");
     return m;
 }
@@ -153,6 +218,205 @@ TEST_CASE("compose_contract: returns ENTRYPOINT_NOT_FOUND when entrypoint missin
     CHECK_FALSE(result.ok);
     REQUIRE(result.critical_error.has_value());
     CHECK(*result.critical_error == CriticalError::ENTRYPOINT_NOT_FOUND);
+}
+
+// ============================================================================
+// Multi-Loader Tests
+// ============================================================================
+
+// Helper to write NAK install record JSON file
+void write_nak_record_json(const fs::path& nah_root, const std::string& nak_id, 
+                           const std::string& nak_version, const std::string& json_content) {
+    fs::path registry_dir = nah_root / "registry" / "naks";
+    fs::create_directories(registry_dir);
+    fs::path record_path = registry_dir / (nak_id + "@" + nak_version + ".json");
+    std::ofstream(record_path) << json_content;
+}
+
+// Helper to build NAK install record JSON with loaders
+std::string build_nak_record_json(const std::string& nak_root, 
+                                   const std::string& resource_root,
+                                   const std::vector<std::pair<std::string, std::pair<std::string, std::vector<std::string>>>>& loaders) {
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"$schema\": \"nah.nak.install.v2\",\n";
+    json << "  \"nak\": { \"id\": \"com.example.nak\", \"version\": \"3.0.0\" },\n";
+    json << "  \"paths\": {\n";
+    json << "    \"root\": \"" << nak_root << "\",\n";
+    json << "    \"resource_root\": \"" << resource_root << "\"\n";
+    json << "  }";
+    
+    if (!loaders.empty()) {
+        json << ",\n  \"loaders\": {\n";
+        bool first = true;
+        for (const auto& [name, config] : loaders) {
+            if (!first) json << ",\n";
+            json << "    \"" << name << "\": {\n";
+            json << "      \"exec_path\": \"" << config.first << "\",\n";
+            json << "      \"args_template\": [";
+            bool first_arg = true;
+            for (const auto& arg : config.second) {
+                if (!first_arg) json << ", ";
+                json << "\"" << arg << "\"";
+                first_arg = false;
+            }
+            json << "]\n";
+            json << "    }";
+            first = false;
+        }
+        json << "\n  }";
+    }
+    
+    json << "\n}\n";
+    return json.str();
+}
+
+TEST_CASE("compose_contract selects loader from NAK based on pinned loader") {
+    TempTestDir tmp;
+    
+    // Create additional loader binary
+    fs::path alt_loader = tmp.nak_root / "bin" / "loader-alt";
+    std::ofstream(alt_loader) << "#!/bin/sh\nexec $@\n";
+    fs::permissions(alt_loader, fs::perms::owner_exec | fs::perms::owner_read);
+    
+    // Write NAK install record with multiple loaders
+    std::string nak_json = build_nak_record_json(
+        pp(tmp.nak_root),
+        pp(tmp.nak_root / "resources"),
+        {
+            {"default", {pp(tmp.nak_loader), {"--run", "{NAH_APP_ENTRY}"}}},
+            {"alt", {pp(alt_loader), {"--mode", "alt", "{NAH_APP_ENTRY}"}}}
+        }
+    );
+    write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
+    
+    Manifest manifest = create_test_manifest();
+    manifest.nak_loader = "alt";  // Requested loader
+    
+    AppInstallRecord install_record = create_test_install_record(pp(tmp.app_root));
+    install_record.nak.loader = "alt";  // Pinned loader
+    
+    HostProfile profile = create_test_profile();
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK_WITH_DIAG(result.ok, result, "loader selection - expected ok=true");
+    CHECK_WITH_DIAG(result.envelope.contract.execution.binary == pp(alt_loader), result, 
+                    "loader selection - expected alt loader binary");
+    CHECK(result.envelope.contract.execution.arguments.size() == 3);
+    CHECK(result.envelope.contract.execution.arguments[0] == "--mode");
+    CHECK(result.envelope.contract.execution.arguments[1] == "alt");
+}
+
+TEST_CASE("compose_contract emits nak_loader_required warning when NAK has loaders but no loader pinned") {
+    TempTestDir tmp;
+    
+    // Write NAK install record with loaders
+    std::string nak_json = build_nak_record_json(
+        pp(tmp.nak_root),
+        pp(tmp.nak_root / "resources"),
+        {{"default", {pp(tmp.nak_loader), {"--run", "{NAH_APP_ENTRY}"}}}}
+    );
+    write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
+    
+    Manifest manifest = create_test_manifest();
+    // No nak_loader specified
+    
+    AppInstallRecord install_record = create_test_install_record(pp(tmp.app_root));
+    // No loader pinned (install_record.nak.loader is empty)
+    
+    HostProfile profile = create_test_profile();
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK_WITH_DIAG(result.ok, result, "nak_loader_required warning test - expected ok=true");
+    // Should fall back to app entrypoint
+    CHECK_WITH_DIAG(result.envelope.contract.execution.binary == pp(tmp.entrypoint), result,
+                    "nak_loader_required warning test - expected app entrypoint");
+    
+    // Check warning was emitted
+    bool found_warning = false;
+    for (const auto& w : result.envelope.warnings) {
+        if (w.key == "nak_loader_required") {
+            found_warning = true;
+            break;
+        }
+    }
+    CHECK(found_warning);
+}
+
+TEST_CASE("compose_contract returns critical error when pinned loader not found in NAK") {
+    TempTestDir tmp;
+    
+    // Write NAK install record with only one loader
+    std::string nak_json = build_nak_record_json(
+        pp(tmp.nak_root),
+        pp(tmp.nak_root / "resources"),
+        {{"default", {pp(tmp.nak_loader), {"--run", "{NAH_APP_ENTRY}"}}}}
+    );
+    write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
+    
+    Manifest manifest = create_test_manifest();
+    manifest.nak_loader = "nonexistent";
+    
+    AppInstallRecord install_record = create_test_install_record(pp(tmp.app_root));
+    install_record.nak.loader = "nonexistent";  // Pinned to non-existent loader
+    
+    HostProfile profile = create_test_profile();
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK_WITH_DIAG(!result.ok, result, "invalid loader test - expected ok=false");
+    REQUIRE_WITH_DIAG(result.critical_error.has_value(), result, "invalid loader test - expected critical_error");
+    CHECK(*result.critical_error == CriticalError::NAK_LOADER_INVALID);
+}
+
+TEST_CASE("compose_contract uses app entrypoint when NAK has no loaders") {
+    TempTestDir tmp;
+    
+    // Write NAK install record without loaders (libs-only)
+    std::string nak_json = build_nak_record_json(
+        pp(tmp.nak_root),
+        pp(tmp.nak_root / "resources"),
+        {}  // No loaders
+    );
+    write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
+    
+    Manifest manifest = create_test_manifest();
+    
+    AppInstallRecord install_record = create_test_install_record(pp(tmp.app_root));
+    
+    HostProfile profile = create_test_profile();
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK_WITH_DIAG(result.ok, result, "libs-only NAK test - expected ok=true");
+    CHECK_WITH_DIAG(result.envelope.contract.execution.binary == pp(tmp.entrypoint), result,
+                    "libs-only NAK test - expected app entrypoint");
 }
 
 TEST_CASE("compose_contract: returns ENTRYPOINT_NOT_FOUND for empty entrypoint") {

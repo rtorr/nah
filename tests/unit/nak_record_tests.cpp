@@ -127,8 +127,8 @@ TEST_CASE("nak install record explicit resource_root is used") {
     CHECK(rec.paths.resource_root == "/nah/naks/com.example.nak/3.1.2/resources");
 }
 
-TEST_CASE("nak install record loader section is optional") {
-    // Per SPEC L436-446: loader is OPTIONAL
+TEST_CASE("nak install record loaders section is optional") {
+    // Per SPEC: loaders is OPTIONAL (libs-only NAKs omit it)
     const char* json = R"({
         "$schema": "nah.nak.install.v2",
         "nak": {
@@ -142,11 +142,11 @@ TEST_CASE("nak install record loader section is optional") {
     NakInstallRecord rec;
     auto v = parse_nak_install_record(json, rec);
     CHECK(v.ok);
-    CHECK_FALSE(rec.loader.present);
+    CHECK_FALSE(rec.has_loaders());
 }
 
-TEST_CASE("nak install record with loader section parses correctly") {
-    // Per SPEC L436-446: loader section format
+TEST_CASE("nak install record with loaders section parses correctly") {
+    // Per SPEC: loaders section with multiple named loaders
     const char* json = R"({
         "$schema": "nah.nak.install.v2",
         "nak": {
@@ -156,17 +156,26 @@ TEST_CASE("nak install record with loader section parses correctly") {
         "paths": {
             "root": "/nah/naks/com.example.nak/3.1.2"
         },
-        "loader": {
-            "exec_path": "/nah/naks/com.example.nak/3.1.2/bin/loader",
-            "args_template": ["${NAH_APP_ENTRY}", "--runtime"]
+        "loaders": {
+            "default": {
+                "exec_path": "/nah/naks/com.example.nak/3.1.2/bin/loader",
+                "args_template": ["${NAH_APP_ENTRY}", "--runtime"]
+            },
+            "alt": {
+                "exec_path": "/nah/naks/com.example.nak/3.1.2/bin/loader-alt",
+                "args_template": ["--mode", "alt", "${NAH_APP_ENTRY}"]
+            }
         }
     })";
     NakInstallRecord rec;
     auto v = parse_nak_install_record(json, rec);
     CHECK(v.ok);
-    CHECK(rec.loader.present);
-    CHECK(rec.loader.exec_path == "/nah/naks/com.example.nak/3.1.2/bin/loader");
-    CHECK(rec.loader.args_template.size() == 2);
+    CHECK(rec.has_loaders());
+    CHECK(rec.loaders.size() == 2);
+    CHECK(rec.loaders.at("default").exec_path == "/nah/naks/com.example.nak/3.1.2/bin/loader");
+    CHECK(rec.loaders.at("default").args_template.size() == 2);
+    CHECK(rec.loaders.at("alt").exec_path == "/nah/naks/com.example.nak/3.1.2/bin/loader-alt");
+    CHECK(rec.loaders.at("alt").args_template.size() == 3);
 }
 
 TEST_CASE("nak install record execution section is optional") {

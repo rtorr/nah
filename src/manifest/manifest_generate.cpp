@@ -79,6 +79,11 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
         }
         result.input.nak_version_req = *nak_version_req;
         
+        // Optional: nak_loader (which loader to use from the NAK)
+        if (auto nak_loader = get_string(app, "nak_loader")) {
+            result.input.nak_loader = *nak_loader;
+        }
+        
         auto entrypoint = get_string(app, "entrypoint");
         if (!entrypoint || entrypoint->empty()) {
             result.error = "missing required field: app.entrypoint";
@@ -241,6 +246,10 @@ std::vector<uint8_t> build_manifest_from_input(const ManifestInput& input) {
            .nak_id(input.nak_id)
            .nak_version_req(input.nak_version_req)
            .entrypoint(input.entrypoint);
+    
+    if (!input.nak_loader.empty()) {
+        builder.nak_loader(input.nak_loader);
+    }
     
     for (const auto& arg : input.entrypoint_args) {
         builder.entrypoint_arg(arg);

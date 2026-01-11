@@ -1026,9 +1026,7 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
     result.resource_root = pack.paths.resource_root;
     result.lib_dirs = pack.paths.lib_dirs;
     result.environment = pack.environment;
-    result.has_loader = pack.loader.present;
-    result.loader_exec_path = pack.loader.exec_path;
-    result.loader_args_template = pack.loader.args_template;
+    result.loaders = pack.loaders;
     result.execution_cwd = pack.execution.cwd;
     
     result.ok = true;
@@ -1283,8 +1281,11 @@ AppInstallResult install_nap_package(const std::string& package_path,
     record << "  \"nak\": {\n";
     record << "    \"id\": \"" << selected_nak_pin.id << "\",\n";
     record << "    \"version\": \"" << selected_nak_pin.version << "\",\n";
-    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"\n";
-    record << "  },\n";
+    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"";
+    if (!manifest.nak_loader.empty()) {
+        record << ",\n    \"loader\": \"" << manifest.nak_loader << "\"";
+    }
+    record << "\n  },\n";
     record << "  \"paths\": {\n";
     record << "    \"install_root\": \"" << to_portable_path(final_dir) << "\"\n";
     record << "  },\n";
@@ -1482,8 +1483,11 @@ static AppInstallResult install_app_from_bytes(
     record << "  \"nak\": {\n";
     record << "    \"id\": \"" << selected_nak_pin.id << "\",\n";
     record << "    \"version\": \"" << selected_nak_pin.version << "\",\n";
-    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"\n";
-    record << "  },\n";
+    record << "    \"record_ref\": \"" << selected_nak_pin.record_ref << "\"";
+    if (!manifest.nak_loader.empty()) {
+        record << ",\n    \"loader\": \"" << manifest.nak_loader << "\"";
+    }
+    record << "\n  },\n";
     record << "  \"paths\": {\n";
     record << "    \"install_root\": \"" << to_portable_path(final_dir) << "\"\n";
     record << "  },\n";
@@ -1701,9 +1705,13 @@ static NakInstallResult install_nak_from_bytes(
         abs_lib_dirs.push_back(join_path(final_dir, lib_dir));
     }
     
-    std::string abs_loader_path;
-    if (pack_info.has_loader && !pack_info.loader_exec_path.empty()) {
-        abs_loader_path = join_path(final_dir, pack_info.loader_exec_path);
+    // Resolve absolute paths for all loaders
+    std::unordered_map<std::string, LoaderConfig> abs_loaders;
+    for (const auto& [name, loader] : pack_info.loaders) {
+        LoaderConfig abs_loader;
+        abs_loader.exec_path = join_path(final_dir, loader.exec_path);
+        abs_loader.args_template = loader.args_template;
+        abs_loaders[name] = abs_loader;
     }
     
     // Write NAK Install Record
@@ -1731,16 +1739,23 @@ static NakInstallResult install_nak_from_bytes(
     record << "]\n";
     record << "  },\n";
     
-    if (pack_info.has_loader) {
-        record << "  \"loader\": {\n";
-        record << "    \"exec_path\": \"" << to_portable_path(abs_loader_path) << "\",\n";
-        record << "    \"args_template\": [";
-        for (size_t i = 0; i < pack_info.loader_args_template.size(); ++i) {
-            if (i > 0) record << ", ";
-            record << "\"" << pack_info.loader_args_template[i] << "\"";
+    if (pack_info.has_loaders()) {
+        record << "  \"loaders\": {\n";
+        bool first_loader = true;
+        for (const auto& [name, loader] : abs_loaders) {
+            if (!first_loader) record << ",\n";
+            record << "    \"" << name << "\": {\n";
+            record << "      \"exec_path\": \"" << to_portable_path(loader.exec_path) << "\",\n";
+            record << "      \"args_template\": [";
+            for (size_t i = 0; i < loader.args_template.size(); ++i) {
+                if (i > 0) record << ", ";
+                record << "\"" << loader.args_template[i] << "\"";
+            }
+            record << "]\n";
+            record << "    }";
+            first_loader = false;
         }
-        record << "]\n";
-        record << "  },\n";
+        record << "\n  },\n";
     }
     
     // Environment section (materialized from NAK pack)

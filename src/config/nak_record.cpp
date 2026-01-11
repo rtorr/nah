@@ -136,16 +136,25 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
             }
         }
         
-        // "loader" section (OPTIONAL per SPEC L395)
-        if (j.contains("loader") && j["loader"].is_object()) {
-            result.record.loader.present = true;
-            const auto& loader = j["loader"];
-            
-            if (auto exec = get_string(loader, "exec_path")) {
-                result.record.loader.exec_path = *exec;
+        // "loaders" section (OPTIONAL - libs-only NAKs omit this)
+        if (j.contains("loaders") && j["loaders"].is_object()) {
+            for (auto& [name, loader_json] : j["loaders"].items()) {
+                if (loader_json.is_object()) {
+                    LoaderConfig config;
+                    if (auto exec = get_string(loader_json, "exec_path")) {
+                        if (is_empty_after_trim(*exec)) {
+                            result.error = "loaders." + name + ".exec_path empty";
+                            return result;
+                        }
+                        config.exec_path = *exec;
+                    } else {
+                        result.error = "loaders." + name + ".exec_path missing";
+                        return result;
+                    }
+                    config.args_template = get_string_array(loader_json, "args_template");
+                    result.record.loaders[name] = config;
+                }
             }
-            
-            result.record.loader.args_template = get_string_array(loader, "args_template");
         }
         
         // "execution" section (OPTIONAL per SPEC L402)
@@ -282,16 +291,25 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& json_str) 
             }
         }
         
-        // "loader" section
-        if (j.contains("loader") && j["loader"].is_object()) {
-            result.manifest.loader.present = true;
-            const auto& loader = j["loader"];
-            
-            if (auto exec = get_string(loader, "exec_path")) {
-                result.manifest.loader.exec_path = *exec;
+        // "loaders" section (OPTIONAL - libs-only NAKs omit this)
+        if (j.contains("loaders") && j["loaders"].is_object()) {
+            for (auto& [name, loader_json] : j["loaders"].items()) {
+                if (loader_json.is_object()) {
+                    LoaderConfig config;
+                    if (auto exec = get_string(loader_json, "exec_path")) {
+                        if (is_empty_after_trim(*exec)) {
+                            result.error = "loaders." + name + ".exec_path empty";
+                            return result;
+                        }
+                        config.exec_path = *exec;
+                    } else {
+                        result.error = "loaders." + name + ".exec_path missing";
+                        return result;
+                    }
+                    config.args_template = get_string_array(loader_json, "args_template");
+                    result.manifest.loaders[name] = config;
+                }
             }
-            
-            result.manifest.loader.args_template = get_string_array(loader, "args_template");
         }
         
         // "execution" section

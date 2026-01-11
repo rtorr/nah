@@ -28,6 +28,7 @@ struct Manifest {
     std::string version; // raw string
     std::string nak_id;
     std::optional<VersionRange> nak_version_req;
+    std::string nak_loader;  // Requested loader name (resolved at install time)
     std::string entrypoint_path;
     std::vector<std::string> entrypoint_args;
     std::vector<std::string> env_vars;

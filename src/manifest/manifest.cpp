@@ -23,6 +23,7 @@ constexpr uint16_t MANIFEST_TAG_NAK_ID = 12;
 constexpr uint16_t MANIFEST_TAG_ID = 10;
 constexpr uint16_t MANIFEST_TAG_VERSION = 11;
 constexpr uint16_t MANIFEST_TAG_NAK_VERSION_REQ = 13;
+constexpr uint16_t MANIFEST_TAG_NAK_LOADER = 14;
 constexpr uint16_t MANIFEST_TAG_ENTRYPOINT_PATH = 20;
 constexpr uint16_t MANIFEST_TAG_ENTRYPOINT_ARG = 21;
 constexpr uint16_t MANIFEST_TAG_ENV_VAR = 30;
@@ -166,6 +167,9 @@ ManifestFieldsResult parse_manifest(const std::vector<uint8_t>& blob) {
                 }
                 break;
             }
+            case MANIFEST_TAG_NAK_LOADER:
+                if (manifest.nak_loader.empty()) manifest.nak_loader = e.value;
+                break;
             case MANIFEST_TAG_ENTRYPOINT_PATH:
                 if (manifest.entrypoint_path.empty()) manifest.entrypoint_path = e.value;
                 break;

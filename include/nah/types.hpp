@@ -20,6 +20,8 @@ enum class Warning {
     nak_pin_invalid,
     nak_not_found,           // Install-time only; MUST NOT be emitted by compose_contract
     nak_version_unsupported,
+    nak_loader_required,     // NAK has loaders but app didn't specify one
+    nak_loader_missing,      // App requested a loader that NAK doesn't have
     binary_not_found,        // Diagnostic only; MUST NOT be emitted by compose_contract
     capability_missing,
     capability_malformed,
@@ -46,6 +48,8 @@ inline const char* warning_to_string(Warning w) {
         case Warning::nak_pin_invalid: return "nak_pin_invalid";
         case Warning::nak_not_found: return "nak_not_found";
         case Warning::nak_version_unsupported: return "nak_version_unsupported";
+        case Warning::nak_loader_required: return "nak_loader_required";
+        case Warning::nak_loader_missing: return "nak_loader_missing";
         case Warning::binary_not_found: return "binary_not_found";
         case Warning::capability_missing: return "capability_missing";
         case Warning::capability_malformed: return "capability_malformed";
@@ -96,6 +100,7 @@ enum class CriticalError {
     ENTRYPOINT_NOT_FOUND,
     PATH_TRAVERSAL,
     INSTALL_RECORD_INVALID,
+    NAK_LOADER_INVALID,
 };
 
 inline const char* critical_error_to_string(CriticalError e) {
@@ -104,6 +109,7 @@ inline const char* critical_error_to_string(CriticalError e) {
         case CriticalError::ENTRYPOINT_NOT_FOUND: return "ENTRYPOINT_NOT_FOUND";
         case CriticalError::PATH_TRAVERSAL: return "PATH_TRAVERSAL";
         case CriticalError::INSTALL_RECORD_INVALID: return "INSTALL_RECORD_INVALID";
+        case CriticalError::NAK_LOADER_INVALID: return "NAK_LOADER_INVALID";
         default: return "UNKNOWN";
     }
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nah/nak_record.hpp"
+
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -146,10 +148,11 @@ struct NakPackInfo {
     std::string resource_root;
     std::vector<std::string> lib_dirs;
     std::unordered_map<std::string, std::string> environment;
-    bool has_loader = false;
-    std::string loader_exec_path;
-    std::vector<std::string> loader_args_template;
+    std::unordered_map<std::string, LoaderConfig> loaders;
     std::string execution_cwd;
+    
+    // Helper methods
+    bool has_loaders() const { return !loaders.empty(); }
     
     // Package structure
     std::vector<std::string> resources;

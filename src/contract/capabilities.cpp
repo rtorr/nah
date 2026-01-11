@@ -1,5 +1,7 @@
 #include "nah/capabilities.hpp"
 
+#include <optional>
+
 namespace nah {
 
 // ============================================================================

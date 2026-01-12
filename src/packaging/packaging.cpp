@@ -1550,6 +1550,20 @@ AppInstallResult install_nap_package(const std::string& package_path,
     std::string record_dir = join_path(abs_nah_root, "registry/installs");
     create_directories(record_dir);
     
+    // Remove any existing registry entries for this app@version (prevents duplicates)
+    std::string record_prefix = manifest.id + "-" + manifest.version + "-";
+    if (is_directory(record_dir)) {
+        for (const auto& entry : list_directory(record_dir)) {
+            if (entry.find(record_prefix) == 0 && 
+                entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
+                std::string old_record = join_path(record_dir, entry);
+                std::error_code ec;
+                fs::remove(old_record, ec);
+                // Ignore errors - best effort cleanup
+            }
+        }
+    }
+    
     // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     std::string record_path = join_path(record_dir, 
         manifest.id + "-" + manifest.version + "-" + instance_id + ".json");
@@ -1787,6 +1801,20 @@ static AppInstallResult install_app_from_bytes(
     // Write App Install Record
     std::string record_dir = join_path(abs_nah_root, "registry/installs");
     create_directories(record_dir);
+    
+    // Remove any existing registry entries for this app@version (prevents duplicates)
+    std::string record_prefix = manifest.id + "-" + manifest.version + "-";
+    if (is_directory(record_dir)) {
+        for (const auto& entry : list_directory(record_dir)) {
+            if (entry.find(record_prefix) == 0 && 
+                entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
+                std::string old_record = join_path(record_dir, entry);
+                std::error_code ec;
+                fs::remove(old_record, ec);
+                // Ignore errors - best effort cleanup
+            }
+        }
+    }
     
     std::string record_path = join_path(record_dir, 
         manifest.id + "-" + manifest.version + "-" + instance_id + ".json");

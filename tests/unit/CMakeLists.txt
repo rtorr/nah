@@ -19,10 +19,11 @@ add_executable(nah-tests
     override_tests.cpp
     profile_resolution_tests.cpp
     compose_contract_tests.cpp
+    compose_tests.cpp
     materializer_tests.cpp
     c_api_tests.cpp
 )
 
-target_link_libraries(nah-tests PRIVATE doctest::doctest nahhost nah_contract nah_platform nah_config nah_manifest nah_packaging nah_materializer)
+target_link_libraries(nah-tests PRIVATE doctest::doctest nahhost nah_contract nah_platform nah_config nah_manifest nah_packaging nah_materializer nah_compose)
 target_include_directories(nah-tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
 add_test(NAME nah-tests COMMAND nah-tests)

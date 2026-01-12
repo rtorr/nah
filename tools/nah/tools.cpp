@@ -10,6 +10,7 @@
 #include "nah/packaging.hpp"
 #include "nah/nak_selection.hpp"
 #include "nah/materializer.hpp"
+#include "nah/compose.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -1091,6 +1092,161 @@ int cmd_nak_pack(const GlobalOptions& opts, const std::string& dir, const std::s
         std::cout << j.dump(2) << std::endl;
     } else if (!opts.quiet) {
         std::cout << "Created: " << output << " (" << result.archive_data.size() << " bytes)" << std::endl;
+    }
+    
+    return 0;
+}
+
+int cmd_nak_compose(const GlobalOptions& opts,
+                    const std::vector<std::string>& inputs,
+                    const std::string& output_id,
+                    const std::string& output_version,
+                    const std::string& output_path,
+                    const std::string& on_conflict,
+                    const std::string& loader_from,
+                    const std::vector<std::string>& add_env,
+                    const std::vector<std::string>& add_lib_dirs,
+                    const std::string& emit_manifest,
+                    const std::string& from_manifest,
+                    bool dry_run) {
+    
+    nah::ComposeResult result;
+    
+    // Check if composing from manifest
+    if (!from_manifest.empty()) {
+        // Compose from manifest file
+        result = nah::compose_from_manifest(from_manifest, output_path, opts.root, opts.verbose);
+    } else {
+        // Regular composition - validate required options
+        if (inputs.empty()) {
+            print_error("at least one input NAK is required (or use --from-manifest)", opts.json);
+            return 1;
+        }
+        if (output_id.empty()) {
+            print_error("--id is required", opts.json);
+            return 1;
+        }
+        if (output_version.empty()) {
+            print_error("--version is required", opts.json);
+            return 1;
+        }
+        
+        // Build compose options
+        nah::ComposeOptions options;
+        options.nah_root = opts.root;
+        options.output_id = output_id;
+        options.output_version = output_version;
+        options.output_path = output_path;
+        options.on_conflict = nah::parse_conflict_strategy(on_conflict);
+        options.dry_run = dry_run;
+        options.verbose = opts.verbose;
+        
+        if (!loader_from.empty()) {
+            options.loader_from = loader_from;
+        }
+        
+        // Parse add_env KEY=VALUE pairs
+        for (const auto& env : add_env) {
+            size_t eq_pos = env.find('=');
+            if (eq_pos != std::string::npos) {
+                options.add_env.emplace_back(env.substr(0, eq_pos), env.substr(eq_pos + 1));
+            } else {
+                print_error("invalid --add-env format (expected KEY=VALUE): " + env, opts.json);
+                return 1;
+            }
+        }
+        
+        options.add_lib_dirs = add_lib_dirs;
+        
+        if (!emit_manifest.empty()) {
+            options.emit_manifest = emit_manifest;
+        }
+        
+        // Run composition
+        result = nah::compose_naks(inputs, options);
+    }
+    
+    if (!result.ok) {
+        print_error(result.error, opts.json);
+        return 1;
+    }
+    
+    if (opts.json) {
+        nlohmann::json j;
+        j["success"] = true;
+        j["nak_id"] = result.nak_id;
+        j["nak_version"] = result.nak_version;
+        j["output"] = result.output_path;
+        j["dry_run"] = dry_run;
+        
+        if (dry_run) {
+            j["files_count"] = result.files_to_copy.size();
+            j["lib_dirs"] = result.lib_dirs;
+            j["conflicts_count"] = result.conflicts.size();
+            
+            if (!result.conflicts.empty()) {
+                nlohmann::json conflicts_json = nlohmann::json::array();
+                for (const auto& c : result.conflicts) {
+                    nlohmann::json cj;
+                    cj["path"] = c.relative_path;
+                    cj["source_a"] = c.source_a;
+                    cj["source_b"] = c.source_b;
+                    conflicts_json.push_back(cj);
+                }
+                j["conflicts"] = conflicts_json;
+            }
+            
+            if (result.selected_loader_from.has_value()) {
+                j["loader_from"] = result.selected_loader_from.value();
+            }
+        }
+        
+        nlohmann::json sources_json = nlohmann::json::array();
+        for (const auto& src : result.sources) {
+            nlohmann::json sj;
+            sj["id"] = src.id;
+            sj["version"] = src.version;
+            sources_json.push_back(sj);
+        }
+        j["sources"] = sources_json;
+        
+        std::cout << j.dump(2) << std::endl;
+    } else if (!opts.quiet) {
+        if (dry_run) {
+            std::cout << "Dry run - would compose:" << std::endl;
+            std::cout << "  Output: " << result.nak_id << "@" << result.nak_version << std::endl;
+            std::cout << "  Sources:" << std::endl;
+            for (const auto& src : result.sources) {
+                std::cout << "    - " << src.id << "@" << src.version << std::endl;
+            }
+            std::cout << "  Files: " << result.files_to_copy.size() << std::endl;
+            std::cout << "  Lib dirs: " << result.lib_dirs.size() << std::endl;
+            
+            if (!result.conflicts.empty()) {
+                std::cout << "  Conflicts: " << result.conflicts.size() << std::endl;
+                for (const auto& c : result.conflicts) {
+                    std::cout << "    - " << c.relative_path << " (" 
+                              << c.source_a << " vs " << c.source_b << ")" << std::endl;
+                }
+            }
+            
+            if (result.selected_loader_from.has_value()) {
+                std::cout << "  Loader from: " << result.selected_loader_from.value() << std::endl;
+            }
+        } else {
+            std::cout << "Composed: " << result.nak_id << "@" << result.nak_version << std::endl;
+            std::cout << "  Output: " << result.output_path << std::endl;
+            if (opts.verbose) {
+                std::cout << "  Sources:" << std::endl;
+                for (const auto& src : result.sources) {
+                    std::cout << "    - " << src.id << "@" << src.version << std::endl;
+                }
+                std::cout << "  Lib dirs:" << std::endl;
+                for (const auto& lib : result.lib_dirs) {
+                    std::cout << "    - " << lib << std::endl;
+                }
+            }
+        }
     }
     
     return 0;
@@ -3895,6 +4051,60 @@ int main(int argc, char** argv) {
         if (pack_as_app) force_type = PackageType::App;
         if (pack_as_nak) force_type = PackageType::Nak;
         std::exit(cmd_pack(opts, pack_dir, pack_output, force_type));
+    });
+    
+    // ========== compose - Compose multiple NAKs into one ==========
+    std::vector<std::string> compose_inputs;
+    std::string compose_id, compose_version, compose_output;
+    std::string compose_on_conflict = "error";
+    std::string compose_loader_from;
+    std::vector<std::string> compose_add_env;
+    std::vector<std::string> compose_add_lib_dirs;
+    std::string compose_emit_manifest;
+    std::string compose_from_manifest;
+    bool compose_dry_run = false;
+    auto compose_cmd = app.add_subcommand("compose", "Compose multiple NAKs into a single NAK");
+    compose_cmd->add_option("inputs", compose_inputs, 
+        "NAK references to compose (id@version, file path, or directory)")
+        ->expected(-1);  // Unlimited inputs (not required if using --from-manifest)
+    compose_cmd->add_option("--id", compose_id, 
+        "Output NAK ID");
+    compose_cmd->add_option("--version", compose_version, 
+        "Output NAK version");
+    compose_cmd->add_option("-o,--output", compose_output, 
+        "Output path (.nak file or directory)")->required();
+    compose_cmd->add_option("--on-conflict", compose_on_conflict, 
+        "File conflict strategy: error (default), first, last")
+        ->check(CLI::IsMember({"error", "first", "last"}));
+    compose_cmd->add_option("--loader-from", compose_loader_from, 
+        "NAK ID to use loaders from (required if multiple NAKs have loaders)");
+    compose_cmd->add_option("--add-env", compose_add_env, 
+        "Add/override environment variable (KEY=VALUE)")
+        ->expected(-1);
+    compose_cmd->add_option("--add-lib-dir", compose_add_lib_dirs, 
+        "Append to lib_dirs")
+        ->expected(-1);
+    compose_cmd->add_option("--emit-manifest", compose_emit_manifest, 
+        "Write composition manifest to file for reproducible builds");
+    compose_cmd->add_option("--from-manifest", compose_from_manifest, 
+        "Reproduce composition from a manifest file (ignores inputs, --id, --version)");
+    compose_cmd->add_flag("--dry-run", compose_dry_run, 
+        "Show composition plan without creating output");
+    compose_cmd->footer("\nExamples:\n"
+                        "  nah compose devbox.node@20 devbox.python@3.11 \\\n"
+                        "    --id my-env --version 1.0.0 -o my-env.nak\n\n"
+                        "  nah compose ./node.nak ./python.nak \\\n"
+                        "    --id dev-sdk --version 1.0.0 -o dev-sdk.nak\n\n"
+                        "  nah compose nak-a nak-b --loader-from=nak-a \\\n"
+                        "    --id combined --version 1.0.0 -o combined.nak\n\n"
+                        "  nah compose --from-manifest compose.json -o out.nak\n\n"
+                        "  nah compose ... --dry-run  # Preview composition");
+    add_common_flags(compose_cmd);
+    compose_cmd->callback([&]() {
+        std::exit(cmd_nak_compose(opts, compose_inputs, compose_id, compose_version,
+                                   compose_output, compose_on_conflict, compose_loader_from,
+                                   compose_add_env, compose_add_lib_dirs, compose_emit_manifest,
+                                   compose_from_manifest, compose_dry_run));
     });
     
     // ========== status - Unified diagnostic command ==========

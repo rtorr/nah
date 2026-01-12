@@ -1285,6 +1285,9 @@ AppInstallResult install_nap_package(const std::string& package_path,
                                       const AppInstallOptions& options) {
     AppInstallResult result;
     
+    // Canonicalize nah_root to absolute path (SPEC requires absolute paths in records)
+    std::string abs_nah_root = to_portable_path(fs::weakly_canonical(options.nah_root).string());
+    
     // Read package
     std::ifstream file(package_path, std::ios::binary);
     if (!file) {
@@ -1298,7 +1301,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
     file.close();
     
     // Create staging directory
-    std::string staging_dir = join_path(options.nah_root, ".staging-" + generate_uuid());
+    std::string staging_dir = join_path(abs_nah_root, ".staging-" + generate_uuid());
     
     // Extract to staging
     auto extract_result = extract_archive_safe(archive_data, staging_dir);
@@ -1362,22 +1365,22 @@ AppInstallResult install_nap_package(const std::string& package_path,
         // 3. default.json
         std::string profile_path;
         if (!options.profile_name.empty()) {
-            profile_path = join_path(options.nah_root, 
+            profile_path = join_path(abs_nah_root, 
                 "host/profiles/" + options.profile_name + ".json");
         } else {
             // Check for profile.current symlink
-            std::string current_link = join_path(options.nah_root, "host/profile.current");
+            std::string current_link = join_path(abs_nah_root, "host/profile.current");
             std::error_code ec;
             if (std::filesystem::is_symlink(current_link, ec)) {
                 auto target = std::filesystem::read_symlink(current_link, ec);
                 if (!ec) {
                     // Resolve relative to host/ directory
-                    profile_path = join_path(options.nah_root, "host/" + to_portable_path(target.string()));
+                    profile_path = join_path(abs_nah_root, "host/" + to_portable_path(target.string()));
                 }
             }
             // Fall back to default.json
             if (profile_path.empty() || !path_exists(profile_path)) {
-                profile_path = join_path(options.nah_root, "host/profiles/default.json");
+                profile_path = join_path(abs_nah_root, "host/profiles/default.json");
             }
         }
         
@@ -1385,7 +1388,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
         if (!pf) {
             remove_directory(staging_dir);
             result.error = "failed to load host profile: " + profile_path + 
-                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + options.nah_root;
+                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + abs_nah_root;
             return result;
         }
         std::string profile_json((std::istreambuf_iterator<char>(pf)),
@@ -1398,7 +1401,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
         }
         
         // Scan NAK registry
-        auto registry = scan_nak_registry(options.nah_root);
+        auto registry = scan_nak_registry(abs_nah_root);
         
         // Perform NAK selection
         WarningCollector warnings;
@@ -1453,7 +1456,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
     
     // Determine final install location
     std::string app_dir_name = manifest.id + "-" + manifest.version;
-    std::string final_dir = join_path(options.nah_root, "apps/" + app_dir_name);
+    std::string final_dir = join_path(abs_nah_root, "apps/" + app_dir_name);
     
     // Check for existing installation
     if (path_exists(final_dir)) {
@@ -1467,7 +1470,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
     }
     
     // Create apps directory if needed
-    create_directories(join_path(options.nah_root, "apps"));
+    create_directories(join_path(abs_nah_root, "apps"));
     
     // Atomic rename from staging to final location
     std::error_code ec;
@@ -1485,7 +1488,7 @@ AppInstallResult install_nap_package(const std::string& package_path,
     std::string instance_id = generate_uuid();
     
     // Write App Install Record
-    std::string record_dir = join_path(options.nah_root, "registry/installs");
+    std::string record_dir = join_path(abs_nah_root, "registry/installs");
     create_directories(record_dir);
     
     // SPEC: registry/installs/<id>-<version>-<instance_id>.json
@@ -1551,8 +1554,11 @@ static AppInstallResult install_app_from_bytes(
     AppInstallResult result;
     result.package_hash = package_hash;
     
+    // Canonicalize nah_root to absolute path (SPEC requires absolute paths in records)
+    std::string abs_nah_root = to_portable_path(fs::weakly_canonical(options.nah_root).string());
+    
     // Create staging directory
-    std::string staging_dir = join_path(options.nah_root, ".staging-" + generate_uuid());
+    std::string staging_dir = join_path(abs_nah_root, ".staging-" + generate_uuid());
     
     // Extract to staging
     auto extract_result = extract_archive_safe(archive_data, staging_dir);
@@ -1613,19 +1619,19 @@ static AppInstallResult install_app_from_bytes(
     if (!manifest.nak_id.empty()) {
         std::string profile_path;
         if (!options.profile_name.empty()) {
-            profile_path = join_path(options.nah_root, 
+            profile_path = join_path(abs_nah_root, 
                 "host/profiles/" + options.profile_name + ".json");
         } else {
-            std::string current_link = join_path(options.nah_root, "host/profile.current");
+            std::string current_link = join_path(abs_nah_root, "host/profile.current");
             std::error_code ec;
             if (std::filesystem::is_symlink(current_link, ec)) {
                 auto target = std::filesystem::read_symlink(current_link, ec);
                 if (!ec) {
-                    profile_path = join_path(options.nah_root, "host/" + to_portable_path(target.string()));
+                    profile_path = join_path(abs_nah_root, "host/" + to_portable_path(target.string()));
                 }
             }
             if (profile_path.empty() || !path_exists(profile_path)) {
-                profile_path = join_path(options.nah_root, "host/profiles/default.json");
+                profile_path = join_path(abs_nah_root, "host/profiles/default.json");
             }
         }
         
@@ -1633,7 +1639,7 @@ static AppInstallResult install_app_from_bytes(
         if (!pf) {
             remove_directory(staging_dir);
             result.error = "failed to load host profile: " + profile_path +
-                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + options.nah_root;
+                           "\n\nThe NAH root may not be initialized. Run:\n  nah init root " + abs_nah_root;
             return result;
         }
         std::string profile_json((std::istreambuf_iterator<char>(pf)),
@@ -1645,7 +1651,7 @@ static AppInstallResult install_app_from_bytes(
             return result;
         }
         
-        auto registry = scan_nak_registry(options.nah_root);
+        auto registry = scan_nak_registry(abs_nah_root);
         WarningCollector warnings;
         auto selection = select_nak_for_install(
             manifest, profile_result.profile, registry, warnings);
@@ -1692,7 +1698,7 @@ static AppInstallResult install_app_from_bytes(
     
     // Determine final install location
     std::string app_dir_name = manifest.id + "-" + manifest.version;
-    std::string final_dir = join_path(options.nah_root, "apps/" + app_dir_name);
+    std::string final_dir = join_path(abs_nah_root, "apps/" + app_dir_name);
     
     // Check for existing installation
     if (path_exists(final_dir)) {
@@ -1705,7 +1711,7 @@ static AppInstallResult install_app_from_bytes(
     }
     
     // Create apps directory if needed
-    create_directories(join_path(options.nah_root, "apps"));
+    create_directories(join_path(abs_nah_root, "apps"));
     
     // Atomic rename from staging to final location
     std::error_code ec;
@@ -1720,7 +1726,7 @@ static AppInstallResult install_app_from_bytes(
     std::string instance_id = generate_uuid();
     
     // Write App Install Record
-    std::string record_dir = join_path(options.nah_root, "registry/installs");
+    std::string record_dir = join_path(abs_nah_root, "registry/installs");
     create_directories(record_dir);
     
     std::string record_path = join_path(record_dir, 
@@ -1907,6 +1913,9 @@ static NakInstallResult install_nak_from_bytes(
     
     NakInstallResult result;
     
+    // Canonicalize nah_root to absolute path (SPEC requires absolute paths in records)
+    std::string abs_nah_root = to_portable_path(fs::weakly_canonical(options.nah_root).string());
+    
     // Inspect pack
     auto pack_info = inspect_nak_pack(archive_data);
     if (!pack_info.ok) {
@@ -1919,7 +1928,7 @@ static NakInstallResult install_nak_from_bytes(
     result.package_hash = package_hash;
     
     // Create staging directory
-    std::string staging_dir = join_path(options.nah_root, ".staging-" + generate_uuid());
+    std::string staging_dir = join_path(abs_nah_root, ".staging-" + generate_uuid());
     
     // Extract to staging
     auto extract_result = extract_archive_safe(archive_data, staging_dir);
@@ -1929,7 +1938,7 @@ static NakInstallResult install_nak_from_bytes(
     }
     
     // Determine final install location
-    std::string final_dir = join_path(options.nah_root, 
+    std::string final_dir = join_path(abs_nah_root, 
         "naks/" + pack_info.nak_id + "/" + pack_info.nak_version);
     
     // Check for existing installation
@@ -1973,7 +1982,7 @@ static NakInstallResult install_nak_from_bytes(
     }
     
     // Write NAK Install Record
-    std::string record_dir = join_path(options.nah_root, "registry/naks");
+    std::string record_dir = join_path(abs_nah_root, "registry/naks");
     create_directories(record_dir);
     
     std::string record_path = join_path(record_dir,

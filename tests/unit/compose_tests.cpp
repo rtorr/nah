@@ -12,6 +12,20 @@ namespace fs = std::filesystem;
 
 using namespace nah;
 
+// Helper to escape backslashes in paths for JSON (needed for Windows)
+static std::string escape_path_for_json(const std::string& path) {
+    std::string result;
+    result.reserve(path.size() * 2);
+    for (char c : path) {
+        if (c == '\\') {
+            result += "\\\\";
+        } else {
+            result += c;
+        }
+    }
+    return result;
+}
+
 // ============================================================================
 // Test Helper: Temporary Directory with NAK structures
 // ============================================================================
@@ -772,6 +786,10 @@ TEST_CASE("compose_from_manifest: reproduces composition from manifest") {
     std::string nak_a = tmp.create_nak_dir("nak-a", "1.0.0");
     std::string nak_b = tmp.create_nak_dir("nak-b", "2.0.0");
     
+    // Escape paths for JSON (Windows has backslashes)
+    std::string nak_a_escaped = escape_path_for_json(nak_a);
+    std::string nak_b_escaped = escape_path_for_json(nak_b);
+    
     // Create manifest file
     fs::path manifest_path = fs::path(tmp.base_path()) / "manifest.json";
     std::ofstream manifest_file(manifest_path);
@@ -779,8 +797,8 @@ TEST_CASE("compose_from_manifest: reproduces composition from manifest") {
         "$schema": "nah.nak.compose.v1",
         "output": {"id": "reproduced", "version": "1.0.0"},
         "inputs": [
-            {"id": "nak-a", "version": "1.0.0", "source_type": "directory", "source": ")" << nak_a << R"("},
-            {"id": "nak-b", "version": "2.0.0", "source_type": "directory", "source": ")" << nak_b << R"("}
+            {"id": "nak-a", "version": "1.0.0", "source_type": "directory", "source": ")" << nak_a_escaped << R"("},
+            {"id": "nak-b", "version": "2.0.0", "source_type": "directory", "source": ")" << nak_b_escaped << R"("}
         ],
         "options": {"on_conflict": "error"}
     })";
@@ -805,6 +823,9 @@ TEST_CASE("compose_from_manifest: verifies SHA-256 for .nak files") {
     
     std::string correct_hash = compute_file_sha256(nak_file);
     
+    // Escape path for JSON (Windows has backslashes)
+    std::string nak_file_escaped = escape_path_for_json(nak_file);
+    
     // Create manifest with correct hash
     fs::path manifest_path = fs::path(tmp.base_path()) / "manifest.json";
     std::ofstream manifest_file(manifest_path);
@@ -813,7 +834,7 @@ TEST_CASE("compose_from_manifest: verifies SHA-256 for .nak files") {
         "output": {"id": "verified", "version": "1.0.0"},
         "inputs": [
             {"id": "hash-test", "version": "1.0.0", "source_type": "file", 
-             "source": ")" << nak_file << R"(", "sha256": ")" << correct_hash << R"("}
+             "source": ")" << nak_file_escaped << R"(", "sha256": ")" << correct_hash << R"("}
         ]
     })";
     manifest_file.close();
@@ -832,6 +853,9 @@ TEST_CASE("compose_from_manifest: fails on SHA-256 mismatch") {
     std::string nak_file = tmp.create_nak_file(nak_dir);
     REQUIRE(!nak_file.empty());
     
+    // Escape path for JSON (Windows has backslashes)
+    std::string nak_file_escaped = escape_path_for_json(nak_file);
+    
     // Create manifest with WRONG hash
     fs::path manifest_path = fs::path(tmp.base_path()) / "manifest.json";
     std::ofstream manifest_file(manifest_path);
@@ -840,7 +864,7 @@ TEST_CASE("compose_from_manifest: fails on SHA-256 mismatch") {
         "output": {"id": "should-fail", "version": "1.0.0"},
         "inputs": [
             {"id": "hash-test", "version": "1.0.0", "source_type": "file", 
-             "source": ")" << nak_file << R"(", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+             "source": ")" << nak_file_escaped << R"(", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
         ]
     })";
     manifest_file.close();

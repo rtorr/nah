@@ -297,9 +297,7 @@ NAH_CAPI char* nah_host_active_profile(NahHost* host) {
             // No active profile is not an error, just return NULL
             return nullptr;
         }
-        // Profile doesn't have a name field, return "active" as placeholder
-        // TODO: Track profile name in HostProfile or resolve from symlink
-        return duplicate_string("default");
+        return duplicate_string(host->impl->getActiveProfileName());
     } catch (const std::exception& e) {
         set_error(NAH_ERROR_INTERNAL, e.what());
         return nullptr;

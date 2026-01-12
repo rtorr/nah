@@ -1,6 +1,6 @@
 {
   "name": "@rtorr/nah",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Native Application Host - Manage native applications, NAKs, profiles, and launch contracts",
   "keywords": [
     "native",

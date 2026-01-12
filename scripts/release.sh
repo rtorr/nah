@@ -14,8 +14,9 @@
 #   2. Updates VERSION file
 #   3. Updates CMakeLists.txt
 #   4. Updates conanfile.py
-#   5. Commits changes
-#   6. Creates and pushes a git tag
+#   5. Reconfigures CMake (so local builds use new version)
+#   6. Commits changes
+#   7. Creates and pushes a git tag
 #
 # The tag push triggers GitHub Actions to build and publish the release.
 
@@ -88,6 +89,17 @@ update_npm() {
         sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$version\"/" "$npm_file"
         rm -f "$npm_file.bak"
         info "Updated package.json"
+    fi
+}
+
+# Reconfigure CMake to pick up new version
+reconfigure_cmake() {
+    local build_dir="$ROOT_DIR/build"
+    if [[ -d "$build_dir" ]]; then
+        info "Reconfiguring CMake build..."
+        cmake -B "$build_dir" -S "$ROOT_DIR" >/dev/null 2>&1 && \
+            info "CMake reconfigured (local builds will use new version)" || \
+            warn "CMake reconfigure failed (run 'cmake -B build' manually)"
     fi
 }
 
@@ -164,6 +176,7 @@ main() {
     update_cmake "$new_version"
     update_conan "$new_version"
     update_npm "$new_version"
+    reconfigure_cmake
 
     # Commit
     info "Committing version bump..."

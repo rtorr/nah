@@ -28,3 +28,4 @@ examples/*/*/build/
 examples/compile_commands.json
 CMakeUserPresets.json
 notes1.md
+tmp/

@@ -22,7 +22,11 @@
 #include <vector>
 #include <optional>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <direct.h>
+#include <process.h>
+#define chdir _chdir
+#else
 #include <unistd.h>
 #endif
 
@@ -3332,7 +3336,36 @@ int cmd_run(const GlobalOptions& opts, const std::string& target,
         argv_strings.push_back(arg);
     }
     
-    // Convert to C-style arrays for execve
+    // Change to the working directory
+    if (!c.execution.cwd.empty()) {
+        if (chdir(c.execution.cwd.c_str()) != 0) {
+            print_error("Failed to change to directory: " + c.execution.cwd, opts.json);
+            return 1;
+        }
+    }
+    
+#ifdef _WIN32
+    // Windows: Set environment variables and use _spawnv
+    for (const auto& env_str : env_strings) {
+        _putenv(env_str.c_str());
+    }
+    
+    // Convert to C-style array for _spawnv
+    std::vector<const char*> argv_ptrs;
+    for (const auto& s : argv_strings) {
+        argv_ptrs.push_back(s.c_str());
+    }
+    argv_ptrs.push_back(nullptr);
+    
+    // Use _spawnv with _P_WAIT to run and wait for completion
+    intptr_t result = _spawnv(_P_WAIT, c.execution.binary.c_str(), argv_ptrs.data());
+    if (result == -1) {
+        print_error("Failed to execute: " + c.execution.binary + " - " + std::strerror(errno), opts.json);
+        return 1;
+    }
+    return static_cast<int>(result);
+#else
+    // POSIX: Use execve to replace the current process
     std::vector<char*> argv_ptrs;
     for (auto& s : argv_strings) {
         argv_ptrs.push_back(&s[0]);
@@ -3345,20 +3378,12 @@ int cmd_run(const GlobalOptions& opts, const std::string& target,
     }
     env_ptrs.push_back(nullptr);
     
-    // Change to the working directory
-    if (!c.execution.cwd.empty()) {
-        if (chdir(c.execution.cwd.c_str()) != 0) {
-            print_error("Failed to change to directory: " + c.execution.cwd, opts.json);
-            return 1;
-        }
-    }
-    
-    // Execute the binary (replaces this process)
     execve(c.execution.binary.c_str(), argv_ptrs.data(), env_ptrs.data());
     
     // If we get here, execve failed
     print_error("Failed to execute: " + c.execution.binary + " - " + std::strerror(errno), opts.json);
     return 1;
+#endif
 }
 
 // ============================================================================

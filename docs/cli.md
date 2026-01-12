@@ -8,16 +8,16 @@ nah [OPTIONS] <COMMAND>
 
 ## Global Options
 
-| Option | Description |
-|--------|-------------|
-| `--root <PATH>` | NAH root directory (auto-detected from cwd or `$NAH_ROOT`) |
-| `--profile <NAME>` | Use specific profile instead of active |
-| `--json` | Output in JSON format |
-| `--trace` | Include provenance information |
-| `-v, --verbose` | Show detailed progress |
-| `-q, --quiet` | Suppress non-essential output |
-| `-V, --version` | Show version |
-| `-h, --help` | Show help |
+| Option             | Description                                                |
+| ------------------ | ---------------------------------------------------------- |
+| `--root <PATH>`    | NAH root directory (auto-detected from cwd or `$NAH_ROOT`) |
+| `--profile <NAME>` | Use specific profile instead of active                     |
+| `--json`           | Output in JSON format                                      |
+| `--trace`          | Include provenance information                             |
+| `-v, --verbose`    | Show detailed progress                                     |
+| `-q, --quiet`      | Suppress non-essential output                              |
+| `-V, --version`    | Show version                                               |
+| `-h, --help`       | Show help                                                  |
 
 ## Root Auto-Detection
 
@@ -25,8 +25,13 @@ NAH automatically finds the root directory:
 
 1. `--root` flag (explicit)
 2. `NAH_ROOT` environment variable
-3. Walk up from cwd looking for `.nah/` or `host/` directory
-4. Default: `/nah`
+3. Walk up from cwd looking for valid NAH root (`.nah/` marker or `host/` + `apps/` directories)
+4. Default: `~/.nah` (auto-created on first install)
+
+When using the default root, install messages show `(default)` suffix:
+```
+Installed: com.example.app@1.0.0 → ~/.nah (default)
+```
 
 ## Commands
 
@@ -42,11 +47,13 @@ nah install https://example.com/app.nap  # Install from URL
 ```
 
 **Options:**
+
 - `-f, --force` - Overwrite existing installation
 - `--app` - Force install as app (skip auto-detection)
 - `--nak` - Force install as NAK (skip auto-detection)
 
 **Detection logic:**
+
 - `.nap` extension → app
 - `.nak` extension → NAK
 - Directory with `META/nak.json` → NAK
@@ -64,6 +71,7 @@ nah uninstall com.example.sdk@1.0.0
 ```
 
 **Options:**
+
 - `--app` - Force uninstall as app
 - `--nak` - Force uninstall as NAK
 
@@ -83,6 +91,7 @@ nah list --json        # Machine-readable output
 ```
 
 **Output format:**
+
 ```
 Apps:
   com.example.app@1.0.0      → com.example.sdk@2.1.0
@@ -106,9 +115,16 @@ nah pack ./mysdk/ --nak                # Force NAK type
 ```
 
 **Options:**
+
 - `-o, --output <FILE>` - Output file path (auto-generated if omitted)
 - `--app` - Force pack as app
 - `--nak` - Force pack as NAK
+
+**Manifest handling:**
+
+- If `manifest.nah` exists, uses it directly
+- If `manifest.json` exists, automatically converts to binary format
+- If neither exists, looks for embedded manifest in binaries
 
 ---
 
@@ -137,11 +153,13 @@ nah status com.example.app --diff staging
 ```
 
 **Options:**
+
 - `--fix` - Attempt to fix issues (also formats JSON files)
 - `--diff <PROFILE>` - Compare contract with another profile
 - `--overrides <FILE>` - Apply overrides file to contract
 
 **Output for apps:**
+
 ```
 Application: com.example.app v1.0.0
 NAK: com.example.sdk v2.1.0
@@ -172,6 +190,7 @@ nah init root ./my-nah    # Create NAH root directory
 ```
 
 **Types:**
+
 - `app` - Application project with manifest template
 - `nak` - NAK (SDK) project with META/nak.json
 - `root` - NAH root with host/profiles and registry directories
@@ -198,9 +217,11 @@ nah manifest generate manifest.json -o manifest.nah
 ```
 
 **Options:**
+
 - `-o, --output <FILE>` - Output file path (required)
 
 **Input format:**
+
 ```json
 {
   "app": {
@@ -217,18 +238,18 @@ nah manifest generate manifest.json -o manifest.nah
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `NAH_ROOT` | Default NAH root directory |
-| `NAH_PROFILE` | Override active profile |
+| Variable      | Description                |
+| ------------- | -------------------------- |
+| `NAH_ROOT`    | Default NAH root directory |
+| `NAH_PROFILE` | Override active profile    |
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success, no warnings |
-| 1 | Error (critical failure or warning upgraded to error) |
-| 2 | Success with warnings |
+| Code | Meaning                                               |
+| ---- | ----------------------------------------------------- |
+| 0    | Success, no warnings                                  |
+| 1    | Error (critical failure or warning upgraded to error) |
+| 2    | Success with warnings                                 |
 
 ## Examples
 

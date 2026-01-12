@@ -191,24 +191,27 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
                                                            "install_record.app", "version"));
     }
     
-    // Load pinned NAK
+    // Load pinned NAK (skip for standalone apps with no nak_id)
     bool nak_resolved = false;
     NakInstallRecord nak_record;
+    NakPin pin;  // Declared outside for use in contract.nak.record_ref
     
-    NakPin pin;
-    pin.id = install_record.nak.id;
-    pin.version = install_record.nak.version;
-    pin.record_ref = install_record.nak.record_ref;
-    
-    if (pin.record_ref.empty() || pin.id.empty() || pin.version.empty()) {
-        warnings.emit(Warning::nak_pin_invalid, {{"reason", "pin_fields_missing"}});
-    } else {
-        auto load_result = load_pinned_nak(pin, manifest, profile, inputs.nah_root, warnings);
-        if (load_result.loaded) {
-            nak_resolved = true;
-            nak_record = load_result.nak_record;
+    if (!manifest.nak_id.empty()) {
+        pin.id = install_record.nak.id;
+        pin.version = install_record.nak.version;
+        pin.record_ref = install_record.nak.record_ref;
+        
+        if (pin.record_ref.empty() || pin.id.empty() || pin.version.empty()) {
+            warnings.emit(Warning::nak_pin_invalid, {{"reason", "pin_fields_missing"}});
+        } else {
+            auto load_result = load_pinned_nak(pin, manifest, profile, inputs.nah_root, warnings);
+            if (load_result.loaded) {
+                nak_resolved = true;
+                nak_record = load_result.nak_record;
+            }
         }
     }
+    // Standalone apps (empty nak_id) skip NAK resolution entirely
     
     // =========================================================================
     // Step 2: Derive app fields (per SPEC L932-L948)
@@ -258,7 +261,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     // Step 3: Validate NAK requirement (per SPEC L950-L956)
     // =========================================================================
     
-    if (!manifest.nak_version_req.has_value()) {
+    // Only validate nak_version_req if nak_id is specified (non-standalone apps)
+    if (!manifest.nak_id.empty() && !manifest.nak_version_req.has_value()) {
         warnings.emit(Warning::invalid_manifest, {{"reason", "nak_version_req_invalid"}});
     }
     

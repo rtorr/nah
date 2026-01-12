@@ -2,8 +2,15 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 namespace nah {
+
+// Helper to get system environment variable
+static std::string get_system_env(const std::string& name) {
+    const char* val = std::getenv(name.c_str());
+    return val ? std::string(val) : std::string();
+}
 
 ExpansionResult expand_placeholders(
     const std::string& input,
@@ -34,15 +41,21 @@ ExpansionResult expand_placeholders(
             return false;
         }
         
-        // Look up the variable
+        // Look up the variable in NAH environment first
         auto it = environment.find(name);
         if (it != environment.end()) {
             output += it->second;
         } else {
-            // Missing variable - emit warning and substitute empty
-            warnings.emit(Warning::missing_env_var,
-                          nah::warnings::missing_env_var(name, source_path));
-            // Substitute empty string
+            // Fall back to system environment
+            std::string sys_val = get_system_env(name);
+            if (!sys_val.empty()) {
+                output += sys_val;
+            } else {
+                // Missing in both NAH and system - emit warning and substitute empty
+                warnings.emit(Warning::missing_env_var,
+                              nah::warnings::missing_env_var(name, source_path));
+                // Substitute empty string
+            }
         }
         return true;
     };
@@ -187,8 +200,14 @@ std::string expand_placeholders(
         if (it != environment.end()) {
             output += it->second;
         } else {
-            missing_vars.push_back(name);
-            output += original;  // Keep original placeholder
+            // Fall back to system environment
+            std::string sys_val = get_system_env(name);
+            if (!sys_val.empty()) {
+                output += sys_val;
+            } else {
+                missing_vars.push_back(name);
+                output += original;  // Keep original placeholder
+            }
         }
     };
     

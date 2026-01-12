@@ -3417,12 +3417,12 @@ int cmd_run(const GlobalOptions& opts, const std::string& target,
     argv_ptrs.push_back(nullptr);
     
     // Use _spawnv with _P_WAIT to run and wait for completion
-    intptr_t result = _spawnv(_P_WAIT, c.execution.binary.c_str(), argv_ptrs.data());
-    if (result == -1) {
+    intptr_t spawn_result = _spawnv(_P_WAIT, c.execution.binary.c_str(), argv_ptrs.data());
+    if (spawn_result == -1) {
         print_error("Failed to execute: " + c.execution.binary + " - " + std::strerror(errno), opts.json);
         return 1;
     }
-    return static_cast<int>(result);
+    return static_cast<int>(spawn_result);
 #else
     // POSIX: Use execve to replace the current process
     std::vector<char*> argv_ptrs;

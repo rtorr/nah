@@ -1408,15 +1408,7 @@ int cmd_uninstall(const GlobalOptions& opts, const std::string& target,
         }
         return 0;
     } else {
-        // Uninstall NAK
-        if (version.empty()) {
-            ErrorContext ctx;
-            ctx.hint = "NAK uninstall requires a version.\n"
-                       "       Example: nah uninstall com.example.sdk@1.0.0";
-            print_error("Version required for NAK uninstall: " + target, opts.json, ctx);
-            return 1;
-        }
-        
+        // Uninstall NAK (version is optional if only one version installed)
         auto result = nah::uninstall_nak(opts.root, id, version);
         if (!result.ok) {
             print_error(result.error, opts.json);
@@ -3489,6 +3481,7 @@ int cmd_inspect(const GlobalOptions& opts, const std::string& package_path, bool
             j["entrypoint"] = info.entrypoint;
             j["nak_id"] = info.nak_id;
             j["nak_version_req"] = info.nak_version_req;
+            j["nak_loader"] = info.nak_loader;
             j["manifest_source"] = info.manifest_source;
             
             if (show_files) {
@@ -3532,6 +3525,9 @@ int cmd_inspect(const GlobalOptions& opts, const std::string& package_path, bool
                     std::cout << " (" << info.nak_version_req << ")";
                 }
                 std::cout << std::endl;
+                if (!info.nak_loader.empty()) {
+                    std::cout << "  NAK Loader: " << info.nak_loader << std::endl;
+                }
             }
             std::cout << "  Source: " << info.manifest_source << std::endl;
             

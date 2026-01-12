@@ -198,6 +198,23 @@ NakInstallRecordParseResult parse_nak_install_record_full(const std::string& jso
                 }
             }
         }
+        // Also support singular "loader" format (converts to "default" loader)
+        else if (j.contains("loader") && j["loader"].is_object()) {
+            const auto& loader_json = j["loader"];
+            LoaderConfig config;
+            if (auto exec = get_path_string(loader_json, "exec_path")) {
+                if (is_empty_after_trim(*exec)) {
+                    result.error = "loader.exec_path empty";
+                    return result;
+                }
+                config.exec_path = *exec;
+            } else {
+                result.error = "loader.exec_path missing";
+                return result;
+            }
+            config.args_template = get_string_array(loader_json, "args_template");
+            result.record.loaders["default"] = config;
+        }
         
         // "execution" section (OPTIONAL per SPEC L402)
         if (j.contains("execution") && j["execution"].is_object()) {
@@ -337,6 +354,23 @@ NakPackManifestParseResult parse_nak_pack_manifest(const std::string& json_str) 
                     result.manifest.loaders[name] = config;
                 }
             }
+        }
+        // Also support singular "loader" format (converts to "default" loader)
+        else if (j.contains("loader") && j["loader"].is_object()) {
+            const auto& loader_json = j["loader"];
+            LoaderConfig config;
+            if (auto exec = get_string(loader_json, "exec_path")) {
+                if (is_empty_after_trim(*exec)) {
+                    result.error = "loader.exec_path empty";
+                    return result;
+                }
+                config.exec_path = *exec;
+            } else {
+                result.error = "loader.exec_path missing";
+                return result;
+            }
+            config.args_template = get_string_array(loader_json, "args_template");
+            result.manifest.loaders["default"] = config;
         }
         
         // "execution" section

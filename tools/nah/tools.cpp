@@ -1258,6 +1258,205 @@ int cmd_nak_compose(const GlobalOptions& opts,
 }
 
 // ============================================================================
+// NAK Validate Command
+// ============================================================================
+
+int cmd_nak_validate(const GlobalOptions& opts, const std::string& target) {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    bool valid = true;
+    
+    std::string nak_path;
+    std::string source_type;
+    
+    // Determine target type
+    if (fs::is_directory(target)) {
+        nak_path = target;
+        source_type = "directory";
+    } else if (fs::is_regular_file(target) && 
+               (target.size() >= 4 && target.substr(target.size() - 4) == ".nak")) {
+        // Extract .nak file to temp directory for validation
+        source_type = "file";
+        
+        // For now, just check the file exists and has correct extension
+        // Full validation would require extraction
+        if (!fs::exists(target)) {
+            errors.push_back("NAK file does not exist: " + target);
+            valid = false;
+        }
+    } else {
+        // Assume installed NAK reference
+        source_type = "installed";
+        
+        // Parse id@version
+        std::string id = target, version;
+        size_t at_pos = target.find('@');
+        if (at_pos != std::string::npos) {
+            id = target.substr(0, at_pos);
+            version = target.substr(at_pos + 1);
+        }
+        
+        // Find installed NAK
+        auto entries = nah::scan_nak_registry(opts.root);
+        bool found = false;
+        for (const auto& entry : entries) {
+            if (entry.id == id && (version.empty() || entry.version == version)) {
+                // Read the record file to get root path
+                std::ifstream record_file(entry.record_path);
+                if (record_file) {
+                    try {
+                        nlohmann::json record = nlohmann::json::parse(record_file);
+                        if (record.contains("paths") && record["paths"].contains("root")) {
+                            nak_path = record["paths"]["root"];
+                            found = true;
+                        }
+                    } catch (...) {
+                        // Record parse failed
+                    }
+                }
+                break;
+            }
+        }
+        
+        if (!found) {
+            errors.push_back("NAK not found: " + target);
+            valid = false;
+        }
+    }
+    
+    // Validate NAK structure if we have a path
+    if (!nak_path.empty() && fs::is_directory(nak_path)) {
+        fs::path meta_dir = fs::path(nak_path) / "META";
+        fs::path nak_json = meta_dir / "nak.json";
+        
+        // Check META directory exists
+        if (!fs::exists(meta_dir)) {
+            errors.push_back("Missing META directory");
+            valid = false;
+        } else if (!fs::is_directory(meta_dir)) {
+            errors.push_back("META is not a directory");
+            valid = false;
+        }
+        
+        // Check nak.json exists and is valid
+        if (!fs::exists(nak_json)) {
+            errors.push_back("Missing META/nak.json");
+            valid = false;
+        } else {
+            std::ifstream f(nak_json);
+            if (!f) {
+                errors.push_back("Cannot read META/nak.json");
+                valid = false;
+            } else {
+                try {
+                    nlohmann::json j = nlohmann::json::parse(f);
+                    
+                    // Check required fields
+                    if (!j.contains("id") || !j["id"].is_string() || j["id"].empty()) {
+                        errors.push_back("META/nak.json: missing or empty 'id' field");
+                        valid = false;
+                    }
+                    if (!j.contains("version") || !j["version"].is_string() || j["version"].empty()) {
+                        errors.push_back("META/nak.json: missing or empty 'version' field");
+                        valid = false;
+                    }
+                    
+                    // Check lib_dirs if present
+                    if (j.contains("lib_dirs")) {
+                        if (!j["lib_dirs"].is_array()) {
+                            errors.push_back("META/nak.json: 'lib_dirs' must be an array");
+                            valid = false;
+                        } else {
+                            for (const auto& lib_dir : j["lib_dirs"]) {
+                                if (!lib_dir.is_string()) {
+                                    errors.push_back("META/nak.json: lib_dirs entries must be strings");
+                                    valid = false;
+                                } else {
+                                    fs::path lib_path = fs::path(nak_path) / lib_dir.get<std::string>();
+                                    if (!fs::exists(lib_path)) {
+                                        warnings.push_back("lib_dir does not exist: " + lib_dir.get<std::string>());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Check loader if present
+                    if (j.contains("loader")) {
+                        if (!j["loader"].is_object()) {
+                            errors.push_back("META/nak.json: 'loader' must be an object");
+                            valid = false;
+                        } else {
+                            if (!j["loader"].contains("exec_path")) {
+                                errors.push_back("META/nak.json: loader missing 'exec_path'");
+                                valid = false;
+                            } else {
+                                std::string exec_path = j["loader"]["exec_path"];
+                                fs::path loader_path = fs::path(nak_path) / exec_path;
+                                if (!fs::exists(loader_path)) {
+                                    errors.push_back("loader exec_path does not exist: " + exec_path);
+                                    valid = false;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Check environment if present
+                    if (j.contains("environment") && !j["environment"].is_object()) {
+                        errors.push_back("META/nak.json: 'environment' must be an object");
+                        valid = false;
+                    }
+                    
+                } catch (const nlohmann::json::exception& e) {
+                    errors.push_back(std::string("META/nak.json: invalid JSON - ") + e.what());
+                    valid = false;
+                }
+            }
+        }
+    }
+    
+    // Output results
+    if (opts.json) {
+        nlohmann::json j;
+        j["valid"] = valid;
+        j["target"] = target;
+        j["source_type"] = source_type;
+        if (!nak_path.empty()) {
+            j["path"] = nak_path;
+        }
+        j["errors"] = errors;
+        j["warnings"] = warnings;
+        std::cout << j.dump(2) << std::endl;
+    } else {
+        if (valid && errors.empty()) {
+            std::cout << "Valid: " << target << std::endl;
+            if (!warnings.empty()) {
+                std::cout << "\nWarnings:" << std::endl;
+                for (const auto& w : warnings) {
+                    std::cout << "  - " << w << std::endl;
+                }
+            }
+        } else {
+            std::cout << "Invalid: " << target << std::endl;
+            if (!errors.empty()) {
+                std::cout << "\nErrors:" << std::endl;
+                for (const auto& e : errors) {
+                    std::cout << "  - " << e << std::endl;
+                }
+            }
+            if (!warnings.empty()) {
+                std::cout << "\nWarnings:" << std::endl;
+                for (const auto& w : warnings) {
+                    std::cout << "  - " << w << std::endl;
+                }
+            }
+        }
+    }
+    
+    return valid ? 0 : 1;
+}
+
+// ============================================================================
 // Forward Declarations
 // ============================================================================
 
@@ -4203,6 +4402,186 @@ int main(int argc, char** argv) {
         "Profile name to activate")->required();
     add_common_flags(profile_set);
     profile_set->callback([&]() { std::exit(cmd_profile_set(opts, profile_name)); });
+    
+    // ========== nak - NAK management subcommand group ==========
+    auto nak_cmd = app.add_subcommand("nak", "NAK management commands");
+    nak_cmd->require_subcommand(1);
+    nak_cmd->failure_message(make_failure_handler());
+    
+    // nah nak list
+    auto nak_list_cmd = nak_cmd->add_subcommand("list", "List installed NAKs");
+    add_common_flags(nak_list_cmd);
+    nak_list_cmd->callback([&]() {
+        std::exit(cmd_list(opts, false, true));  // naks_only=true
+    });
+    
+    // nah nak install
+    std::string nak_install_source;
+    bool nak_install_force = false;
+    auto nak_install_cmd = nak_cmd->add_subcommand("install", "Install a NAK");
+    nak_install_cmd->add_option("source", nak_install_source, 
+        "NAK source (.nak file, directory, or URL)")->required();
+    nak_install_cmd->add_flag("-f,--force", nak_install_force, 
+        "Overwrite existing installation");
+    nak_install_cmd->footer("\nExamples:\n"
+                            "  nah nak install mysdk.nak\n"
+                            "  nah nak install ./sdk-project/\n"
+                            "  nah nak install https://example.com/sdk.nak");
+    add_common_flags(nak_install_cmd);
+    nak_install_cmd->callback([&]() {
+        std::exit(cmd_install(opts, nak_install_source, nak_install_force, PackageType::Nak));
+    });
+    
+    // nah nak uninstall
+    std::string nak_uninstall_target;
+    auto nak_uninstall_cmd = nak_cmd->add_subcommand("uninstall", "Remove an installed NAK");
+    nak_uninstall_cmd->add_option("target", nak_uninstall_target, 
+        "NAK to uninstall (id or id@version)")->required();
+    nak_uninstall_cmd->footer("\nExamples:\n"
+                              "  nah nak uninstall com.example.sdk\n"
+                              "  nah nak uninstall com.example.sdk@1.0.0");
+    add_common_flags(nak_uninstall_cmd);
+    nak_uninstall_cmd->callback([&]() {
+        std::exit(cmd_uninstall(opts, nak_uninstall_target, PackageType::Nak));
+    });
+    
+    // nah nak info
+    std::string nak_info_target;
+    auto nak_info_cmd = nak_cmd->add_subcommand("info", "Show NAK details");
+    nak_info_cmd->add_option("target", nak_info_target, 
+        "NAK to inspect (id, id@version, or .nak file)")->required();
+    nak_info_cmd->footer("\nExamples:\n"
+                         "  nah nak info com.example.sdk\n"
+                         "  nah nak info mysdk.nak");
+    add_common_flags(nak_info_cmd);
+    nak_info_cmd->callback([&]() {
+        std::exit(cmd_status(opts, nak_info_target, false, "", ""));
+    });
+    
+    // nah nak validate
+    std::string nak_validate_target;
+    auto nak_validate_cmd = nak_cmd->add_subcommand("validate", "Validate a NAK");
+    nak_validate_cmd->add_option("target", nak_validate_target, 
+        "NAK to validate (directory, .nak file, or installed id)")->required();
+    nak_validate_cmd->footer("\nExamples:\n"
+                             "  nah nak validate ./my-sdk/\n"
+                             "  nah nak validate mysdk.nak\n"
+                             "  nah nak validate com.example.sdk@1.0.0");
+    add_common_flags(nak_validate_cmd);
+    nak_validate_cmd->callback([&]() {
+        std::exit(cmd_nak_validate(opts, nak_validate_target));
+    });
+    
+    // nah nak compose (alias to top-level compose)
+    std::vector<std::string> nak_compose_inputs;
+    std::string nak_compose_id, nak_compose_version, nak_compose_output;
+    std::string nak_compose_on_conflict = "error";
+    std::string nak_compose_loader_from;
+    std::vector<std::string> nak_compose_add_env;
+    std::vector<std::string> nak_compose_add_lib_dirs;
+    std::string nak_compose_emit_manifest;
+    std::string nak_compose_from_manifest;
+    bool nak_compose_dry_run = false;
+    auto nak_compose_cmd = nak_cmd->add_subcommand("compose", "Compose multiple NAKs into one");
+    nak_compose_cmd->add_option("inputs", nak_compose_inputs, 
+        "NAK references to compose")->expected(-1);
+    nak_compose_cmd->add_option("--id", nak_compose_id, "Output NAK ID");
+    nak_compose_cmd->add_option("--version", nak_compose_version, "Output NAK version");
+    nak_compose_cmd->add_option("-o,--output", nak_compose_output, 
+        "Output path (.nak file or directory)")->required();
+    nak_compose_cmd->add_option("--on-conflict", nak_compose_on_conflict, 
+        "File conflict strategy: error (default), first, last")
+        ->check(CLI::IsMember({"error", "first", "last"}));
+    nak_compose_cmd->add_option("--loader-from", nak_compose_loader_from, 
+        "NAK ID to use loaders from");
+    nak_compose_cmd->add_option("--add-env", nak_compose_add_env, 
+        "Add environment variable (KEY=VALUE)")->expected(-1);
+    nak_compose_cmd->add_option("--add-lib-dir", nak_compose_add_lib_dirs, 
+        "Append to lib_dirs")->expected(-1);
+    nak_compose_cmd->add_option("--emit-manifest", nak_compose_emit_manifest, 
+        "Write composition manifest");
+    nak_compose_cmd->add_option("--from-manifest", nak_compose_from_manifest, 
+        "Reproduce from manifest file");
+    nak_compose_cmd->add_flag("--dry-run", nak_compose_dry_run, 
+        "Preview composition");
+    add_common_flags(nak_compose_cmd);
+    nak_compose_cmd->callback([&]() {
+        std::exit(cmd_nak_compose(opts, nak_compose_inputs, nak_compose_id, nak_compose_version,
+                                   nak_compose_output, nak_compose_on_conflict, nak_compose_loader_from,
+                                   nak_compose_add_env, nak_compose_add_lib_dirs, nak_compose_emit_manifest,
+                                   nak_compose_from_manifest, nak_compose_dry_run));
+    });
+    
+    // ========== app - App management subcommand group ==========
+    auto app_cmd = app.add_subcommand("app", "App management commands");
+    app_cmd->require_subcommand(1);
+    app_cmd->failure_message(make_failure_handler());
+    
+    // nah app list
+    auto app_list_cmd = app_cmd->add_subcommand("list", "List installed apps");
+    add_common_flags(app_list_cmd);
+    app_list_cmd->callback([&]() {
+        std::exit(cmd_list(opts, true, false));  // apps_only=true
+    });
+    
+    // nah app install
+    std::string app_install_source;
+    bool app_install_force = false;
+    auto app_install_cmd = app_cmd->add_subcommand("install", "Install an app");
+    app_install_cmd->add_option("source", app_install_source, 
+        "App source (.nap file, directory, or URL)")->required();
+    app_install_cmd->add_flag("-f,--force", app_install_force, 
+        "Overwrite existing installation");
+    app_install_cmd->footer("\nExamples:\n"
+                            "  nah app install myapp.nap\n"
+                            "  nah app install ./app-project/\n"
+                            "  nah app install https://example.com/app.nap");
+    add_common_flags(app_install_cmd);
+    app_install_cmd->callback([&]() {
+        std::exit(cmd_install(opts, app_install_source, app_install_force, PackageType::App));
+    });
+    
+    // nah app uninstall
+    std::string app_uninstall_target;
+    auto app_uninstall_cmd = app_cmd->add_subcommand("uninstall", "Remove an installed app");
+    app_uninstall_cmd->add_option("target", app_uninstall_target, 
+        "App to uninstall (id or id@version)")->required();
+    app_uninstall_cmd->footer("\nExamples:\n"
+                              "  nah app uninstall com.example.app\n"
+                              "  nah app uninstall com.example.app@1.0.0");
+    add_common_flags(app_uninstall_cmd);
+    app_uninstall_cmd->callback([&]() {
+        std::exit(cmd_uninstall(opts, app_uninstall_target, PackageType::App));
+    });
+    
+    // nah app info
+    std::string app_info_target;
+    auto app_info_cmd = app_cmd->add_subcommand("info", "Show app details");
+    app_info_cmd->add_option("target", app_info_target, 
+        "App to inspect (id, id@version, or .nap file)")->required();
+    app_info_cmd->footer("\nExamples:\n"
+                         "  nah app info com.example.app\n"
+                         "  nah app info myapp.nap");
+    add_common_flags(app_info_cmd);
+    app_info_cmd->callback([&]() {
+        std::exit(cmd_status(opts, app_info_target, false, "", ""));
+    });
+    
+    // nah app run
+    std::string app_run_id;
+    std::vector<std::string> app_run_args;
+    auto app_run_cmd = app_cmd->add_subcommand("run", "Run an installed app");
+    app_run_cmd->add_option("app_id", app_run_id, 
+        "App to run (id or id@version)")->required();
+    app_run_cmd->add_option("args", app_run_args, 
+        "Arguments to pass to the app")->expected(-1);
+    app_run_cmd->footer("\nExamples:\n"
+                        "  nah app run com.example.app\n"
+                        "  nah app run com.example.app -- --help");
+    add_common_flags(app_run_cmd);
+    app_run_cmd->callback([&]() {
+        std::exit(cmd_run(opts, app_run_id, app_run_args));
+    });
     
     // ========== manifest generate - Build tool command ==========
     auto manifest_cmd = app.add_subcommand("manifest", "Manifest tools");

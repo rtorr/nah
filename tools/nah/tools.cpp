@@ -187,9 +187,10 @@ std::string auto_detect_nah_root(const std::string& explicit_root) {
     fs::path current = fs::current_path(ec);
     if (!ec) {
         while (!current.empty() && current != current.root_path()) {
-            // Check for .nah marker directory (explicit marker)
-            if (fs::exists(current / ".nah", ec)) {
-                return current.string();
+            // Check for .nah directory that IS a NAH root (e.g., ~/.nah)
+            fs::path dot_nah = current / ".nah";
+            if (fs::exists(dot_nah, ec) && looks_like_nah_root(dot_nah)) {
+                return dot_nah.string();
             }
             // Check for valid NAH root structure (host/ + apps/ or naks/)
             if (looks_like_nah_root(current)) {

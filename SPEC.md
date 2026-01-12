@@ -3225,18 +3225,17 @@ A build-time materializer MUST accept a NAK pack reference in one of the followi
 
 - `file:<absolute_or_relative_path_to_pack.nak>`
 - `https://...` (HTTPS URL)
+- `https://...#sha256=<hex>` (HTTPS URL with integrity verification)
 
-For any HTTPS reference, the reference MUST include an explicit SHA-256 digest:
+For HTTPS references, SHA-256 verification is OPTIONAL but RECOMMENDED for production deployments. When a `#sha256=<hex>` fragment is present, the materializer MUST verify the downloaded bytes match the digest and fail if they do not match.
 
-- `https://...#sha256=<hex>`
-
-If the digest is missing, materialization MUST fail.
+The fragment MUST use the format `#sha256=<64_lowercase_hex_chars>`.
 
 ### Integrity and Provenance (Normative)
 
 For any materialized NAK pack, the materializer MUST:
 
-- Verify the artifact bytes match the provided `sha256` digest.
+- If a `sha256` digest was provided, verify the artifact bytes match and fail on mismatch.
 - Record provenance into the written NAK Install Record:
   - `provenance.source` = the original reference string
   - `provenance.package_hash` = `sha256:<hex>`
@@ -3249,7 +3248,7 @@ Signature verification MAY exist as build tooling, but NAH contract composition 
 
 Given a NAK pack artifact reference that contains `META/nak.json` (see “NAK Pack Format (Normative)”), the materializer MUST:
 
-1. Download (if HTTPS) and verify digest, or read from disk (if file).
+1. Download (if HTTPS) or read from disk (if file). If a SHA-256 digest was provided, verify and fail on mismatch.
 2. Extract the pack into:
    - `<TARGET_ROOT>/naks/<nak.id>/<nak.version>/`
 3. Write a NAK Install Record at:

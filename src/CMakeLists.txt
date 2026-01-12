@@ -36,6 +36,7 @@ set(NAH_ALL_SOURCES
     contract/nak_selection.cpp
     packaging/packaging.cpp
     materializer/materializer.cpp
+    compose/compose.cpp
     nahhost/nahhost.cpp
     api/nah_c_api.cpp
 )
@@ -125,6 +126,21 @@ target_link_libraries(nah_materializer PUBLIC
     nah_platform
     OpenSSL::Crypto
     CURL::libcurl
+)
+
+add_library(nah_compose STATIC
+    compose/compose.cpp
+)
+target_include_directories(nah_compose PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_link_libraries(nah_compose PUBLIC
+    nah_packaging
+    nah_platform
+    nah_contract
+    nah_materializer
+    nlohmann_json::nlohmann_json
 )
 
 add_library(nahhost STATIC

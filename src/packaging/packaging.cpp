@@ -57,6 +57,8 @@ static constexpr char TAR_REGTYPE = '0';
 static constexpr char TAR_DIRTYPE = '5';
 static constexpr char TAR_SYMTYPE = '2';
 static constexpr char TAR_LNKTYPE = '1';
+static constexpr char TAR_PAXTYPE = 'x';      // PAX extended header for next entry
+static constexpr char TAR_PAXGTYPE = 'g';     // PAX global extended header
 
 // ============================================================================
 // Tar Header Structure
@@ -645,6 +647,14 @@ UnpackResult extract_archive_safe(const std::vector<uint8_t>& archive_data,
         char typeflag = header->typeflag;
         if (typeflag == '\0') typeflag = TAR_REGTYPE;  // Old tar compatibility
         
+        // Skip PAX extended headers (used by BSD tar for extended attributes)
+        if (typeflag == TAR_PAXTYPE || typeflag == TAR_PAXGTYPE) {
+            uint64_t pax_size = parse_octal(header->size, TAR_SIZE_SIZE);
+            uint64_t blocks = (pax_size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
+            offset += TAR_BLOCK_SIZE + blocks * TAR_BLOCK_SIZE;
+            continue;
+        }
+        
         if (typeflag == TAR_SYMTYPE || typeflag == TAR_LNKTYPE) {
             remove_directory(staging_dir);
             result.error = "symlinks and hardlinks not permitted: " + path;
@@ -797,6 +807,13 @@ NapPackageInfo inspect_nap_package(const std::vector<uint8_t>& archive_data) {
         uint64_t size = parse_octal(header->size, TAR_SIZE_SIZE);
         
         offset += TAR_BLOCK_SIZE;
+        
+        // Skip PAX extended headers
+        if (typeflag == TAR_PAXTYPE || typeflag == TAR_PAXGTYPE) {
+            size_t blocks = (size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
+            offset += blocks * TAR_BLOCK_SIZE;
+            continue;
+        }
         
         if (typeflag == TAR_REGTYPE && size > 0) {
             // Categorize entry
@@ -1112,6 +1129,13 @@ NakPackInfo inspect_nak_pack(const std::vector<uint8_t>& archive_data) {
         uint64_t size = parse_octal(header->size, TAR_SIZE_SIZE);
         
         offset += TAR_BLOCK_SIZE;
+        
+        // Skip PAX extended headers
+        if (typeflag == TAR_PAXTYPE || typeflag == TAR_PAXGTYPE) {
+            size_t blocks = (size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
+            offset += blocks * TAR_BLOCK_SIZE;
+            continue;
+        }
         
         if (typeflag == TAR_REGTYPE && size > 0) {
             // Categorize entry

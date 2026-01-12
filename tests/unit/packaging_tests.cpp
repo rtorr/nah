@@ -691,9 +691,20 @@ TEST_CASE("NAK install writes absolute paths even with relative nah_root") {
     std::string record_content((std::istreambuf_iterator<char>(record_file)),
                                 std::istreambuf_iterator<char>());
     
-    // Verify paths are absolute (start with /)
-    CHECK(record_content.find("\"root\": \"/") != std::string::npos);
-    CHECK(record_content.find("\"resource_root\": \"/") != std::string::npos);
+    // Helper to extract path value from JSON
+    auto extract_path = [](const std::string& content, const std::string& key) -> std::string {
+        std::string search = "\"" + key + "\": \"";
+        auto pos = content.find(search);
+        if (pos == std::string::npos) return "";
+        pos += search.length();
+        auto end = content.find("\"", pos);
+        if (end == std::string::npos) return "";
+        return content.substr(pos, end - pos);
+    };
+    
+    // Verify paths are absolute using the platform helper
+    CHECK(is_absolute_path(extract_path(record_content, "root")));
+    CHECK(is_absolute_path(extract_path(record_content, "resource_root")));
     
     // Verify no relative paths like "./" in paths section
     // (environment values can have templates, but paths must be absolute)

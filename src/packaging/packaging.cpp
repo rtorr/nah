@@ -915,25 +915,8 @@ PackResult pack_nap(const std::string& dir_path) {
         }
     }
     
-    // If no manifest.nah, check for binaries with embedded manifests
-    if (manifest_data.empty()) {
-        std::string bin_dir = join_path(dir_path, "bin");
-        if (is_directory(bin_dir)) {
-            for (const auto& entry : list_directory(bin_dir)) {
-                std::string bin_path = join_path(bin_dir, entry);
-                if (is_regular_file(bin_path)) {
-                    auto section_result = read_manifest_section(bin_path);
-                    if (section_result.ok && !section_result.data.empty()) {
-                        manifest_data = section_result.data;
-                        manifest_source = "embedded:" + entry;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    
-    // If still no manifest, check for manifest.json and generate binary manifest
+    // If no manifest.nah, check for manifest.json first (before scanning binaries)
+    // This prevents accidentally picking up manifests from runtime binaries (e.g., node, python)
     if (manifest_data.empty()) {
         std::string json_manifest_path = join_path(dir_path, "manifest.json");
         if (path_exists(json_manifest_path)) {
@@ -959,6 +942,24 @@ PackResult pack_nap(const std::string& dir_path) {
                 } else {
                     result.error = "invalid manifest.json: " + gen_result.error;
                     return result;
+                }
+            }
+        }
+    }
+    
+    // If still no manifest, check for binaries with embedded manifests (native apps)
+    if (manifest_data.empty()) {
+        std::string bin_dir = join_path(dir_path, "bin");
+        if (is_directory(bin_dir)) {
+            for (const auto& entry : list_directory(bin_dir)) {
+                std::string bin_path = join_path(bin_dir, entry);
+                if (is_regular_file(bin_path)) {
+                    auto section_result = read_manifest_section(bin_path);
+                    if (section_result.ok && !section_result.data.empty()) {
+                        manifest_data = section_result.data;
+                        manifest_source = "embedded:" + entry;
+                        break;
+                    }
                 }
             }
         }

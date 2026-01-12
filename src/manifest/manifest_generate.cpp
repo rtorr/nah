@@ -64,8 +64,8 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
             if (known_app_fields.find(key) == known_app_fields.end()) {
                 std::string warning = "unknown field 'app." + key + "' (ignored)";
                 // Provide hints for common mistakes
-                if (key == "dependencies" || key == "deps" || key == "naks") {
-                    warning += "\n  hint: To declare a NAK dependency, use 'nak_id' and 'nak_version_req':\n"
+                if (key == "dependencies" || key == "deps" || key == "naks" || key == "requirements") {
+                    warning += "\n  hint: To declare a NAK dependency, use 'nak_id' and 'nak_version_req' directly:\n"
                                "    \"nak_id\": \"com.example.sdk\",\n"
                                "    \"nak_version_req\": \">=1.0.0\"";
                 } else if (key == "name") {

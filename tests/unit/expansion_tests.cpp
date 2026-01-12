@@ -163,3 +163,51 @@ TEST_CASE("expand_vector expands all strings in vector") {
     CHECK(result[2] == "/app/share");
     CHECK(missing.empty());
 }
+
+TEST_CASE("expand_placeholders supports $NAME shell syntax") {
+    std::unordered_map<std::string, std::string> env;
+    env["NAH_APP_ROOT"] = "/nah/apps/myapp";
+    env["PATH"] = "/usr/bin";
+    
+    std::vector<std::string> missing;
+    auto result = expand_placeholders("$NAH_APP_ROOT/bin:$PATH", env, missing);
+    
+    CHECK(result == "/nah/apps/myapp/bin:/usr/bin");
+    CHECK(missing.empty());
+}
+
+TEST_CASE("expand_placeholders supports ${NAME} shell syntax") {
+    std::unordered_map<std::string, std::string> env;
+    env["NAH_APP_ROOT"] = "/nah/apps/myapp";
+    env["SUFFIX"] = ".cache";
+    
+    std::vector<std::string> missing;
+    auto result = expand_placeholders("${NAH_APP_ROOT}/.devbox${SUFFIX}", env, missing);
+    
+    CHECK(result == "/nah/apps/myapp/.devbox.cache");
+    CHECK(missing.empty());
+}
+
+TEST_CASE("expand_placeholders handles mixed syntax") {
+    std::unordered_map<std::string, std::string> env;
+    env["A"] = "alpha";
+    env["B"] = "beta";
+    env["C"] = "gamma";
+    
+    std::vector<std::string> missing;
+    auto result = expand_placeholders("{A}:$B:${C}", env, missing);
+    
+    CHECK(result == "alpha:beta:gamma");
+    CHECK(missing.empty());
+}
+
+TEST_CASE("expand_placeholders handles lone $ literally") {
+    std::unordered_map<std::string, std::string> env;
+    env["FOO"] = "bar";
+    
+    std::vector<std::string> missing;
+    auto result = expand_placeholders("cost: $5 and {FOO}", env, missing);
+    
+    CHECK(result == "cost: $5 and bar");
+    CHECK(missing.empty());
+}

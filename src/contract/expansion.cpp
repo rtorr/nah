@@ -1,6 +1,7 @@
 #include "nah/expansion.hpp"
 
 #include <algorithm>
+#include <cctype>
 
 namespace nah {
 
@@ -19,9 +20,67 @@ ExpansionResult expand_placeholders(
     size_t placeholder_count = 0;
     size_t i = 0;
     
+    // Helper lambda to look up and substitute a variable
+    auto substitute_var = [&](const std::string& name) -> bool {
+        placeholder_count++;
+        
+        // Check placeholder limit
+        if (placeholder_count > MAX_PLACEHOLDERS) {
+            warnings.emit(Warning::invalid_configuration,
+                          nah::warnings::invalid_configuration("placeholder_limit", source_path));
+            result.ok = false;
+            result.value = "";
+            result.error_reason = "placeholder_limit";
+            return false;
+        }
+        
+        // Look up the variable
+        auto it = environment.find(name);
+        if (it != environment.end()) {
+            output += it->second;
+        } else {
+            // Missing variable - emit warning and substitute empty
+            warnings.emit(Warning::missing_env_var,
+                          nah::warnings::missing_env_var(name, source_path));
+            // Substitute empty string
+        }
+        return true;
+    };
+    
     while (i < input.size()) {
-        if (input[i] == '{') {
-            // Find closing brace
+        // Check for ${NAME} or $NAME (shell-style) or {NAME} (NAH-style)
+        if (input[i] == '$') {
+            if (i + 1 < input.size() && input[i + 1] == '{') {
+                // ${NAME} syntax
+                size_t close = input.find('}', i + 2);
+                if (close != std::string::npos) {
+                    std::string name = input.substr(i + 2, close - i - 2);
+                    if (!name.empty() && name.find('{') == std::string::npos) {
+                        if (!substitute_var(name)) return result;
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                // Invalid syntax, copy literally
+                output += input[i];
+                ++i;
+            } else if (i + 1 < input.size() && (std::isalpha(input[i + 1]) || input[i + 1] == '_')) {
+                // $NAME syntax - read identifier (alphanumeric + underscore)
+                size_t start = i + 1;
+                size_t end = start;
+                while (end < input.size() && (std::isalnum(input[end]) || input[end] == '_')) {
+                    ++end;
+                }
+                std::string name = input.substr(start, end - start);
+                if (!substitute_var(name)) return result;
+                i = end;
+            } else {
+                // Lone $ or $followed by non-identifier, copy literally
+                output += input[i];
+                ++i;
+            }
+        } else if (input[i] == '{') {
+            // {NAME} syntax (original NAH-style)
             size_t close = input.find('}', i + 1);
             if (close != std::string::npos) {
                 std::string name = input.substr(i + 1, close - i - 1);
@@ -34,29 +93,7 @@ ExpansionResult expand_placeholders(
                     continue;
                 }
                 
-                placeholder_count++;
-                
-                // Check placeholder limit
-                if (placeholder_count > MAX_PLACEHOLDERS) {
-                    warnings.emit(Warning::invalid_configuration,
-                                  nah::warnings::invalid_configuration("placeholder_limit", source_path));
-                    result.ok = false;
-                    result.value = "";
-                    result.error_reason = "placeholder_limit";
-                    return result;
-                }
-                
-                // Look up the variable
-                auto it = environment.find(name);
-                if (it != environment.end()) {
-                    output += it->second;
-                } else {
-                    // Missing variable - emit warning and substitute empty
-                    warnings.emit(Warning::missing_env_var,
-                                  nah::warnings::missing_env_var(name, source_path));
-                    // Substitute empty string
-                }
-                
+                if (!substitute_var(name)) return result;
                 i = close + 1;
             } else {
                 // No closing brace, copy literally
@@ -144,10 +181,53 @@ std::string expand_placeholders(
     std::string output;
     output.reserve(input.size());
     
+    // Helper lambda to look up and substitute a variable
+    auto substitute_var = [&](const std::string& name, const std::string& original) {
+        auto it = environment.find(name);
+        if (it != environment.end()) {
+            output += it->second;
+        } else {
+            missing_vars.push_back(name);
+            output += original;  // Keep original placeholder
+        }
+    };
+    
     size_t i = 0;
     
     while (i < input.size()) {
-        if (input[i] == '{') {
+        // Check for ${NAME} or $NAME (shell-style) or {NAME} (NAH-style)
+        if (input[i] == '$') {
+            if (i + 1 < input.size() && input[i + 1] == '{') {
+                // ${NAME} syntax
+                size_t close = input.find('}', i + 2);
+                if (close != std::string::npos) {
+                    std::string name = input.substr(i + 2, close - i - 2);
+                    if (!name.empty() && name.find('{') == std::string::npos) {
+                        substitute_var(name, input.substr(i, close - i + 1));
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                // Invalid syntax, copy literally
+                output += input[i];
+                ++i;
+            } else if (i + 1 < input.size() && (std::isalpha(input[i + 1]) || input[i + 1] == '_')) {
+                // $NAME syntax - read identifier (alphanumeric + underscore)
+                size_t start = i + 1;
+                size_t end = start;
+                while (end < input.size() && (std::isalnum(input[end]) || input[end] == '_')) {
+                    ++end;
+                }
+                std::string name = input.substr(start, end - start);
+                substitute_var(name, input.substr(i, end - i));
+                i = end;
+            } else {
+                // Lone $ or $followed by non-identifier, copy literally
+                output += input[i];
+                ++i;
+            }
+        } else if (input[i] == '{') {
+            // {NAME} syntax (original NAH-style)
             size_t close = input.find('}', i + 1);
             if (close != std::string::npos) {
                 std::string name = input.substr(i + 1, close - i - 1);
@@ -158,14 +238,7 @@ std::string expand_placeholders(
                     continue;
                 }
                 
-                auto it = environment.find(name);
-                if (it != environment.end()) {
-                    output += it->second;
-                } else {
-                    missing_vars.push_back(name);
-                    output += input.substr(i, close - i + 1);  // Keep placeholder
-                }
-                
+                substitute_var(name, input.substr(i, close - i + 1));
                 i = close + 1;
             } else {
                 output += input[i];

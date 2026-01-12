@@ -936,17 +936,25 @@ int cmd_nak_install(const GlobalOptions& opts, const std::string& source, bool f
     if (opts.json) {
         nlohmann::json j;
         j["success"] = true;
+        j["already_installed"] = result.already_installed;
         j["nak_id"] = result.nak_id;
         j["nak_version"] = result.nak_version;
         j["install_root"] = result.install_root;
-        j["record_path"] = result.record_path;
+        if (!result.record_path.empty()) {
+            j["record_path"] = result.record_path;
+        }
         if (!result.package_hash.empty()) {
             j["package_hash"] = result.package_hash;
         }
         std::cout << j.dump(2) << std::endl;
     } else if (!opts.quiet) {
-        std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
-                  << " → " << format_root_path(opts.root) << std::endl;
+        if (result.already_installed) {
+            std::cout << "Already installed: " << result.nak_id << "@" << result.nak_version 
+                      << " (skipping)" << std::endl;
+        } else {
+            std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
+                      << " → " << format_root_path(opts.root) << std::endl;
+        }
         if (opts.verbose) {
             std::cout << "  Path: " << result.install_root << std::endl;
             if (!result.package_hash.empty()) {
@@ -1534,10 +1542,13 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                 nlohmann::json j;
                 j["success"] = true;
                 j["type"] = "app";
+                j["already_installed"] = result.already_installed;
                 j["app_id"] = result.app_id;
                 j["app_version"] = result.app_version;
                 j["install_root"] = result.install_root;
-                j["instance_id"] = result.instance_id;
+                if (!result.instance_id.empty()) {
+                    j["instance_id"] = result.instance_id;
+                }
                 if (!result.nak_id.empty()) {
                     j["nak_id"] = result.nak_id;
                     j["nak_version"] = result.nak_version;
@@ -1547,14 +1558,21 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                 }
                 std::cout << j.dump(2) << std::endl;
             } else if (!opts.quiet) {
-                std::cout << "Installed: " << result.app_id << "@" << result.app_version 
-                          << " → " << format_root_path(opts.root) << std::endl;
-                if (result.nak_id.empty()) {
-                    std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+                if (result.already_installed) {
+                    std::cout << "Already installed: " << result.app_id << "@" << result.app_version 
+                              << " (skipping)" << std::endl;
+                } else {
+                    std::cout << "Installed: " << result.app_id << "@" << result.app_version 
+                              << " → " << format_root_path(opts.root) << std::endl;
+                    if (result.nak_id.empty()) {
+                        std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+                    }
                 }
                 if (opts.verbose) {
                     std::cout << "  Path: " << result.install_root << std::endl;
-                    std::cout << "  Instance: " << result.instance_id << std::endl;
+                    if (!result.instance_id.empty()) {
+                        std::cout << "  Instance: " << result.instance_id << std::endl;
+                    }
                     if (!result.nak_id.empty()) {
                         std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
                     }
@@ -1584,10 +1602,13 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             nlohmann::json j;
             j["success"] = true;
             j["type"] = "app";
+            j["already_installed"] = result.already_installed;
             j["app_id"] = result.app_id;
             j["app_version"] = result.app_version;
             j["install_root"] = result.install_root;
-            j["instance_id"] = result.instance_id;
+            if (!result.instance_id.empty()) {
+                j["instance_id"] = result.instance_id;
+            }
             if (!result.nak_id.empty()) {
                 j["nak_id"] = result.nak_id;
                 j["nak_version"] = result.nak_version;
@@ -1597,14 +1618,21 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             }
             std::cout << j.dump(2) << std::endl;
         } else if (!opts.quiet) {
-            std::cout << "Installed: " << result.app_id << "@" << result.app_version 
-                      << " → " << format_root_path(opts.root) << std::endl;
-            if (result.nak_id.empty()) {
-                std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+            if (result.already_installed) {
+                std::cout << "Already installed: " << result.app_id << "@" << result.app_version 
+                          << " (skipping)" << std::endl;
+            } else {
+                std::cout << "Installed: " << result.app_id << "@" << result.app_version 
+                          << " → " << format_root_path(opts.root) << std::endl;
+                if (result.nak_id.empty()) {
+                    std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+                }
             }
             if (opts.verbose) {
                 std::cout << "  Path: " << result.install_root << std::endl;
-                std::cout << "  Instance: " << result.instance_id << std::endl;
+                if (!result.instance_id.empty()) {
+                    std::cout << "  Instance: " << result.instance_id << std::endl;
+                }
                 if (!result.nak_id.empty()) {
                     std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
                 }
@@ -1651,13 +1679,19 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                 nlohmann::json j;
                 j["success"] = true;
                 j["type"] = "nak";
+                j["already_installed"] = result.already_installed;
                 j["nak_id"] = result.nak_id;
                 j["nak_version"] = result.nak_version;
                 j["install_root"] = result.install_root;
                 std::cout << j.dump(2) << std::endl;
             } else if (!opts.quiet) {
-                std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
-                          << " → " << format_root_path(opts.root) << std::endl;
+                if (result.already_installed) {
+                    std::cout << "Already installed: " << result.nak_id << "@" << result.nak_version 
+                              << " (skipping)" << std::endl;
+                } else {
+                    std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
+                              << " → " << format_root_path(opts.root) << std::endl;
+                }
                 if (opts.verbose) {
                     std::cout << "  Path: " << result.install_root << std::endl;
                 }
@@ -1682,6 +1716,7 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             nlohmann::json j;
             j["success"] = true;
             j["type"] = "nak";
+            j["already_installed"] = result.already_installed;
             j["nak_id"] = result.nak_id;
             j["nak_version"] = result.nak_version;
             j["install_root"] = result.install_root;
@@ -1690,8 +1725,13 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             }
             std::cout << j.dump(2) << std::endl;
         } else if (!opts.quiet) {
-            std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
-                      << " → " << format_root_path(opts.root) << std::endl;
+            if (result.already_installed) {
+                std::cout << "Already installed: " << result.nak_id << "@" << result.nak_version 
+                          << " (skipping)" << std::endl;
+            } else {
+                std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
+                          << " → " << format_root_path(opts.root) << std::endl;
+            }
             if (opts.verbose) {
                 std::cout << "  Path: " << result.install_root << std::endl;
                 if (!result.package_hash.empty()) {

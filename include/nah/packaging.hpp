@@ -186,6 +186,7 @@ struct AppInstallOptions {
 
 struct AppInstallResult {
     bool ok = false;
+    bool already_installed = false;     // True if same version was already installed (idempotent success)
     std::string error;
     std::string install_root;           // e.g., /nah/apps/com.example.app-1.0.0
     std::string record_path;            // e.g., /nah/registry/apps/com.example.app@1.0.0.json
@@ -229,6 +230,7 @@ struct NakInstallOptions {
 
 struct NakInstallResult {
     bool ok = false;
+    bool already_installed = false;     // True if same version was already installed (idempotent success)
     std::string error;
     std::string install_root;           // e.g., /nah/naks/com.example.nak/1.0.0
     std::string record_path;            // e.g., /nah/registry/naks/com.example.nak@1.0.0.json

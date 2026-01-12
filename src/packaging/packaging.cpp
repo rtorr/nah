@@ -1520,8 +1520,13 @@ AppInstallResult install_nap_package(const std::string& package_path,
     // Check for existing installation
     if (path_exists(final_dir)) {
         if (!options.force) {
+            // Idempotent: return success if already installed
             remove_directory(staging_dir);
-            result.error = "application already installed: " + app_dir_name;
+            result.ok = true;
+            result.already_installed = true;
+            result.install_root = final_dir;
+            result.app_id = manifest.id;
+            result.app_version = manifest.version;
             return result;
         }
         // Remove existing installation
@@ -1776,8 +1781,13 @@ static AppInstallResult install_app_from_bytes(
     // Check for existing installation
     if (path_exists(final_dir)) {
         if (!options.force) {
+            // Idempotent: return success if already installed
             remove_directory(staging_dir);
-            result.error = "application already installed: " + app_dir_name;
+            result.ok = true;
+            result.already_installed = true;
+            result.install_root = final_dir;
+            result.app_id = manifest.id;
+            result.app_version = manifest.version;
             return result;
         }
         remove_directory(final_dir);
@@ -2031,8 +2041,13 @@ static NakInstallResult install_nak_from_bytes(
     // Check for existing installation
     if (path_exists(final_dir)) {
         if (!options.force) {
+            // Idempotent: return success if already installed
             remove_directory(staging_dir);
-            result.error = "NAK already installed: " + pack_info.nak_id + "@" + pack_info.nak_version;
+            result.ok = true;
+            result.already_installed = true;
+            result.install_root = final_dir;
+            result.nak_id = pack_info.nak_id;
+            result.nak_version = pack_info.nak_version;
             return result;
         }
         remove_directory(final_dir);

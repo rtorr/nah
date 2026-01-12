@@ -305,16 +305,18 @@ TEST_CASE("NAK installation prevents duplicates without force") {
     // First install succeeds
     auto result1 = install_nak_pack(pack_file.string(), opts);
     CHECK(result1.ok);
+    CHECK_FALSE(result1.already_installed);
     
-    // Second install without force fails
+    // Second install without force is idempotent (succeeds with already_installed flag)
     auto result2 = install_nak_pack(pack_file.string(), opts);
-    CHECK_FALSE(result2.ok);
-    CHECK(result2.error.find("already installed") != std::string::npos);
+    CHECK(result2.ok);
+    CHECK(result2.already_installed);
     
-    // With force, it succeeds
+    // With force, it reinstalls (not just skips)
     opts.force = true;
     auto result3 = install_nak_pack(pack_file.string(), opts);
     CHECK(result3.ok);
+    CHECK_FALSE(result3.already_installed);
     
     fs::remove(pack_file);
 }

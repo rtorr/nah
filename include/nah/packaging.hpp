@@ -262,6 +262,7 @@ NakInstallResult install_nak(const std::string& source,
 struct UninstallResult {
     bool ok = false;
     std::string error;
+    std::string removed_path;  // Path that was removed (for verbose output)
 };
 
 // Uninstall an application

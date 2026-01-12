@@ -1176,9 +1176,13 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                 j["app_id"] = result.app_id;
                 j["app_version"] = result.app_version;
                 j["install_root"] = result.install_root;
+                j["instance_id"] = result.instance_id;
                 if (!result.nak_id.empty()) {
                     j["nak_id"] = result.nak_id;
                     j["nak_version"] = result.nak_version;
+                }
+                if (!result.package_hash.empty()) {
+                    j["package_hash"] = result.package_hash;
                 }
                 std::cout << j.dump(2) << std::endl;
             } else if (!opts.quiet) {
@@ -1186,6 +1190,16 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                           << " → " << format_root_path(opts.root) << std::endl;
                 if (result.nak_id.empty()) {
                     std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+                }
+                if (opts.verbose) {
+                    std::cout << "  Path: " << result.install_root << std::endl;
+                    std::cout << "  Instance: " << result.instance_id << std::endl;
+                    if (!result.nak_id.empty()) {
+                        std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+                    }
+                    if (!result.package_hash.empty()) {
+                        std::cout << "  Hash: " << result.package_hash << std::endl;
+                    }
                 }
             }
             return 0;
@@ -1226,6 +1240,16 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
                       << " → " << format_root_path(opts.root) << std::endl;
             if (result.nak_id.empty()) {
                 std::cout << "  (standalone app, no NAK dependency)" << std::endl;
+            }
+            if (opts.verbose) {
+                std::cout << "  Path: " << result.install_root << std::endl;
+                std::cout << "  Instance: " << result.instance_id << std::endl;
+                if (!result.nak_id.empty()) {
+                    std::cout << "  NAK: " << result.nak_id << "@" << result.nak_version << std::endl;
+                }
+                if (!result.package_hash.empty()) {
+                    std::cout << "  Hash: " << result.package_hash << std::endl;
+                }
             }
         }
         return 0;
@@ -1273,6 +1297,9 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
             } else if (!opts.quiet) {
                 std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
                           << " → " << format_root_path(opts.root) << std::endl;
+                if (opts.verbose) {
+                    std::cout << "  Path: " << result.install_root << std::endl;
+                }
             }
             return 0;
         }
@@ -1304,6 +1331,12 @@ int cmd_install(const GlobalOptions& opts, const std::string& source, bool force
         } else if (!opts.quiet) {
             std::cout << "Installed: " << result.nak_id << "@" << result.nak_version 
                       << " → " << format_root_path(opts.root) << std::endl;
+            if (opts.verbose) {
+                std::cout << "  Path: " << result.install_root << std::endl;
+                if (!result.package_hash.empty()) {
+                    std::cout << "  Hash: " << result.package_hash << std::endl;
+                }
+            }
         }
         return 0;
     }
@@ -1364,19 +1397,45 @@ int cmd_uninstall(const GlobalOptions& opts, const std::string& target,
             j["success"] = true;
             j["type"] = "app";
             j["uninstalled"] = target;
+            j["removed_path"] = result.removed_path;
             std::cout << j.dump(2) << std::endl;
         } else if (!opts.quiet) {
             std::cout << "Uninstalled app: " << target << std::endl;
+            if (opts.verbose && !result.removed_path.empty()) {
+                std::cout << "  Removed: " << result.removed_path << std::endl;
+            }
         }
         return 0;
     } else {
-        // Uninstall NAK - need to implement or use existing function
-        // For now, we need to add NAK uninstall capability
-        ErrorContext ctx;
-        ctx.hint = "NAK uninstall is not yet implemented.\n"
-                   "       You can manually remove the NAK from the registry.";
-        print_error("Cannot uninstall NAK: " + target, opts.json, ctx);
-        return 1;
+        // Uninstall NAK
+        if (version.empty()) {
+            ErrorContext ctx;
+            ctx.hint = "NAK uninstall requires a version.\n"
+                       "       Example: nah uninstall com.example.sdk@1.0.0";
+            print_error("Version required for NAK uninstall: " + target, opts.json, ctx);
+            return 1;
+        }
+        
+        auto result = nah::uninstall_nak(opts.root, id, version);
+        if (!result.ok) {
+            print_error(result.error, opts.json);
+            return 1;
+        }
+        
+        if (opts.json) {
+            nlohmann::json j;
+            j["success"] = true;
+            j["type"] = "nak";
+            j["uninstalled"] = target;
+            j["removed_path"] = result.removed_path;
+            std::cout << j.dump(2) << std::endl;
+        } else if (!opts.quiet) {
+            std::cout << "Uninstalled NAK: " << target << std::endl;
+            if (opts.verbose && !result.removed_path.empty()) {
+                std::cout << "  Removed: " << result.removed_path << std::endl;
+            }
+        }
+        return 0;
     }
 }
 

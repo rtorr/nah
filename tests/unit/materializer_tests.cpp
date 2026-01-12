@@ -304,7 +304,7 @@ TEST_CASE("install_nak from plain file path succeeds") {
     CHECK(fs::exists(result.install_root + "/lib/libtest.so"));
 }
 
-TEST_CASE("install_nak fails on existing NAK without force") {
+TEST_CASE("install_nak is idempotent on existing NAK without force") {
     TempDir temp;
     
     auto pack_data = create_test_nak_pack("com.test.existing", "1.0.0");
@@ -326,8 +326,11 @@ TEST_CASE("install_nak fails on existing NAK without force") {
     
     auto result = install_nak("file:" + pack_path, opts);
     
-    CHECK_FALSE(result.ok);
-    CHECK(result.error.find("already installed") != std::string::npos);
+    // Idempotent: returns success with already_installed flag
+    CHECK(result.ok);
+    CHECK(result.already_installed);
+    CHECK(result.nak_id == "com.test.existing");
+    CHECK(result.nak_version == "1.0.0");
 }
 
 TEST_CASE("install_nak succeeds on existing NAK with force") {

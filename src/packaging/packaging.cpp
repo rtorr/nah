@@ -1,6 +1,7 @@
 #include "nah/packaging.hpp"
 #include "nah/platform.hpp"
 #include "nah/manifest.hpp"
+#include "nah/manifest_generate.hpp"
 #include "nah/nak_record.hpp"
 #include "nah/install_record.hpp"
 #include "nah/nak_selection.hpp"
@@ -932,8 +933,39 @@ PackResult pack_nap(const std::string& dir_path) {
         }
     }
     
+    // If still no manifest, check for manifest.json and generate binary manifest
     if (manifest_data.empty()) {
-        result.error = "no manifest found (need manifest.nah or embedded manifest in binary)";
+        std::string json_manifest_path = join_path(dir_path, "manifest.json");
+        if (path_exists(json_manifest_path)) {
+            std::ifstream jf(json_manifest_path);
+            if (jf) {
+                std::string json_content((std::istreambuf_iterator<char>(jf)),
+                                          std::istreambuf_iterator<char>());
+                auto gen_result = generate_manifest(json_content);
+                if (gen_result.ok) {
+                    manifest_data = gen_result.manifest_bytes;
+                    manifest_source = "file:manifest.json";
+                    
+                    // Write generated binary manifest to directory so pack_directory picks it up
+                    std::string manifest_nah_path = join_path(dir_path, "manifest.nah");
+                    std::ofstream mf(manifest_nah_path, std::ios::binary);
+                    if (mf) {
+                        mf.write(reinterpret_cast<const char*>(manifest_data.data()),
+                                 static_cast<std::streamsize>(manifest_data.size()));
+                    } else {
+                        result.error = "failed to write generated manifest.nah";
+                        return result;
+                    }
+                } else {
+                    result.error = "invalid manifest.json: " + gen_result.error;
+                    return result;
+                }
+            }
+        }
+    }
+    
+    if (manifest_data.empty()) {
+        result.error = "no manifest found (need manifest.nah, manifest.json, or embedded manifest in binary)";
         return result;
     }
     

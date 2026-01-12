@@ -211,7 +211,12 @@ When decoded, `ENTRYPOINT_PATH` MUST be represented as `entrypoint_relative_path
 - `nak_version_req` is a NAK version requirement string.
 - `nak_version_req` MUST be parseable as a SemVer requirement (see SemVer Requirement (Normative)).
 - If parsing fails, NAH MUST emit `invalid_manifest` and treat NAK as unresolved per warning policy.
-- `nak_id` MUST be present and non-empty. If missing or empty, NAH MUST emit `invalid_manifest` and treat NAK as unresolved per warning policy.
+
+**Standalone Apps (Normative):**
+
+- `nak_id` is OPTIONAL. If `nak_id` is missing or empty, the app is a standalone app with no NAK dependency.
+- Standalone apps skip NAK resolution entirely; no NAK-derived environment variables or library paths are set.
+- This enables simple applications that don't require a runtime SDK.
 
 ### Native App Kit (NAK)
 
@@ -923,7 +928,7 @@ Result: `PATH=/nak/bin:/usr/bin:/custom`
 
 **Inputs (Normative):**
 
-0. NAH root ("nah_root"): the filesystem root selected by CLI --root or API parameter root_path (default "/nah"). All registry paths in this specification are relative to nah_root unless explicitly stated otherwise.
+0. NAH root ("nah_root"): the filesystem root selected by CLI --root, NAH_ROOT environment variable, or auto-detected (default `~/.nah`). All registry paths in this specification are relative to nah_root unless explicitly stated otherwise.
 1. App Manifest (embedded in binary or `manifest.nah` within installed app root)
 2. App Install Record (selected installed instance)
 3. Pinned NAK Install Record (loaded only by `<nah_root>/registry/naks/<install_record.nak.record_ref>` when present)
@@ -1261,12 +1266,11 @@ PinnedNakLoadResult load_pinned_nak(
 );
 ```
 
+- If `manifest.nak_id` is empty, the app is standalone; return `PinnedNakLoadResult{ .loaded = false }` without emitting any warning.
 - Load `<nah_root>/registry/naks/<pin.record_ref>`.
 - If `pin.record_ref` is missing or empty, emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`.
 - If the pinned record cannot be loaded as a valid `nah.nak.install.v2` record with required fields, emit `nak_pin_invalid` and return `PinnedNakLoadResult{ .loaded = false }`.
 - If the pinned record loads successfully, validate:
-  - `manifest.nak_id` MUST be present and non-empty.
-    - If not, emit `invalid_manifest` and return `PinnedNakLoadResult{ .loaded = false }`.
 
   - `pin.id == nak_record.nak.id == manifest.nak_id`
     - If not, emit `nak_version_unsupported` and return `PinnedNakLoadResult{ .loaded = false }`.
@@ -1970,7 +1974,7 @@ No other top-level command families are defined.
 
 The ONLY global flags (valid on every command) MUST be:
 
-- `--root <path>` (default `/nah`)
+- `--root <path>` (default `~/.nah`)
 - `--profile <name>` (default active; ignored when not applicable)
 - `--json` (machine output; default is human-readable text)
 - `--trace` (include provenance/trace payload where applicable)
@@ -2163,7 +2167,9 @@ The input JSON file MUST have the following structure:
 }
 ```
 
-**Required fields (Normative):** `schema`, `[app].id`, `[app].version`, `[app].nak_id`, `[app].nak_version_req`, and `[app].entrypoint` MUST be present. Missing required fields MUST cause validation failure.
+**Required fields (Normative):** `schema`, `[app].id`, `[app].version`, and `[app].entrypoint` MUST be present. Missing required fields MUST cause validation failure.
+
+**Optional fields (Normative):** `[app].nak_id` and `[app].nak_version_req` are OPTIONAL. If `nak_id` is omitted or empty, the app is a standalone app with no NAK dependency.
 
 **Schema field (Normative):** The `schema` field MUST equal `nah.manifest.input.v2`. Missing or mismatched schema MUST cause validation failure.
 

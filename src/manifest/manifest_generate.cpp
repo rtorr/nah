@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <set>
 
 #include <nlohmann/json.hpp>
 
@@ -37,8 +38,13 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
     try {
         auto j = nlohmann::json::parse(json_content);
         
-        // $schema (optional, for editor tooling only)
-        // We don't validate it - the JSON structure itself defines validity
+        // Check for unknown top-level fields
+        static const std::set<std::string> known_top_level = {"$schema", "app"};
+        for (const auto& [key, _] : j.items()) {
+            if (known_top_level.find(key) == known_top_level.end()) {
+                result.warnings.push_back("unknown field '" + key + "' (ignored)");
+            }
+        }
         
         // Parse "app" section
         if (!j.contains("app") || !j["app"].is_object()) {
@@ -46,6 +52,30 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
             return result;
         }
         const auto& app = j["app"];
+        
+        // Check for unknown fields in "app" section
+        static const std::set<std::string> known_app_fields = {
+            "id", "version", "nak_id", "nak_version_req", "nak_loader",
+            "entrypoint", "entrypoint_args", "description", "author",
+            "license", "homepage", "lib_dirs", "asset_dirs", "exports",
+            "environment", "permissions"
+        };
+        for (const auto& [key, _] : app.items()) {
+            if (known_app_fields.find(key) == known_app_fields.end()) {
+                std::string warning = "unknown field 'app." + key + "' (ignored)";
+                // Provide hints for common mistakes
+                if (key == "dependencies" || key == "deps" || key == "naks") {
+                    warning += "\n  hint: To declare a NAK dependency, use 'nak_id' and 'nak_version_req':\n"
+                               "    \"nak_id\": \"com.example.sdk\",\n"
+                               "    \"nak_version_req\": \">=1.0.0\"";
+                } else if (key == "name") {
+                    warning += "\n  hint: Use 'id' for the app identifier (e.g., \"com.example.myapp\")";
+                } else if (key == "entry" || key == "main" || key == "bin") {
+                    warning += "\n  hint: Use 'entrypoint' for the executable path (e.g., \"bin/myapp\")";
+                }
+                result.warnings.push_back(warning);
+            }
+        }
         
         // Required fields
         auto id = get_string(app, "id");
@@ -62,19 +92,20 @@ ManifestInputParseResult parse_manifest_input(const std::string& json_content) {
         }
         result.input.version = *version;
         
+        // nak_id and nak_version_req are optional for standalone apps
         auto nak_id = get_string(app, "nak_id");
-        if (!nak_id || nak_id->empty()) {
-            result.error = "missing required field: app.nak_id";
-            return result;
+        if (nak_id && !nak_id->empty()) {
+            result.input.nak_id = *nak_id;
+            
+            auto nak_version_req = get_string(app, "nak_version_req");
+            if (nak_version_req && !nak_version_req->empty()) {
+                result.input.nak_version_req = *nak_version_req;
+            } else {
+                // Default to any version if nak_id specified but no version req
+                result.input.nak_version_req = "*";
+            }
         }
-        result.input.nak_id = *nak_id;
-        
-        auto nak_version_req = get_string(app, "nak_version_req");
-        if (!nak_version_req || nak_version_req->empty()) {
-            result.error = "missing required field: app.nak_version_req";
-            return result;
-        }
-        result.input.nak_version_req = *nak_version_req;
+        // If nak_id is empty/missing, app is standalone (no NAK dependency)
         
         // Optional: nak_loader (which loader to use from the NAK)
         if (auto nak_loader = get_string(app, "nak_loader")) {

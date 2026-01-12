@@ -145,6 +145,11 @@ PinnedNakLoadResult load_pinned_nak(
     
     PinnedNakLoadResult result;
     
+    // Standalone apps (no nak_id) - return early without warnings
+    if (manifest.nak_id.empty()) {
+        return result;
+    }
+    
     // Check if pin.record_ref is missing or empty
     if (pin.record_ref.empty()) {
         warnings.emit(Warning::nak_pin_invalid, {{"reason", "record_ref_empty"}});
@@ -182,11 +187,7 @@ PinnedNakLoadResult load_pinned_nak(
     }
     
     // Validate pin.id == nak_record.nak.id == manifest.nak_id
-    if (manifest.nak_id.empty()) {
-        warnings.emit(Warning::invalid_manifest, {{"reason", "nak_id_missing"}});
-        return result;
-    }
-    
+    // Note: manifest.nak_id cannot be empty here - standalone apps return early above
     if (pin.id != nak_record.nak.id || nak_record.nak.id != manifest.nak_id) {
         warnings.emit(Warning::nak_version_unsupported,
                       {{"reason", "id_mismatch"},

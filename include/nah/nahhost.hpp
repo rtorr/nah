@@ -225,6 +225,9 @@ public:
     /// Get the currently active host profile
     Result<HostProfile> getActiveHostProfile() const;
     
+    /// Get the name of the currently active profile ("default" if using fallback)
+    std::string getActiveProfileName() const;
+    
     /// Set the active host profile by name
     Result<void> setActiveHostProfile(const std::string& name);
     

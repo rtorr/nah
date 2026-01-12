@@ -104,6 +104,33 @@ Result<HostProfile> NahHost::getActiveHostProfile() const {
     return resolveActiveProfile();
 }
 
+std::string NahHost::getActiveProfileName() const {
+    // Check profile.current symlink first
+    std::string link_path = to_portable_path((fs::path(root_) / "host" / "profile.current").string());
+    if (fs::exists(link_path) && fs::is_symlink(link_path)) {
+        auto target = read_symlink(link_path);
+        if (target) {
+            // Target is like "profiles/myprofile.json", extract name
+            fs::path target_path(*target);
+            std::string filename = target_path.filename().string();
+            // Remove .json extension
+            if (filename.size() > 5 && filename.substr(filename.size() - 5) == ".json") {
+                return filename.substr(0, filename.size() - 5);
+            }
+            return filename;
+        }
+    }
+    
+    // Check if default.json exists
+    std::string default_path = to_portable_path((fs::path(root_) / "host" / "profiles" / "default.json").string());
+    if (fs::exists(default_path)) {
+        return "default";
+    }
+    
+    // Built-in empty profile
+    return "(builtin)";
+}
+
 Result<void> NahHost::setActiveHostProfile(const std::string& name) {
     fs::path link_path = fs::path(root_) / "host" / "profile.current";
     std::string target = "profiles/" + name + ".json";

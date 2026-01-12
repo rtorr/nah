@@ -2329,6 +2329,7 @@ UninstallResult uninstall_app(const std::string& nah_root,
     }
     
     result.ok = true;
+    result.removed_path = app_dir;
     return result;
 }
 
@@ -2388,6 +2389,7 @@ UninstallResult uninstall_nak(const std::string& nah_root,
     }
     
     result.ok = true;
+    result.removed_path = nak_dir;
     return result;
 }
 

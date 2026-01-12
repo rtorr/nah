@@ -114,6 +114,7 @@ struct NapPackageInfo {
     std::string app_version;
     std::string nak_id;
     std::string nak_version_req;
+    std::string nak_loader;  // Which loader to use from the NAK
     std::string entrypoint;
     
     // Package structure

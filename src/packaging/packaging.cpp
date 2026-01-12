@@ -838,6 +838,7 @@ NapPackageInfo inspect_nap_package(const std::vector<uint8_t>& archive_data) {
             if (manifest_result.manifest.nak_version_req) {
                 result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key();
             }
+            result.nak_loader = manifest_result.manifest.nak_loader;
             result.entrypoint = manifest_result.manifest.entrypoint_path;
             result.manifest_source = "file:manifest.nah";
             result.ok = true;
@@ -857,6 +858,7 @@ NapPackageInfo inspect_nap_package(const std::vector<uint8_t>& archive_data) {
                     if (manifest_result.manifest.nak_version_req) {
                         result.nak_version_req = manifest_result.manifest.nak_version_req->selection_key();
                     }
+                    result.nak_loader = manifest_result.manifest.nak_loader;
                     result.entrypoint = manifest_result.manifest.entrypoint_path;
                     result.manifest_source = "embedded:" + bin_path;
                     result.has_embedded_manifest = true;
@@ -2269,6 +2271,44 @@ NakInstallResult install_nak(const std::string& source,
 // Uninstallation Operations
 // ============================================================================
 
+// Helper to extract version from install record filename
+// Format: <id>-<version>-<uuid>.json where uuid is xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+static std::string extract_version_from_record_filename(const std::string& filename, 
+                                                         const std::string& app_id) {
+    // Expected format: <id>-<version>-<uuid>.json
+    // UUID format: 8-4-4-4-12 hex chars with dashes
+    if (filename.size() < 5 || filename.substr(filename.size() - 5) != ".json") {
+        return "";
+    }
+    std::string without_ext = filename.substr(0, filename.size() - 5);
+    
+    // Must start with app_id + "-"
+    std::string prefix = app_id + "-";
+    if (without_ext.rfind(prefix, 0) != 0) {
+        return "";
+    }
+    
+    // UUID is 36 chars (8-4-4-4-12), preceded by a dash
+    // So we need at least prefix + 1 char version + "-" + 36 char UUID
+    if (without_ext.size() < prefix.size() + 1 + 1 + 36) {
+        return "";
+    }
+    
+    // Check if the last 36 chars look like a UUID (has dashes at right positions)
+    std::string potential_uuid = without_ext.substr(without_ext.size() - 36);
+    if (potential_uuid.size() == 36 &&
+        potential_uuid[8] == '-' && potential_uuid[13] == '-' &&
+        potential_uuid[18] == '-' && potential_uuid[23] == '-') {
+        // Extract version: between prefix and the UUID (minus the separating dash)
+        size_t version_start = prefix.size();
+        size_t version_end = without_ext.size() - 36 - 1;  // -1 for the dash before UUID
+        if (version_end > version_start) {
+            return without_ext.substr(version_start, version_end - version_start);
+        }
+    }
+    return "";
+}
+
 UninstallResult uninstall_app(const std::string& nah_root,
                                const std::string& app_id,
                                const std::string& version) {
@@ -2281,32 +2321,42 @@ UninstallResult uninstall_app(const std::string& nah_root,
     std::string record_path;
     
     if (is_directory(record_dir)) {
-        std::string prefix = app_id + "-";
         for (const auto& entry : list_directory(record_dir)) {
-            if (entry.rfind(prefix, 0) == 0 && entry.size() > 5 &&
-                entry.substr(entry.size() - 5) == ".json") {
-                // Filename format: <id>-<version>-<instance_id>.json
-                // Parse to extract version
-                std::string without_ext = entry.substr(0, entry.size() - 5);
-                size_t first_dash = without_ext.find('-');
-                if (first_dash != std::string::npos) {
-                    std::string rest = without_ext.substr(first_dash + 1);
-                    // rest is <version>-<instance_id>, find last dash for instance_id
-                    size_t last_dash = rest.rfind('-');
-                    if (last_dash != std::string::npos) {
-                        std::string found_version = rest.substr(0, last_dash);
-                        if (version.empty() || found_version == version) {
-                            version_to_remove = found_version;
-                            record_path = join_path(record_dir, entry);
-                            break;
-                        }
-                    }
+            std::string found_version = extract_version_from_record_filename(entry, app_id);
+            if (!found_version.empty()) {
+                if (version.empty() || found_version == version) {
+                    version_to_remove = found_version;
+                    record_path = join_path(record_dir, entry);
+                    break;
                 }
             }
         }
     }
     
-    if (version_to_remove.empty() || record_path.empty()) {
+    // If no record found but version specified, try to find app directory directly
+    // This handles cases where the record was lost/corrupted
+    if (record_path.empty() && !version.empty()) {
+        std::string app_dir = join_path(nah_root, "apps/" + app_id + "-" + version);
+        if (is_directory(app_dir)) {
+            version_to_remove = version;
+        }
+    }
+    
+    // If still no version and no record, scan apps directory for matching app
+    if (version_to_remove.empty() || (record_path.empty() && version.empty())) {
+        std::string apps_dir = join_path(nah_root, "apps");
+        if (is_directory(apps_dir)) {
+            std::string prefix = app_id + "-";
+            for (const auto& entry : list_directory(apps_dir)) {
+                if (entry.rfind(prefix, 0) == 0) {
+                    version_to_remove = entry.substr(prefix.size());
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (version_to_remove.empty()) {
         result.error = "application not found: " + app_id;
         return result;
     }
@@ -2339,6 +2389,50 @@ UninstallResult uninstall_nak(const std::string& nah_root,
                                const std::string& version) {
     UninstallResult result;
     
+    std::string version_to_remove = version;
+    
+    // If no version specified, try to auto-detect from installed NAKs
+    if (version_to_remove.empty()) {
+        // Check NAK directory for installed versions
+        std::string nak_parent = join_path(nah_root, "naks/" + nak_id);
+        if (is_directory(nak_parent)) {
+            auto versions = list_directory(nak_parent);
+            if (versions.size() == 1) {
+                version_to_remove = versions[0];
+            } else if (versions.size() > 1) {
+                result.error = "Multiple versions installed, specify version: " + nak_id + "@<version>";
+                return result;
+            }
+        }
+        
+        // Also check registry if no directory found
+        if (version_to_remove.empty()) {
+            std::string nak_record_dir = join_path(nah_root, "registry/naks");
+            if (is_directory(nak_record_dir)) {
+                std::string prefix = nak_id + "@";
+                std::vector<std::string> found_versions;
+                for (const auto& entry : list_directory(nak_record_dir)) {
+                    if (entry.rfind(prefix, 0) == 0 && entry.size() > 5 &&
+                        entry.substr(entry.size() - 5) == ".json") {
+                        std::string ver = entry.substr(prefix.size(), entry.size() - prefix.size() - 5);
+                        found_versions.push_back(ver);
+                    }
+                }
+                if (found_versions.size() == 1) {
+                    version_to_remove = found_versions[0];
+                } else if (found_versions.size() > 1) {
+                    result.error = "Multiple versions installed, specify version: " + nak_id + "@<version>";
+                    return result;
+                }
+            }
+        }
+    }
+    
+    if (version_to_remove.empty()) {
+        result.error = "NAK not found: " + nak_id;
+        return result;
+    }
+    
     // Check if any apps reference this NAK version
     // SPEC: registry/installs/<id>-<version>-<instance_id>.json
     std::string app_record_dir = join_path(nah_root, "registry/installs");
@@ -2355,7 +2449,7 @@ UninstallResult uninstall_nak(const std::string& nah_root,
                     auto app_record = parse_app_install_record_full(content, record_path);
                     if (app_record.ok && 
                         app_record.record.nak.id == nak_id &&
-                        app_record.record.nak.version == version) {
+                        app_record.record.nak.version == version_to_remove) {
                         result.error = "NAK is in use by: " + app_record.record.app.id;
                         return result;
                     }
@@ -2364,8 +2458,8 @@ UninstallResult uninstall_nak(const std::string& nah_root,
         }
     }
     
-    std::string record_path = join_path(nah_root, "registry/naks/" + nak_id + "@" + version + ".json");
-    std::string nak_dir = join_path(nah_root, "naks/" + nak_id + "/" + version);
+    std::string record_path = join_path(nah_root, "registry/naks/" + nak_id + "@" + version_to_remove + ".json");
+    std::string nak_dir = join_path(nah_root, "naks/" + nak_id + "/" + version_to_remove);
     
     // Remove NAK directory
     if (is_directory(nak_dir)) {

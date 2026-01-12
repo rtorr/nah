@@ -566,15 +566,23 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     std::string expanded_cwd;
     const LoaderConfig* selected_loader = nullptr;
     
-    if (nak_resolved) {
-        // Look up the pinned loader from App Install Record
-        const std::string& pinned_loader = install_record.nak.loader;
-        if (!pinned_loader.empty() && nak_record.loaders.count(pinned_loader)) {
-            selected_loader = &nak_record.loaders.at(pinned_loader);
+    if (nak_resolved && nak_record.has_loaders()) {
+        // Determine which loader to use: explicit pin, "default", or single-loader auto-select
+        std::string loader_name = install_record.nak.loader;
+        if (loader_name.empty()) {
+            if (nak_record.loaders.count("default")) {
+                loader_name = "default";
+            } else if (nak_record.loaders.size() == 1) {
+                loader_name = nak_record.loaders.begin()->first;
+            }
+        }
+        
+        if (!loader_name.empty() && nak_record.loaders.count(loader_name)) {
+            selected_loader = &nak_record.loaders.at(loader_name);
             expanded_args_template = expand_string_vector(
                 selected_loader->args_template,
                 effective_env,
-                "nak_record.loaders." + pinned_loader + ".args_template",
+                "nak_record.loaders." + loader_name + ".args_template",
                 warnings);
         }
         
@@ -650,19 +658,31 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     const std::string& pinned_loader = install_record.nak.loader;
     
     if (nak_resolved && nak_record.has_loaders()) {
-        if (pinned_loader.empty()) {
-            // No loader pinned but NAK has loaders - validation should have caught this at install
-            warnings.emit(Warning::nak_loader_required, {
-                {"reason", "NAK has loaders but no loader was pinned at install time"}
-            });
-            contract.execution.binary = contract.app.entrypoint;
-        } else {
-            auto it = nak_record.loaders.find(pinned_loader);
+        std::string effective_loader = pinned_loader;
+        
+        // Auto-select loader if not explicitly pinned
+        if (effective_loader.empty()) {
+            // Try "default" loader first, then single-loader NAK auto-select
+            if (nak_record.loaders.count("default")) {
+                effective_loader = "default";
+            } else if (nak_record.loaders.size() == 1) {
+                effective_loader = nak_record.loaders.begin()->first;
+            } else {
+                // Multiple loaders but none specified - warn and use app entrypoint
+                warnings.emit(Warning::nak_loader_required, {
+                    {"reason", "NAK has multiple loaders but app didn't specify which one to use"}
+                });
+                contract.execution.binary = contract.app.entrypoint;
+            }
+        }
+        
+        if (!effective_loader.empty()) {
+            auto it = nak_record.loaders.find(effective_loader);
             if (it == nak_record.loaders.end()) {
-                // Pinned loader no longer exists in NAK (NAK was updated?)
+                // Loader not found in NAK
                 warnings.emit(Warning::nak_loader_missing, {
-                    {"requested", pinned_loader},
-                    {"reason", "pinned loader not found in NAK"}
+                    {"requested", effective_loader},
+                    {"reason", "loader not found in NAK"}
                 });
                 result.critical_error = CriticalError::NAK_LOADER_INVALID;
                 result.envelope.warnings = warnings.get_warnings();

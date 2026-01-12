@@ -460,14 +460,63 @@ TEST_CASE("compose_contract selects loader from NAK based on pinned loader") {
     CHECK(result.envelope.contract.execution.arguments[1] == "alt");
 }
 
-TEST_CASE("compose_contract emits nak_loader_required warning when NAK has loaders but no loader pinned") {
+TEST_CASE("compose_contract auto-selects 'default' loader when no loader pinned") {
     TempTestDir tmp;
     
-    // Write NAK install record with loaders
+    // Write NAK install record with a "default" loader
     std::string nak_json = build_nak_record_json(
         pp(tmp.nak_root),
         pp(tmp.nak_root / "resources"),
         {{"default", {pp(tmp.nak_loader), {"--run", "{NAH_APP_ENTRY}"}}}}
+    );
+    write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
+    
+    Manifest manifest = create_test_manifest();
+    // No nak_loader specified - should auto-select "default"
+    
+    AppInstallRecord install_record = create_test_install_record(pp(tmp.app_root));
+    // No loader pinned (install_record.nak.loader is empty)
+    
+    HostProfile profile = create_test_profile();
+    
+    CompositionInputs inputs;
+    inputs.nah_root = tmp.base_path.string();
+    inputs.manifest = manifest;
+    inputs.install_record = install_record;
+    inputs.profile = profile;
+    
+    auto result = compose_contract(inputs);
+    
+    CHECK_WITH_DIAG(result.ok, result, "auto-select default loader - expected ok=true");
+    // Should use the loader, not the app entrypoint
+    CHECK_WITH_DIAG(result.envelope.contract.execution.binary == pp(tmp.nak_loader), result,
+                    "auto-select default loader - expected loader binary");
+    
+    // No warning should be emitted since we auto-selected
+    bool found_warning = false;
+    for (const auto& w : result.envelope.warnings) {
+        if (w.key == "nak_loader_required") {
+            found_warning = true;
+            break;
+        }
+    }
+    CHECK(!found_warning);
+}
+
+TEST_CASE("compose_contract emits nak_loader_required warning when multiple loaders and no default") {
+    TempTestDir tmp;
+    
+    // Create a second loader binary
+    fs::path loader2 = tmp.nak_root / "bin" / "loader2";
+    std::ofstream(loader2) << "#!/bin/sh\nexec $@\n";
+    fs::permissions(loader2, fs::perms::owner_exec | fs::perms::owner_read);
+    
+    // Write NAK install record with multiple loaders but no "default"
+    std::string nak_json = build_nak_record_json(
+        pp(tmp.nak_root),
+        pp(tmp.nak_root / "resources"),
+        {{"node", {pp(tmp.nak_loader), {"--node", "{NAH_APP_ENTRY}"}}},
+         {"python", {pp(loader2), {"--python", "{NAH_APP_ENTRY}"}}}}
     );
     write_nak_record_json(tmp.base_path, "com.example.nak", "3.0.0", nak_json);
     

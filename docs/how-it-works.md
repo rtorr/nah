@@ -167,7 +167,13 @@ Benefits:
 
 ## Placeholder Substitution
 
-NAK records and profiles can use placeholders:
+NAK records and profiles can use placeholders. Three syntaxes are supported:
+
+- `{NAME}` - NAH-style (canonical)
+- `$NAME` - Shell-style
+- `${NAME}` - Shell-style with braces
+
+### NAH Standard Variables
 
 | Placeholder | Value |
 |-------------|-------|
@@ -177,7 +183,19 @@ NAK records and profiles can use placeholders:
 | `{NAH_NAK_ROOT}` | NAK installation directory |
 | `{NAK_RESOURCE_ROOT}` | NAK resources directory |
 
-Example:
+### System Environment Fallback
+
+If a placeholder is not found in the NAH environment, the system environment is checked. This allows referencing variables like `$HOME` or `$PATH`:
+
+```json
+"environment": {
+  "CACHE_DIR": "$HOME/.cache/myapp",
+  "SEARCH_PATH": "$PATH:{NAH_APP_ROOT}/bin"
+}
+```
+
+### Example
+
 ```json
 "environment": {
   "DATA_PATH": "{NAH_APP_ROOT}/data",

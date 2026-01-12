@@ -88,7 +88,10 @@ When present, the loader binary runs instead of the app directly.
 
 ### Placeholder Variables
 
-Use in `args_template` and `cwd`:
+Use in `args_template`, `cwd`, and `environment`. Three syntaxes are supported:
+- `{NAME}` - NAH-style (canonical)
+- `$NAME` - Shell-style  
+- `${NAME}` - Shell-style with braces
 
 | Variable | Value |
 |----------|-------|
@@ -97,6 +100,8 @@ Use in `args_template` and `cwd`:
 | `{NAH_APP_ROOT}` | App's install directory |
 | `{NAH_APP_ENTRY}` | App's entrypoint path |
 | `{NAH_NAK_ROOT}` | NAK's install directory |
+
+System environment variables like `$HOME` and `$PATH` are also available.
 
 ## 5. Package
 

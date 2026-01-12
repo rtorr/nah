@@ -6,6 +6,9 @@ string(STRIP "${NAH_VERSION_RAW}" NAH_VERSION)
 # Extract just MAJOR.MINOR.PATCH for CMake (ignore prerelease/build metadata)
 string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" NAH_VERSION_CMAKE "${NAH_VERSION}")
 
+# Pass full version string to C API
+set(NAH_VERSION_FOR_API "${NAH_VERSION}")
+
 project(nah VERSION ${NAH_VERSION_CMAKE} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)

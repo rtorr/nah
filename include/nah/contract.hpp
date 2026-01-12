@@ -33,6 +33,7 @@ struct CompositionInputs {
 struct CompositionResult {
     bool ok = false;
     std::optional<CriticalError> critical_error;
+    std::string critical_error_context;  // Human-readable description of the error
     ContractEnvelope envelope;
 };
 

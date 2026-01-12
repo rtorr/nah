@@ -239,6 +239,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
     auto entry_result = normalize_under_root(contract.app.root, manifest.entrypoint_path, false);
     if (!entry_result.ok) {
         result.critical_error = CriticalError::PATH_TRAVERSAL;
+        result.critical_error_context = "entrypoint '" + manifest.entrypoint_path + 
+            "' escapes app root '" + contract.app.root + "'";
         result.envelope.warnings = warnings.get_warnings();
         return result;
     }
@@ -274,8 +276,17 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         // Validate NAK paths - lib_dirs must be absolute and under paths.root
         // Paths are already normalized to forward slashes by config parsers
         for (const auto& lib_dir : nak_record.paths.lib_dirs) {
-            if (!is_absolute_path(lib_dir) || !is_path_under_root(nak_record.paths.root, lib_dir)) {
+            if (!is_absolute_path(lib_dir)) {
                 result.critical_error = CriticalError::PATH_TRAVERSAL;
+                result.critical_error_context = "NAK lib_dir '" + lib_dir + 
+                    "' is relative; SPEC requires absolute paths in NAK install records";
+                result.envelope.warnings = warnings.get_warnings();
+                return result;
+            }
+            if (!is_path_under_root(nak_record.paths.root, lib_dir)) {
+                result.critical_error = CriticalError::PATH_TRAVERSAL;
+                result.critical_error_context = "NAK lib_dir '" + lib_dir + 
+                    "' escapes NAK root '" + nak_record.paths.root + "'";
                 result.envelope.warnings = warnings.get_warnings();
                 return result;
             }
@@ -284,9 +295,19 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         // Validate all loader exec_paths are under NAK root
         for (const auto& [loader_name, loader_config] : nak_record.loaders) {
             if (!loader_config.exec_path.empty()) {
-                if (!is_absolute_path(loader_config.exec_path) || 
-                    !is_path_under_root(nak_record.paths.root, loader_config.exec_path)) {
+                if (!is_absolute_path(loader_config.exec_path)) {
                     result.critical_error = CriticalError::PATH_TRAVERSAL;
+                    result.critical_error_context = "NAK loader '" + loader_name + 
+                        "' exec_path '" + loader_config.exec_path + 
+                        "' is relative; SPEC requires absolute paths";
+                    result.envelope.warnings = warnings.get_warnings();
+                    return result;
+                }
+                if (!is_path_under_root(nak_record.paths.root, loader_config.exec_path)) {
+                    result.critical_error = CriticalError::PATH_TRAVERSAL;
+                    result.critical_error_context = "NAK loader '" + loader_name + 
+                        "' exec_path '" + loader_config.exec_path + 
+                        "' escapes NAK root '" + nak_record.paths.root + "'";
                     result.envelope.warnings = warnings.get_warnings();
                     return result;
                 }
@@ -684,6 +705,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
                 contract.execution.cwd = cwd_result.path;
             } else {
                 result.critical_error = CriticalError::PATH_TRAVERSAL;
+                result.critical_error_context = "execution.cwd '" + expanded_cwd + 
+                    "' escapes NAK root '" + nak_record.paths.root + "'";
                 result.envelope.warnings = warnings.get_warnings();
                 return result;
             }
@@ -739,6 +762,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         auto lib_result = normalize_under_root(contract.app.root, lib_dir, false);
         if (!lib_result.ok) {
             result.critical_error = CriticalError::PATH_TRAVERSAL;
+            result.critical_error_context = "manifest lib_dir '" + lib_dir + 
+                "' escapes app root '" + contract.app.root + "'";
             result.envelope.warnings = warnings.get_warnings();
             return result;
         }
@@ -768,6 +793,8 @@ CompositionResult compose_contract(const CompositionInputs& inputs) {
         auto export_result = normalize_under_root(contract.app.root, exp.path, false);
         if (!export_result.ok) {
             result.critical_error = CriticalError::PATH_TRAVERSAL;
+            result.critical_error_context = "asset export '" + exp.id + "' path '" + exp.path + 
+                "' escapes app root '" + contract.app.root + "'";
             result.envelope.warnings = warnings.get_warnings();
             return result;
         }

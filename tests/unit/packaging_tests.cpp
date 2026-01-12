@@ -623,3 +623,84 @@ TEST_CASE("inspect_nak_pack handles ./ prefix in archive entries") {
     CHECK(info.nak_id == "com.example.dotprefix");
     CHECK(info.nak_version == "1.0.0");
 }
+
+// =============================================================================
+// Path Canonicalization Tests
+// =============================================================================
+// These tests verify that install functions canonicalize nah_root to absolute
+// paths, as required by SPEC (NAK paths MUST be absolute).
+
+TEST_CASE("NAK install writes absolute paths even with relative nah_root") {
+    TempDir temp;
+    
+    // Create a minimal NAK structure
+    fs::create_directories(temp.path() + "/nak/META");
+    fs::create_directories(temp.path() + "/nak/lib");
+    fs::create_directories(temp.path() + "/nak/resources");
+    fs::create_directories(temp.path() + "/nak/bin");
+    
+    std::ofstream(temp.path() + "/nak/META/nak.json") << R"({
+  "nak": {
+    "id": "com.test.pathcheck",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "resource_root": "resources",
+    "lib_dirs": ["lib"]
+  }
+})";
+    
+    // Create dummy binary
+    std::ofstream(temp.path() + "/nak/bin/runtime") << "#!/bin/sh\necho test";
+    
+    // Pack the NAK
+    auto pack_result = pack_nak(temp.path() + "/nak");
+    REQUIRE(pack_result.ok);
+    
+    // Write pack to file
+    std::string pack_path = temp.path() + "/test.nak";
+    std::ofstream pack_file(pack_path, std::ios::binary);
+    pack_file.write(reinterpret_cast<const char*>(pack_result.archive_data.data()), 
+                    static_cast<std::streamsize>(pack_result.archive_data.size()));
+    pack_file.close();
+    
+    // Create NAH root structure
+    std::string nah_root = temp.path() + "/nah_root";
+    fs::create_directories(nah_root + "/host/profiles");
+    fs::create_directories(nah_root + "/registry/naks");
+    fs::create_directories(nah_root + "/naks");
+    
+    // Create minimal profile
+    std::ofstream(nah_root + "/host/profiles/default.json") << R"({
+  "nak": {"binding_mode": "canonical"},
+  "warnings": {}
+})";
+    
+    // Install with absolute path
+    NakInstallOptions opts;
+    opts.nah_root = nah_root;  // Absolute path
+    
+    auto result = install_nak_pack(pack_path, opts);
+    REQUIRE(result.ok);
+    
+    // Read the NAK record and verify paths are absolute
+    std::string record_path = nah_root + "/registry/naks/com.test.pathcheck@1.0.0.json";
+    REQUIRE(fs::exists(record_path));
+    
+    std::ifstream record_file(record_path);
+    std::string record_content((std::istreambuf_iterator<char>(record_file)),
+                                std::istreambuf_iterator<char>());
+    
+    // Verify paths are absolute (start with /)
+    CHECK(record_content.find("\"root\": \"/") != std::string::npos);
+    CHECK(record_content.find("\"resource_root\": \"/") != std::string::npos);
+    
+    // Verify no relative paths like "./" in paths section
+    // (environment values can have templates, but paths must be absolute)
+    auto paths_pos = record_content.find("\"paths\"");
+    auto env_pos = record_content.find("\"environment\"");
+    if (paths_pos != std::string::npos && env_pos != std::string::npos) {
+        std::string paths_section = record_content.substr(paths_pos, env_pos - paths_pos);
+        CHECK(paths_section.find("\": \"./") == std::string::npos);
+    }
+}

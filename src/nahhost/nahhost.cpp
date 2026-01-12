@@ -55,7 +55,12 @@ std::vector<AppInfo> NahHost::listApplications() const {
         info.id = parse_result.record.app.id;
         info.version = parse_result.record.app.version;
         info.instance_id = parse_result.record.install.instance_id;
-        info.install_root = parse_result.record.paths.install_root;
+        // Resolve install_root relative to NAH root
+        fs::path install_root_path = parse_result.record.paths.install_root;
+        if (install_root_path.is_relative()) {
+            install_root_path = fs::path(root_) / install_root_path;
+        }
+        info.install_root = to_portable_path(fs::weakly_canonical(install_root_path).string());
         info.record_path = entry_path;
         
         apps.push_back(std::move(info));
@@ -249,6 +254,13 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
             Error(ErrorCode::INSTALL_RECORD_INVALID, record_result.error));
     }
     
+    // Resolve install_root in record relative to NAH root (for compose_contract)
+    fs::path record_install_root = record_result.record.paths.install_root;
+    if (record_install_root.is_relative()) {
+        record_install_root = fs::path(root_) / record_install_root;
+    }
+    record_result.record.paths.install_root = to_portable_path(fs::weakly_canonical(record_install_root).string());
+    
     // Load manifest from app
     fs::path manifest_path = fs::path(app_info.install_root) / "manifest.nah";
     Manifest manifest;
@@ -290,7 +302,9 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
     
     if (!manifest_loaded) {
         return Result<ContractEnvelope>::err(
-            Error(ErrorCode::MANIFEST_MISSING, "no manifest found"));
+            Error(ErrorCode::MANIFEST_MISSING, 
+                  "no manifest found at " + manifest_path.string() + 
+                  " (looked for manifest.nah and embedded manifests in bin/)"));
     }
     
     // Resolve profile
@@ -332,8 +346,11 @@ Result<ContractEnvelope> NahHost::getLaunchContract(
                 code = ErrorCode::NAK_LOADER_INVALID;
                 break;
         }
-        return Result<ContractEnvelope>::err(
-            Error(code, critical_error_to_string(*compose_result.critical_error)));
+        std::string msg = critical_error_to_string(*compose_result.critical_error);
+        if (!compose_result.critical_error_context.empty()) {
+            msg += ": " + compose_result.critical_error_context;
+        }
+        return Result<ContractEnvelope>::err(Error(code, msg));
     }
     
     return Result<ContractEnvelope>::ok(compose_result.envelope);
@@ -361,8 +378,11 @@ Result<ContractEnvelope> NahHost::composeContract(const CompositionInputs& input
                 code = ErrorCode::NAK_LOADER_INVALID;
                 break;
         }
-        return Result<ContractEnvelope>::err(
-            Error(code, critical_error_to_string(*result.critical_error)));
+        std::string msg = critical_error_to_string(*result.critical_error);
+        if (!result.critical_error_context.empty()) {
+            msg += ": " + result.critical_error_context;
+        }
+        return Result<ContractEnvelope>::err(Error(code, msg));
     }
     
     return Result<ContractEnvelope>::ok(result.envelope);

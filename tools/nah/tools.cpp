@@ -1112,6 +1112,7 @@ int cmd_nak_compose(const GlobalOptions& opts,
     
     nah::ComposeResult result;
     
+    try {
     // Check if composing from manifest
     if (!from_manifest.empty()) {
         // Compose from manifest file
@@ -1164,6 +1165,10 @@ int cmd_nak_compose(const GlobalOptions& opts,
         
         // Run composition
         result = nah::compose_naks(inputs, options);
+    }
+    } catch (const std::exception& e) {
+        print_error(std::string("composition failed: ") + e.what(), opts.json);
+        return 1;
     }
     
     if (!result.ok) {

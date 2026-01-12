@@ -205,20 +205,22 @@ ComposeInput resolve_compose_input(const std::string& ref,
         // Extract relative path from absolute
         std::string root = record_result.record.paths.root;
         std::string res = record_result.record.paths.resource_root;
-        if (res.find(root) == 0) {
+        if (res.find(root) == 0 && res.size() > root.size()) {
             input.pack_info.resource_root = res.substr(root.size() + 1);
-        } else {
+        } else if (res != root) {
             input.pack_info.resource_root = res;
         }
+        // If res == root, leave resource_root empty
     }
     
     for (const auto& lib_dir : record_result.record.paths.lib_dirs) {
         std::string root = record_result.record.paths.root;
-        if (lib_dir.find(root) == 0) {
+        if (lib_dir.find(root) == 0 && lib_dir.size() > root.size()) {
             input.pack_info.lib_dirs.push_back(lib_dir.substr(root.size() + 1));
-        } else {
+        } else if (lib_dir != root) {
             input.pack_info.lib_dirs.push_back(lib_dir);
         }
+        // If lib_dir == root, skip (invalid state)
     }
     
     input.pack_info.environment = record_result.record.environment;
@@ -227,9 +229,12 @@ ComposeInput resolve_compose_input(const std::string& ref,
     for (const auto& [name, loader] : record_result.record.loaders) {
         LoaderConfig relative_loader;
         std::string root = record_result.record.paths.root;
-        if (loader.exec_path.find(root) == 0) {
+        if (loader.exec_path.find(root) == 0 && loader.exec_path.size() > root.size()) {
             relative_loader.exec_path = loader.exec_path.substr(root.size() + 1);
+        } else if (loader.exec_path != root) {
+            relative_loader.exec_path = loader.exec_path;
         } else {
+            // exec_path equals root - this is invalid, use original path
             relative_loader.exec_path = loader.exec_path;
         }
         relative_loader.args_template = loader.args_template;

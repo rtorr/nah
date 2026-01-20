@@ -45,18 +45,21 @@ nah host install <dir>    Set up host from manifest
 
 ## Installation
 
+**macOS / Linux:**
+
 ```bash
-# npm (recommended)
-npm install -g @rtorr/nah
-
-# Linux
-curl -L https://github.com/rtorr/nah/releases/latest/download/nah-linux-x64.tar.gz | tar xz
-sudo mv nah /usr/local/bin/
-
-# macOS
-curl -L https://github.com/rtorr/nah/releases/latest/download/nah-macos-arm64.tar.gz | tar xz
-sudo mv nah /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/rtorr/nah/main/install.sh | sh
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/rtorr/nah/main/install.ps1 | iex
+```
+
+**Manual installation:**
+
+Download the appropriate binary from [Releases](https://github.com/rtorr/nah/releases) and add it to your PATH.
 
 ## Library Integration
 

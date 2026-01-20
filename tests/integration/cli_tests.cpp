@@ -75,7 +75,7 @@ inline std::string create_unique_temp_path(const std::string& prefix) {
 // Get the path to the nah executable (platform-specific)
 inline std::string get_nah_executable() {
 #ifdef _WIN32
-    return ".\\nah.exe";
+    return "nah.exe";
 #else
     return "./nah";
 #endif

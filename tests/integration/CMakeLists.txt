@@ -7,9 +7,9 @@ target_link_libraries(integration_tests PRIVATE
 )
 
 # The tests need to be able to find the nah CLI executable
-# Copy the CLI to the test directory for testing
+# Copy the CLI to the test directory for testing (preserves platform extension)
 add_custom_command(TARGET integration_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nah> ${CMAKE_CURRENT_BINARY_DIR}/nah
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nah> $<TARGET_FILE_DIR:integration_tests>/$<TARGET_FILE_NAME:nah>
 )
 
 # Also create a simple nah.json for version checking

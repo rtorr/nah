@@ -5,8 +5,7 @@ NAH standardizes how native applications are installed, inspected, and launched.
 ## Quick Start
 
 ```cpp
-#include <nah/nahhost.hpp>
-#include <nah/semver.hpp>
+#include <nah/nah.h>
 
 // Create a host instance
 auto host = nah::NahHost::create("/nah");
@@ -28,10 +27,10 @@ if (result.isOk()) {
 
 | Header | Description |
 |--------|-------------|
-| `<nah/nahhost.hpp>` | Main API - NahHost class for contract composition |
-| `<nah/semver.hpp>` | Semantic versioning - parse and compare versions |
-| `<nah/manifest.hpp>` | Manifest parsing and building |
-| `<nah/types.hpp>` | Core types - Manifest, Contract, etc. |
+| `<nah/nah.h>` | Complete API - includes all headers |
+| `<nah/nah_host.h>` | NahHost class for contract composition |
+| `<nah/nah_semver.h>` | Semantic versioning - parse and compare versions |
+| `<nah/nah_core.h>` | Core types and pure computation |
 
 ## Integration
 

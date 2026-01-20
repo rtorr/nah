@@ -1,7 +1,7 @@
 /**
  * NAH Semver - Semantic Versioning 2.0.0 Support
  * 
- * Header-only wrapper around cpp-semver providing:
+ * Header-only implementation providing:
  * - Version parsing and comparison
  * - Version range parsing (>=, <, ^, ~, etc.)
  * - Range satisfaction checking
@@ -24,26 +24,138 @@
 
 #ifdef __cplusplus
 
-// cpp-semver requires <cstdint> but may not include it on all compilers
 #include <cstdint>
-#include <semver/semver.hpp>
-
 #include <optional>
 #include <string>
 #include <vector>
 #include <cctype>
 #include <sstream>
 #include <algorithm>
+#include <tuple>
 
 namespace nah {
 namespace semver {
 
 // ============================================================================
-// Types
+// Version Class
 // ============================================================================
 
-/// Semantic version type (MAJOR.MINOR.PATCH[-prerelease][+build])
-using Version = ::semver::version;
+/**
+ * Semantic version (MAJOR.MINOR.PATCH[-prerelease][+build])
+ * 
+ * Implements SemVer 2.0.0 comparison rules:
+ * - Major.minor.patch compared numerically
+ * - Prerelease versions have lower precedence than normal
+ * - Prerelease identifiers compared left-to-right
+ * - Numeric identifiers compared as integers, alphanumeric as strings
+ * - Build metadata is ignored in comparisons
+ */
+class Version {
+public:
+    Version() : major_(0), minor_(0), patch_(0) {}
+    Version(uint64_t major, uint64_t minor, uint64_t patch)
+        : major_(major), minor_(minor), patch_(patch) {}
+    Version(uint64_t major, uint64_t minor, uint64_t patch,
+            const std::string& prerelease, const std::string& build = "")
+        : major_(major), minor_(minor), patch_(patch),
+          prerelease_(prerelease), build_(build) {}
+
+    uint64_t major() const { return major_; }
+    uint64_t minor() const { return minor_; }
+    uint64_t patch() const { return patch_; }
+    const std::string& prerelease() const { return prerelease_; }
+    const std::string& build() const { return build_; }
+
+    std::string str() const {
+        std::string s = std::to_string(major_) + "." + 
+                        std::to_string(minor_) + "." + 
+                        std::to_string(patch_);
+        if (!prerelease_.empty()) s += "-" + prerelease_;
+        if (!build_.empty()) s += "+" + build_;
+        return s;
+    }
+
+    // Comparison operators (SemVer 2.0.0 precedence rules)
+    bool operator==(const Version& o) const {
+        return major_ == o.major_ && minor_ == o.minor_ && 
+               patch_ == o.patch_ && prerelease_ == o.prerelease_;
+    }
+    bool operator!=(const Version& o) const { return !(*this == o); }
+    bool operator<(const Version& o) const { return compare(o) < 0; }
+    bool operator<=(const Version& o) const { return compare(o) <= 0; }
+    bool operator>(const Version& o) const { return compare(o) > 0; }
+    bool operator>=(const Version& o) const { return compare(o) >= 0; }
+
+private:
+    uint64_t major_, minor_, patch_;
+    std::string prerelease_;
+    std::string build_;  // Ignored in comparisons per SemVer spec
+
+    int compare(const Version& o) const {
+        // Compare major.minor.patch
+        if (major_ != o.major_) return major_ < o.major_ ? -1 : 1;
+        if (minor_ != o.minor_) return minor_ < o.minor_ ? -1 : 1;
+        if (patch_ != o.patch_) return patch_ < o.patch_ ? -1 : 1;
+
+        // Prerelease comparison
+        // A version without prerelease has higher precedence
+        if (prerelease_.empty() && !o.prerelease_.empty()) return 1;
+        if (!prerelease_.empty() && o.prerelease_.empty()) return -1;
+        if (prerelease_.empty() && o.prerelease_.empty()) return 0;
+
+        // Compare prerelease identifiers
+        return compare_prerelease(prerelease_, o.prerelease_);
+    }
+
+    static std::vector<std::string> split_prerelease(const std::string& s) {
+        std::vector<std::string> parts;
+        std::string::size_type start = 0, pos;
+        while ((pos = s.find('.', start)) != std::string::npos) {
+            parts.push_back(s.substr(start, pos - start));
+            start = pos + 1;
+        }
+        parts.push_back(s.substr(start));
+        return parts;
+    }
+
+    static bool is_numeric(const std::string& s) {
+        if (s.empty()) return false;
+        for (char c : s) if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+        return true;
+    }
+
+    static int compare_prerelease(const std::string& a, const std::string& b) {
+        auto pa = split_prerelease(a);
+        auto pb = split_prerelease(b);
+
+        for (size_t i = 0; i < pa.size() && i < pb.size(); ++i) {
+            bool a_num = is_numeric(pa[i]);
+            bool b_num = is_numeric(pb[i]);
+
+            if (a_num && b_num) {
+                // Both numeric: compare as integers
+                uint64_t na = std::stoull(pa[i]);
+                uint64_t nb = std::stoull(pb[i]);
+                if (na != nb) return na < nb ? -1 : 1;
+            } else if (a_num != b_num) {
+                // Numeric has lower precedence than alphanumeric
+                return a_num ? -1 : 1;
+            } else {
+                // Both alphanumeric: compare as strings
+                int cmp = pa[i].compare(pb[i]);
+                if (cmp != 0) return cmp < 0 ? -1 : 1;
+            }
+        }
+
+        // Shorter prerelease has lower precedence
+        if (pa.size() != pb.size()) return pa.size() < pb.size() ? -1 : 1;
+        return 0;
+    }
+};
+
+// ============================================================================
+// Range Types
+// ============================================================================
 
 /// Comparator operators for range expressions
 enum class Comparator {
@@ -124,7 +236,7 @@ inline std::optional<Version> select_best(
     const VersionRange& range);
 
 // ============================================================================
-// Implementation
+// Implementation - Parsing Helpers
 // ============================================================================
 
 namespace detail {
@@ -159,47 +271,84 @@ inline std::vector<std::string> tokenize(const std::string& s) {
     return tokens;
 }
 
-// Expand caret range: ^1.2.3 -> >=1.2.3 <2.0.0
-inline std::optional<ComparatorSet> expand_caret(const std::string& version_str) {
+// Parse version core: MAJOR.MINOR.PATCH
+inline std::optional<Version> parse_version_impl(const std::string& str) {
+    std::string s = trim(str);
+    if (s.empty()) return std::nullopt;
+
+    // Split off build metadata (+...)
+    std::string build;
+    auto plus_pos = s.find('+');
+    if (plus_pos != std::string::npos) {
+        build = s.substr(plus_pos + 1);
+        s = s.substr(0, plus_pos);
+    }
+
+    // Split off prerelease (-...)
+    std::string prerelease;
+    auto dash_pos = s.find('-');
+    if (dash_pos != std::string::npos) {
+        prerelease = s.substr(dash_pos + 1);
+        s = s.substr(0, dash_pos);
+    }
+
+    // Parse MAJOR.MINOR.PATCH
+    auto parts = split(s, ".");
+    if (parts.size() != 3) return std::nullopt;
+
     try {
-        auto v = ::semver::version::parse(version_str);
-        ComparatorSet set;
-        set.push_back({Comparator::Ge, v});
-        
-        // ^0.0.x -> =0.0.x (exact)
-        // ^0.x -> >=0.x.0 <0.(x+1).0
-        // ^x.y.z -> >=x.y.z <(x+1).0.0
-        Version upper;
-        if (v.major() == 0) {
-            if (v.minor() == 0) {
-                // ^0.0.x means exactly 0.0.x
-                set.clear();
-                set.push_back({Comparator::Eq, v});
-                return set;
+        for (const auto& p : parts) {
+            if (p.empty()) return std::nullopt;
+            for (char c : p) {
+                if (!std::isdigit(static_cast<unsigned char>(c))) return std::nullopt;
             }
-            // ^0.x means <0.(x+1).0
-            upper = Version(0, v.minor() + 1, 0);
-        } else {
-            upper = Version(v.major() + 1, 0, 0);
         }
-        set.push_back({Comparator::Lt, upper});
-        return set;
+        uint64_t major = std::stoull(parts[0]);
+        uint64_t minor = std::stoull(parts[1]);
+        uint64_t patch = std::stoull(parts[2]);
+        return Version(major, minor, patch, prerelease, build);
     } catch (...) {
         return std::nullopt;
     }
 }
 
+// Expand caret range: ^1.2.3 -> >=1.2.3 <2.0.0
+inline std::optional<ComparatorSet> expand_caret(const std::string& version_str) {
+    auto v = parse_version_impl(version_str);
+    if (!v) return std::nullopt;
+
+    ComparatorSet set;
+    set.push_back({Comparator::Ge, *v});
+
+    // ^0.0.x -> =0.0.x (exact)
+    // ^0.x -> >=0.x.0 <0.(x+1).0
+    // ^x.y.z -> >=x.y.z <(x+1).0.0
+    Version upper;
+    if (v->major() == 0) {
+        if (v->minor() == 0) {
+            // ^0.0.x means exactly 0.0.x
+            set.clear();
+            set.push_back({Comparator::Eq, *v});
+            return set;
+        }
+        // ^0.x means <0.(x+1).0
+        upper = Version(0, v->minor() + 1, 0);
+    } else {
+        upper = Version(v->major() + 1, 0, 0);
+    }
+    set.push_back({Comparator::Lt, upper});
+    return set;
+}
+
 // Expand tilde range: ~1.2.3 -> >=1.2.3 <1.3.0
 inline std::optional<ComparatorSet> expand_tilde(const std::string& version_str) {
-    try {
-        auto v = ::semver::version::parse(version_str);
-        ComparatorSet set;
-        set.push_back({Comparator::Ge, v});
-        set.push_back({Comparator::Lt, Version(v.major(), v.minor() + 1, 0)});
-        return set;
-    } catch (...) {
-        return std::nullopt;
-    }
+    auto v = parse_version_impl(version_str);
+    if (!v) return std::nullopt;
+
+    ComparatorSet set;
+    set.push_back({Comparator::Ge, *v});
+    set.push_back({Comparator::Lt, Version(v->major(), v->minor() + 1, 0)});
+    return set;
 }
 
 // Parse X-range: 1.x, 1.2.x, * 
@@ -218,7 +367,7 @@ inline std::optional<ComparatorSet> expand_x_range(const std::string& str) {
     try {
         if (parts.size() == 1 || (parts.size() >= 2 && (parts[1] == "x" || parts[1] == "X" || parts[1] == "*"))) {
             // 1.x or 1.* -> >=1.0.0 <2.0.0
-            uint64_t major = static_cast<uint64_t>(std::stoi(parts[0]));
+            uint64_t major = std::stoull(parts[0]);
             ComparatorSet set;
             set.push_back({Comparator::Ge, Version(major, 0, 0)});
             set.push_back({Comparator::Lt, Version(major + 1, 0, 0)});
@@ -227,8 +376,8 @@ inline std::optional<ComparatorSet> expand_x_range(const std::string& str) {
         
         if (parts.size() >= 3 && (parts[2] == "x" || parts[2] == "X" || parts[2] == "*")) {
             // 1.2.x or 1.2.* -> >=1.2.0 <1.3.0
-            uint64_t major = static_cast<uint64_t>(std::stoi(parts[0]));
-            uint64_t minor = static_cast<uint64_t>(std::stoi(parts[1]));
+            uint64_t major = std::stoull(parts[0]);
+            uint64_t minor = std::stoull(parts[1]);
             ComparatorSet set;
             set.push_back({Comparator::Ge, Version(major, minor, 0)});
             set.push_back({Comparator::Lt, Version(major, minor + 1, 0)});
@@ -271,12 +420,9 @@ inline std::optional<Constraint> parse_constraint(const std::string& str) {
     version_str = trim(version_str);
     if (version_str.empty()) return std::nullopt;
     
-    try {
-        auto version = ::semver::version::parse(version_str);
-        return Constraint{op, version};
-    } catch (...) {
-        return std::nullopt;
-    }
+    auto version = parse_version_impl(version_str);
+    if (!version) return std::nullopt;
+    return Constraint{op, *version};
 }
 
 inline std::optional<ComparatorSet> parse_comparator_set(const std::string& str) {
@@ -306,12 +452,12 @@ inline std::optional<ComparatorSet> parse_comparator_set(const std::string& str)
     
     ComparatorSet set;
     for (const auto& token : tokens) {
-        // Skip if token is a caret/tilde (handle nested)
-        if (token[0] == '^') {
+        // Handle caret/tilde within compound ranges
+        if (!token.empty() && token[0] == '^') {
             auto expanded = expand_caret(token.substr(1));
             if (!expanded) return std::nullopt;
             for (const auto& c : *expanded) set.push_back(c);
-        } else if (token[0] == '~') {
+        } else if (!token.empty() && token[0] == '~') {
             auto expanded = expand_tilde(token.substr(1));
             if (!expanded) return std::nullopt;
             for (const auto& c : *expanded) set.push_back(c);
@@ -358,14 +504,7 @@ inline std::string VersionRange::selection_key() const {
 // ============================================================================
 
 inline std::optional<Version> parse_version(const std::string& str) {
-    std::string s = detail::trim(str);
-    if (s.empty()) return std::nullopt;
-    
-    try {
-        return ::semver::version::parse(s);
-    } catch (...) {
-        return std::nullopt;
-    }
+    return detail::parse_version_impl(str);
 }
 
 inline std::optional<VersionRange> parse_range(const std::string& str) {

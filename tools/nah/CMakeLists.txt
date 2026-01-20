@@ -18,7 +18,6 @@ target_link_libraries(nah PRIVATE
     CLI11::CLI11
     nlohmann_json::nlohmann_json
     ZLIB::ZLIB
-    semver
 )
 
 target_include_directories(nah PRIVATE

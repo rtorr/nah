@@ -56,7 +56,7 @@ target_include_directories(nah_core INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 target_compile_features(nah_core INTERFACE cxx_std_17)
-target_link_libraries(nah_core INTERFACE nlohmann_json::nlohmann_json semver)
+target_link_libraries(nah_core INTERFACE nlohmann_json::nlohmann_json)
 
 if(NAH_ENABLE_TOOLS)
     add_subdirectory(tools)

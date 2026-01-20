@@ -10,6 +10,25 @@
 #include <cstdlib>
 #include <ctime>
 
+// Portable getenv helper to avoid MSVC warnings
+namespace {
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
+} // anonymous namespace
+
 // Helper to create temporary test directory
 class TempTestDir {
 public:
@@ -17,10 +36,9 @@ public:
         // Create unique temp directory using portable C++
         std::string temp_base;
 #ifdef _WIN32
-        const char* tmp = std::getenv("TEMP");
-        if (!tmp) tmp = std::getenv("TMP");
-        if (!tmp) tmp = ".";
-        temp_base = tmp;
+        temp_base = safe_getenv("TEMP");
+        if (temp_base.empty()) temp_base = safe_getenv("TMP");
+        if (temp_base.empty()) temp_base = ".";
 #else
         temp_base = "/tmp";
 #endif

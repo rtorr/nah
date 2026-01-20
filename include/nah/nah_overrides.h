@@ -26,6 +26,25 @@ namespace overrides {
 using json = nlohmann::json;
 using namespace nah::core;
 
+// Portable getenv that avoids MSVC warnings
+namespace detail {
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
+} // namespace detail
+
 // ============================================================================
 // OVERRIDE PARSING
 // ============================================================================
@@ -48,8 +67,8 @@ struct EnvOverrideParseResult {
 inline EnvOverrideParseResult parse_env_override() {
     EnvOverrideParseResult result;
     
-    const char* env_val = std::getenv("NAH_OVERRIDE_ENVIRONMENT");
-    if (!env_val) {
+    std::string env_val = detail::safe_getenv("NAH_OVERRIDE_ENVIRONMENT");
+    if (env_val.empty()) {
         return result;  // Not present
     }
     

@@ -71,9 +71,8 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
     }
 
     // Check trust state if enforcement is enabled
-    const char* require_trust_env = std::getenv("NAH_REQUIRE_TRUST");
-    if (require_trust_env != nullptr && require_trust_env[0] != '\0') {
-        std::string require_trust_value = require_trust_env;
+    std::string require_trust_value = safe_getenv("NAH_REQUIRE_TRUST");
+    if (!require_trust_value.empty()) {
         auto trust_state = result.contract.trust.state;
         if (trust_state != nah::core::TrustState::Verified) {
             std::string trust_msg = std::string("Trust verification failed: state is ") +

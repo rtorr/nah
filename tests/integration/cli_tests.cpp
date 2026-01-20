@@ -72,6 +72,15 @@ inline std::string create_unique_temp_path(const std::string& prefix) {
     return path;
 }
 
+// Get the path to the nah executable (platform-specific)
+inline std::string get_nah_executable() {
+#ifdef _WIN32
+    return ".\\nah.exe";
+#else
+    return "./nah";
+#endif
+}
+
 } // anonymous namespace
 
 // Helper function to execute command and capture output
@@ -197,7 +206,7 @@ public:
 };
 
 TEST_CASE("nah --version") {
-    auto result = execute_command("./nah --version");
+    auto result = execute_command(get_nah_executable() + " --version");
     CHECK(result.exit_code == 0);
     // Version might be in stdout or stderr, check both
     std::string combined = result.output + result.error;
@@ -205,7 +214,7 @@ TEST_CASE("nah --version") {
 }
 
 TEST_CASE("nah --help") {
-    auto result = execute_command("./nah --help");
+    auto result = execute_command(get_nah_executable() + " --help");
     CHECK(result.exit_code == 0);
     // Help text might be in stdout or stderr
     std::string combined = result.output + result.error;
@@ -222,7 +231,7 @@ TEST_CASE("nah init") {
     std::filesystem::create_directory(test_dir);
 
     SUBCASE("init app project") {
-        auto result = execute_command("./nah init --app --id com.test.myapp " + test_dir + "/myapp");
+        auto result = execute_command(get_nah_executable() + " init --app --id com.test.myapp " + test_dir + "/myapp");
         CHECK(result.exit_code == 0);
         CHECK(std::filesystem::exists(test_dir + "/myapp/nah.json"));
 
@@ -245,7 +254,7 @@ TEST_CASE("nah list") {
     REQUIRE(!env.root.empty());
 
     SUBCASE("list with no apps") {
-        auto result = execute_command("./nah list");
+        auto result = execute_command(get_nah_executable() + " list");
         CHECK(result.exit_code == 0);
         // List output should indicate no apps installed
         std::string combined = result.output + result.error;
@@ -260,7 +269,7 @@ TEST_CASE("nah list") {
         env.createTestApp("com.test.app1", "1.0.0");
         env.createTestApp("com.test.app2", "2.0.0");
 
-        auto result = execute_command("./nah list");
+        auto result = execute_command(get_nah_executable() + " list");
         CHECK(result.exit_code == 0);
         std::string combined = result.output + result.error;
         CHECK(combined.find("com.test.app1") != std::string::npos);

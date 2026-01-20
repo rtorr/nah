@@ -4,6 +4,7 @@
 
 #include <nah/nah_semver.h>
 #include <doctest/doctest.h>
+#include <unordered_map>
 
 using namespace nah::semver;
 

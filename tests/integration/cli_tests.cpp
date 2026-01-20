@@ -57,10 +57,19 @@ inline std::string get_temp_dir() {
 #endif
 }
 
+// Counter for unique names within same second
+static int g_temp_counter = 0;
+
 inline std::string create_unique_temp_path(const std::string& prefix) {
     std::string temp_base = get_temp_dir();
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
-    return temp_base + "/" + prefix + "_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(std::rand());
+    static bool seeded = false;
+    if (!seeded) {
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        seeded = true;
+    }
+    g_temp_counter++;
+    std::string path = temp_base + "/" + prefix + "_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(std::rand()) + "_" + std::to_string(g_temp_counter);
+    return path;
 }
 
 } // anonymous namespace
@@ -83,20 +92,25 @@ CommandResult execute_command(const std::string& command) {
     std::string full_command = command + " >" + out_path + " 2>" + err_path;
     result.exit_code = std::system(full_command.c_str());
 
-    // Read output files
-    std::ifstream out_file(out_path);
-    std::stringstream out_buffer;
-    out_buffer << out_file.rdbuf();
-    result.output = out_buffer.str();
+    // Read output files (scope ensures files are closed before delete)
+    {
+        std::ifstream out_file(out_path);
+        std::stringstream out_buffer;
+        out_buffer << out_file.rdbuf();
+        result.output = out_buffer.str();
+    }
 
-    std::ifstream err_file(err_path);
-    std::stringstream err_buffer;
-    err_buffer << err_file.rdbuf();
-    result.error = err_buffer.str();
+    {
+        std::ifstream err_file(err_path);
+        std::stringstream err_buffer;
+        err_buffer << err_file.rdbuf();
+        result.error = err_buffer.str();
+    }
 
-    // Clean up temp files
-    std::filesystem::remove(out_path);
-    std::filesystem::remove(err_path);
+    // Clean up temp files (ignore errors)
+    std::error_code ec;
+    std::filesystem::remove(out_path, ec);
+    std::filesystem::remove(err_path, ec);
 
     return result;
 }

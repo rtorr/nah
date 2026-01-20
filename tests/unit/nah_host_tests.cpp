@@ -47,6 +47,20 @@ inline void safe_unsetenv(const char* name) {
 #endif
 }
 
+// Helper to escape paths for JSON (backslashes need to be doubled)
+inline std::string json_escape_path(const std::string& path) {
+    std::string result;
+    result.reserve(path.size() * 2);
+    for (char c : path) {
+        if (c == '\\') {
+            result += "\\\\";
+        } else {
+            result += c;
+        }
+    }
+    return result;
+}
+
 } // anonymous namespace
 
 // Helper to create a temporary test environment
@@ -119,7 +133,7 @@ public:
         record << "    \"version\": \"" << version << "\"\n";
         record << "  },\n";
         record << "  \"paths\": {\n";
-        record << "    \"install_root\": \"" << app_dir << "\"\n";
+        record << "    \"install_root\": \"" << json_escape_path(app_dir) << "\"\n";
         record << "  },\n";
         record << "  \"trust\": {\n";
         record << "    \"state\": \"unknown\"\n";
@@ -156,7 +170,7 @@ public:
         record << "    \"version\": \"" << version << "\"\n";
         record << "  },\n";
         record << "  \"paths\": {\n";
-        record << "    \"install_root\": \"" << nak_dir << "\"\n";
+        record << "    \"install_root\": \"" << json_escape_path(nak_dir) << "\"\n";
         record << "  },\n";
         record << "  \"trust\": {\n";
         record << "    \"state\": \"unknown\"\n";
@@ -173,11 +187,11 @@ public:
         runtime_desc << "    \"version\": \"" << version << "\"\n";
         runtime_desc << "  },\n";
         runtime_desc << "  \"paths\": {\n";
-        runtime_desc << "    \"root\": \"" << nak_dir << "\"\n";
+        runtime_desc << "    \"root\": \"" << json_escape_path(nak_dir) << "\"\n";
         runtime_desc << "  },\n";
         runtime_desc << "  \"loaders\": {\n";
         runtime_desc << "    \"default\": {\n";
-        runtime_desc << "      \"exec_path\": \"" << loader_path << "\"\n";
+        runtime_desc << "      \"exec_path\": \"" << json_escape_path(loader_path) << "\"\n";
         runtime_desc << "    }\n";
         runtime_desc << "  }\n";
         runtime_desc << "}\n";
@@ -515,7 +529,7 @@ TEST_CASE("NahHost with app requiring NAK") {
     record << "    \"record_ref\": \"com.test.runtime@1.0.0.json\"\n";
     record << "  },\n";
     record << "  \"paths\": {\n";
-    record << "    \"install_root\": \"" << app_dir << "\"\n";
+    record << "    \"install_root\": \"" << json_escape_path(app_dir) << "\"\n";
     record << "  },\n";
     record << "  \"trust\": {\n";
     record << "    \"state\": \"unknown\"\n";
@@ -572,7 +586,7 @@ TEST_CASE("NahHost error handling") {
         record << "{\n";
         record << "  \"install\": { \"instance_id\": \"test\" },\n";
         record << "  \"app\": { \"id\": \"invalid-app\", \"version\": \"1.0.0\" },\n";
-        record << "  \"paths\": { \"install_root\": \"" << app_dir << "\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
         record << "  \"trust\": { \"state\": \"unknown\" }\n";
         record << "}\n";
         record.close();
@@ -628,7 +642,7 @@ TEST_CASE("NahHost with complex environment") {
     record << "{\n";
     record << "  \"install\": { \"instance_id\": \"env-test\" },\n";
     record << "  \"app\": { \"id\": \"env.test.app\", \"version\": \"1.0.0\" },\n";
-    record << "  \"paths\": { \"install_root\": \"" << app_dir << "\" },\n";
+    record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
     record << "  \"overrides\": {\n";
     record << "    \"environment\": {\n";
     record << "      \"OVERRIDE_VAR\": { \"value\": \"from_install\", \"op\": \"set\" }\n";

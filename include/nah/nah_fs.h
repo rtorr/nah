@@ -111,6 +111,20 @@ inline std::string filename(const std::string& path) {
 }
 
 /**
+ * Join path components using std::filesystem (cross-platform).
+ * This is more robust than string concatenation and handles various edge cases.
+ * Returns normalized path with forward slashes.
+ * 
+ * Example: join_paths("/nah", "apps", "com.example.app") -> "/nah/apps/com.example.app"
+ */
+template<typename... Args>
+inline std::string join_paths(const std::string& first, Args&&... args) {
+    stdfs::path result(first);
+    (result /= ... /= stdfs::path(args));
+    return core::normalize_separators(result.string());
+}
+
+/**
  * Create directories recursively.
  */
 inline bool create_directories(const std::string& path) {

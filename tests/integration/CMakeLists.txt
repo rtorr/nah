@@ -2,8 +2,13 @@ add_executable(integration_tests
     cli_tests.cpp
 )
 
+target_include_directories(integration_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+)
+
 target_link_libraries(integration_tests PRIVATE
     doctest::doctest
+    nlohmann_json::nlohmann_json
 )
 
 # The tests need to be able to find the nah CLI executable

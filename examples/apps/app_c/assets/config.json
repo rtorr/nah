@@ -1,0 +1,8 @@
+{
+  "app": {
+    "name": "Application C",
+    "description": "C++ app with embedded manifest"
+  },
+  "manifest_type": "embedded",
+  "features": ["compile-time manifest embedding", "single-binary distribution"]
+}

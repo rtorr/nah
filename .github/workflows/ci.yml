@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor/header-only-cli]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNAH_ENABLE_TESTS=ON \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nah-${{ matrix.name }}
+          path: |
+            build/tools/nah/nah
+            build/tools/nah/nah.exe
+          if-no-files-found: ignore
+
+  conan:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
+
+    name: Conan (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Conan
+        run: |
+          pip install conan
+          conan profile detect
+
+      - name: Create and test package
+        run: conan create . --build=missing -o build_tools=False
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: |
+          # Check for common issues
+          echo "Checking for trailing whitespace..."
+          ! grep -rn '[[:blank:]]$' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/ || echo "Warning: trailing whitespace found"
+
+          echo "Checking for tabs..."
+          ! grep -rn $'\t' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/ || echo "Warning: tabs found"

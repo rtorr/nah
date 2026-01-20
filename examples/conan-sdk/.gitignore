@@ -1,0 +1,15 @@
+# Build output
+build/
+
+# Conan generated
+CMakeUserPresets.json
+conanbuild.sh
+conanbuildenv-*.sh
+conanrun.sh
+conanrunenv-*.sh
+deactivate_*.sh
+
+# IDE
+.idea/
+.vscode/
+*.swp

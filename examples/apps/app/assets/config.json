@@ -1,0 +1,10 @@
+{
+  "app": {
+    "name": "Application A",
+    "description": "Example app using standalone manifest"
+  },
+  "settings": {
+    "debug": true,
+    "log_level": "info"
+  }
+}

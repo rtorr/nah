@@ -175,6 +175,26 @@ inline bool set_current_path(const std::string& path) {
 }
 
 /**
+ * Check if a path is absolute (works on both Unix and Windows).
+ */
+inline bool is_absolute_path(const std::string& path) {
+    if (path.empty()) return false;
+#ifdef _WIN32
+    // Windows: starts with drive letter (C:\) or UNC path (\\)
+    if (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) 
+        && path[1] == ':' && (path[2] == '\\' || path[2] == '/')) {
+        return true;
+    }
+    if (path.size() >= 2 && path[0] == '\\' && path[1] == '\\') {
+        return true;
+    }
+    return false;
+#else
+    return path[0] == '/';
+#endif
+}
+
+/**
  * Get absolute path.
  */
 inline std::string absolute_path(const std::string& path) {

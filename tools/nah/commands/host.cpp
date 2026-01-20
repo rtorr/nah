@@ -38,7 +38,7 @@ int cmd_host_install(const GlobalOptions& opts, const std::string& manifest_dir,
     
     // Resolve root path
     std::string nah_root = manifest["root"].get<std::string>();
-    if (nah_root[0] != '/') {
+    if (!std::filesystem::path(nah_root).is_absolute()) {
         // Relative to manifest directory
         nah_root = std::filesystem::absolute(manifest_dir + "/" + nah_root).string();
     }
@@ -89,7 +89,7 @@ int cmd_host_install(const GlobalOptions& opts, const std::string& manifest_dir,
     if (manifest.contains("install")) {
         for (const auto& pkg : manifest["install"]) {
             std::string pkg_path = pkg.get<std::string>();
-            if (pkg_path[0] != '/') {
+            if (!std::filesystem::path(pkg_path).is_absolute()) {
                 pkg_path = manifest_dir + "/" + pkg_path;
             }
             

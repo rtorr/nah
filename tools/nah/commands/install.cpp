@@ -458,7 +458,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                 nah::core::LoaderConfig loader;
                 if (loader_json.contains("exec_path")) {
                     std::string exec_path = loader_json["exec_path"].get<std::string>();
-                    if (exec_path[0] != '/') {
+                    if (!std::filesystem::path(exec_path).is_absolute()) {
                         exec_path = install_dir + "/" + exec_path;
                     }
                     loader.exec_path = exec_path;

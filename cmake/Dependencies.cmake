@@ -25,6 +25,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# cpp-semver for Semantic Versioning 2.0.0 (header-only)
+# https://github.com/z4kn4fein/cpp-semver
+FetchContent_Declare(
+    cpp-semver
+    GIT_REPOSITORY https://github.com/z4kn4fein/cpp-semver.git
+    GIT_TAG        v0.4.0
+)
+FetchContent_MakeAvailable(cpp-semver)
+
 # CLI11 for command-line parsing (only needed for tools)
 if(NAH_ENABLE_TOOLS)
     FetchContent_Declare(

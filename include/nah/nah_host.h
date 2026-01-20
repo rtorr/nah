@@ -15,12 +15,14 @@
 #include "nah_json.h"
 #include "nah_fs.h"
 #include "nah_exec.h"
+#include "nah_semver.h"
 
 #include <string>
 #include <vector>
 #include <memory>
 #include <optional>
 #include <functional>
+#include <algorithm>
 
 namespace nah {
 namespace host {
@@ -279,8 +281,18 @@ inline std::optional<AppInfo> NahHost::findApplication(const std::string& id,
         return std::nullopt;
     }
 
-    // If multiple versions and no specific version requested, return latest
-    // (In real implementation, would sort by version)
+    // If multiple versions, sort by semver and return the highest
+    if (matches.size() > 1 && version.empty()) {
+        std::sort(matches.begin(), matches.end(), [](const AppInfo& a, const AppInfo& b) {
+            auto va = nah::semver::parse_version(a.version);
+            auto vb = nah::semver::parse_version(b.version);
+            if (va && vb) {
+                return *va > *vb;  // Descending order (highest first)
+            }
+            // Fallback to string comparison if parsing fails
+            return a.version > b.version;
+        });
+    }
     return matches[0];
 }
 
@@ -452,8 +464,8 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
 
     auto result = nah::json::parse_install_record(*content);
     if (result.ok) {
-        // Ensure absolute paths
-        if (!result.value.paths.install_root.empty() && result.value.paths.install_root[0] != '/') {
+        // Ensure absolute paths (portable check for both Unix and Windows)
+        if (!result.value.paths.install_root.empty() && !nah::fs::is_absolute_path(result.value.paths.install_root)) {
             result.value.paths.install_root = nah::fs::absolute_path(root_ + "/" + result.value.paths.install_root);
         }
         return result.value;

@@ -12,6 +12,43 @@
 #include <ctime>
 #include <string>
 
+// Portable environment variable helpers
+namespace {
+
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
+
+inline void safe_setenv(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
+inline void safe_unsetenv(const char* name) {
+#ifdef _WIN32
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
+}
+
+} // anonymous namespace
+
 // Helper to create a temporary test environment
 class TestNahEnvironment {
 public:
@@ -19,10 +56,9 @@ public:
         // Create unique temp directory (portable across platforms)
         std::string temp_base;
 #ifdef _WIN32
-        const char* tmp = std::getenv("TEMP");
-        if (!tmp) tmp = std::getenv("TMP");
-        if (!tmp) tmp = ".";
-        temp_base = tmp;
+        temp_base = safe_getenv("TEMP");
+        if (temp_base.empty()) temp_base = safe_getenv("TMP");
+        if (temp_base.empty()) temp_base = ".";
 #else
         temp_base = "/tmp";
 #endif
@@ -172,21 +208,13 @@ TEST_CASE("NahHost::create") {
 
     SUBCASE("create with empty root uses NAH_ROOT") {
         // Set NAH_ROOT temporarily
-#ifdef _WIN32
-        _putenv_s("NAH_ROOT", env.root.c_str());
-#else
-        setenv("NAH_ROOT", env.root.c_str(), 1);
-#endif
+        safe_setenv("NAH_ROOT", env.root.c_str());
         auto host = nah::host::NahHost::create("");
         REQUIRE(host != nullptr);
         // Should be able to use the host
         auto apps = host->listApplications();
         CHECK(apps.empty());
-#ifdef _WIN32
-        _putenv_s("NAH_ROOT", "");
-#else
-        unsetenv("NAH_ROOT");
-#endif
+        safe_unsetenv("NAH_ROOT");
     }
 
     SUBCASE("create with non-existent root still succeeds") {
@@ -422,21 +450,13 @@ TEST_CASE("NahHost convenience functions") {
     env.installTestApp("com.test.app", "1.0.0");
 
     SUBCASE("listInstalledApps") {
-#ifdef _WIN32
-        _putenv_s("NAH_ROOT", env.root.c_str());
-#else
-        setenv("NAH_ROOT", env.root.c_str(), 1);
-#endif
+        safe_setenv("NAH_ROOT", env.root.c_str());
 
         auto apps = nah::host::listInstalledApps();
         CHECK(apps.size() == 1);
         CHECK(apps[0] == "com.test.app@1.0.0");
 
-#ifdef _WIN32
-        _putenv_s("NAH_ROOT", "");
-#else
-        unsetenv("NAH_ROOT");
-#endif
+        safe_unsetenv("NAH_ROOT");
     }
 
     SUBCASE("quickExecute requires actual execution") {

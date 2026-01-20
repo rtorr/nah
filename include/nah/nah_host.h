@@ -25,6 +25,25 @@
 namespace nah {
 namespace host {
 
+// Portable getenv that avoids MSVC warnings
+namespace detail {
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
+} // namespace detail
+
 // ============================================================================
 // App Info
 // ============================================================================
@@ -204,7 +223,8 @@ inline std::unique_ptr<NahHost> NahHost::create(const std::string& root_path) {
     std::string resolved_root = root_path;
 
     if (resolved_root.empty()) {
-        if (const char* env_root = std::getenv("NAH_ROOT")) {
+        std::string env_root = detail::safe_getenv("NAH_ROOT");
+        if (!env_root.empty()) {
             resolved_root = env_root;
         } else {
             resolved_root = "/nah";

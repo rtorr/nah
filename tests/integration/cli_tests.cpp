@@ -5,11 +5,65 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
+
+// Portable environment variable helpers
+namespace {
+
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
+
+inline void safe_setenv(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
+inline void safe_unsetenv(const char* name) {
+#ifdef _WIN32
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
+}
+
+inline std::string get_temp_dir() {
+#ifdef _WIN32
+    std::string tmp = safe_getenv("TEMP");
+    if (tmp.empty()) tmp = safe_getenv("TMP");
+    if (tmp.empty()) tmp = ".";
+    return tmp;
+#else
+    return "/tmp";
+#endif
+}
+
+inline std::string create_unique_temp_path(const std::string& prefix) {
+    std::string temp_base = get_temp_dir();
+    std::srand(static_cast<unsigned>(std::time(nullptr)));
+    return temp_base + "/" + prefix + "_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(std::rand());
+}
+
+} // anonymous namespace
 
 // Helper function to execute command and capture output
 struct CommandResult {
@@ -22,38 +76,27 @@ CommandResult execute_command(const std::string& command) {
     CommandResult result;
 
     // Create temp files for output
-    char out_template[] = "/tmp/nah_test_out_XXXXXX";
-    char err_template[] = "/tmp/nah_test_err_XXXXXX";
-
-    int out_fd = mkstemp(out_template);
-    int err_fd = mkstemp(err_template);
-
-    if (out_fd == -1 || err_fd == -1) {
-        result.exit_code = -1;
-        return result;
-    }
-
-    close(out_fd);
-    close(err_fd);
+    std::string out_path = create_unique_temp_path("nah_test_out");
+    std::string err_path = create_unique_temp_path("nah_test_err");
 
     // Execute command with output redirection
-    std::string full_command = command + " >" + out_template + " 2>" + err_template;
+    std::string full_command = command + " >" + out_path + " 2>" + err_path;
     result.exit_code = std::system(full_command.c_str());
 
     // Read output files
-    std::ifstream out_file(out_template);
+    std::ifstream out_file(out_path);
     std::stringstream out_buffer;
     out_buffer << out_file.rdbuf();
     result.output = out_buffer.str();
 
-    std::ifstream err_file(err_template);
+    std::ifstream err_file(err_path);
     std::stringstream err_buffer;
     err_buffer << err_file.rdbuf();
     result.error = err_buffer.str();
 
     // Clean up temp files
-    std::filesystem::remove(out_template);
-    std::filesystem::remove(err_template);
+    std::filesystem::remove(out_path);
+    std::filesystem::remove(err_path);
 
     return result;
 }
@@ -63,31 +106,28 @@ class TestNahEnvironment {
 public:
     TestNahEnvironment() {
         // Create temp directory
-        char temp_template[] = "/tmp/nah_cli_test_XXXXXX";
-        char* dir = mkdtemp(temp_template);
-        if (dir) {
-            root = dir;
+        root = create_unique_temp_path("nah_cli_test");
+        std::filesystem::create_directories(root);
 
-            // Set NAH_ROOT for the duration of the tests
-            original_nah_root = std::getenv("NAH_ROOT");
-            setenv("NAH_ROOT", root.c_str(), 1);
+        // Set NAH_ROOT for the duration of the tests
+        original_nah_root = safe_getenv("NAH_ROOT");
+        safe_setenv("NAH_ROOT", root.c_str());
 
-            // Create NAH directory structure
-            std::filesystem::create_directories(root + "/apps");
-            std::filesystem::create_directories(root + "/naks");
-            std::filesystem::create_directories(root + "/host");
-            std::filesystem::create_directories(root + "/registry/apps");
-            std::filesystem::create_directories(root + "/registry/naks");
-            std::filesystem::create_directories(root + "/staging");
-        }
+        // Create NAH directory structure
+        std::filesystem::create_directories(root + "/apps");
+        std::filesystem::create_directories(root + "/naks");
+        std::filesystem::create_directories(root + "/host");
+        std::filesystem::create_directories(root + "/registry/apps");
+        std::filesystem::create_directories(root + "/registry/naks");
+        std::filesystem::create_directories(root + "/staging");
     }
 
     ~TestNahEnvironment() {
         // Restore original NAH_ROOT
-        if (original_nah_root) {
-            setenv("NAH_ROOT", original_nah_root, 1);
+        if (!original_nah_root.empty()) {
+            safe_setenv("NAH_ROOT", original_nah_root.c_str());
         } else {
-            unsetenv("NAH_ROOT");
+            safe_unsetenv("NAH_ROOT");
         }
 
         // Clean up temp directory
@@ -139,7 +179,7 @@ public:
     }
 
     std::string root;
-    const char* original_nah_root = nullptr;
+    std::string original_nah_root;
 };
 
 TEST_CASE("nah --version") {
@@ -164,7 +204,7 @@ TEST_CASE("nah --help") {
 // Test the init command for project scaffolding
 TEST_CASE("nah init") {
     // Create temp directory for test project
-    std::string test_dir = "/tmp/nah_init_test_" + std::to_string(getpid());
+    std::string test_dir = create_unique_temp_path("nah_init_test");
     std::filesystem::create_directory(test_dir);
 
     SUBCASE("init app project") {

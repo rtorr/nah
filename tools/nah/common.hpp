@@ -10,8 +10,26 @@
 #include <optional>
 #include <iostream>
 #include <cstdlib>
+#include <ctime>
 
 namespace nah::cli {
+
+// Portable getenv that avoids MSVC warnings
+inline std::string safe_getenv(const char* name) {
+#ifdef _WIN32
+    char* buf = nullptr;
+    size_t sz = 0;
+    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
+        std::string result(buf);
+        free(buf);
+        return result;
+    }
+    return "";
+#else
+    const char* val = std::getenv(name);
+    return val ? val : "";
+#endif
+}
 
 /**
  * Global options available to all commands.
@@ -35,20 +53,21 @@ inline std::string resolve_nah_root(const std::optional<std::string>& override_r
     }
     
     // 2. Environment variable
-    if (const char* env_root = std::getenv("NAH_ROOT")) {
-        if (env_root[0] != '\0') {
-            return env_root;
-        }
+    std::string env_root = safe_getenv("NAH_ROOT");
+    if (!env_root.empty()) {
+        return env_root;
     }
     
     // 3. Default: ~/.nah
-    if (const char* home = std::getenv("HOME")) {
-        return std::string(home) + "/.nah";
+    std::string home = safe_getenv("HOME");
+    if (!home.empty()) {
+        return home + "/.nah";
     }
     
     // Fallback for Windows
-    if (const char* userprofile = std::getenv("USERPROFILE")) {
-        return std::string(userprofile) + "/.nah";
+    std::string userprofile = safe_getenv("USERPROFILE");
+    if (!userprofile.empty()) {
+        return userprofile + "/.nah";
     }
     
     return ".nah";
@@ -237,9 +256,14 @@ inline bool ensure_nah_structure(const std::string& nah_root) {
  */
 inline std::string get_current_timestamp() {
     auto now = std::time(nullptr);
-    auto tm = std::gmtime(&now);
+    std::tm tm_buf;
+#ifdef _WIN32
+    gmtime_s(&tm_buf, &now);
+#else
+    gmtime_r(&now, &tm_buf);
+#endif
     char buffer[64];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", tm);
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
     return std::string(buffer);
 }
 

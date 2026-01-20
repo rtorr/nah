@@ -8,18 +8,27 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdlib>
-#include <unistd.h>  // For mkdtemp
+#include <ctime>
 
 // Helper to create temporary test directory
 class TempTestDir {
 public:
     TempTestDir() {
-        // Create unique temp directory
-        char temp_template[] = "/tmp/nah_test_XXXXXX";
-        char* dir = mkdtemp(temp_template);
-        if (dir) {
-            path = dir;
-        }
+        // Create unique temp directory using portable C++
+        std::string temp_base;
+#ifdef _WIN32
+        const char* tmp = std::getenv("TEMP");
+        if (!tmp) tmp = std::getenv("TMP");
+        if (!tmp) tmp = ".";
+        temp_base = tmp;
+#else
+        temp_base = "/tmp";
+#endif
+        // Generate unique name using time and random
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        std::string unique_name = "nah_test_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(std::rand());
+        path = temp_base + "/" + unique_name;
+        std::filesystem::create_directories(path);
     }
 
     ~TempTestDir() {

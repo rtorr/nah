@@ -8,25 +8,35 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <unistd.h>
+#include <cstdlib>
+#include <ctime>
+#include <string>
 
 // Helper to create a temporary test environment
 class TestNahEnvironment {
 public:
     TestNahEnvironment() {
-        // Create unique temp directory
-        char temp_template[] = "/tmp/nah_host_test_XXXXXX";
-        char* dir = mkdtemp(temp_template);
-        if (dir) {
-            root = dir;
+        // Create unique temp directory (portable across platforms)
+        std::string temp_base;
+#ifdef _WIN32
+        const char* tmp = std::getenv("TEMP");
+        if (!tmp) tmp = std::getenv("TMP");
+        if (!tmp) tmp = ".";
+        temp_base = tmp;
+#else
+        temp_base = "/tmp";
+#endif
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        std::string unique_name = "nah_host_test_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(std::rand());
+        root = temp_base + "/" + unique_name;
+        std::filesystem::create_directories(root);
 
-            // Create NAH directory structure
-            std::filesystem::create_directories(root + "/apps");
-            std::filesystem::create_directories(root + "/naks");
-            std::filesystem::create_directories(root + "/host");
-            std::filesystem::create_directories(root + "/registry/apps");
-            std::filesystem::create_directories(root + "/registry/naks");
-        }
+        // Create NAH directory structure
+        std::filesystem::create_directories(root + "/apps");
+        std::filesystem::create_directories(root + "/naks");
+        std::filesystem::create_directories(root + "/host");
+        std::filesystem::create_directories(root + "/registry/apps");
+        std::filesystem::create_directories(root + "/registry/naks");
     }
 
     ~TestNahEnvironment() {
@@ -162,13 +172,21 @@ TEST_CASE("NahHost::create") {
 
     SUBCASE("create with empty root uses NAH_ROOT") {
         // Set NAH_ROOT temporarily
+#ifdef _WIN32
+        _putenv_s("NAH_ROOT", env.root.c_str());
+#else
         setenv("NAH_ROOT", env.root.c_str(), 1);
+#endif
         auto host = nah::host::NahHost::create("");
         REQUIRE(host != nullptr);
         // Should be able to use the host
         auto apps = host->listApplications();
         CHECK(apps.empty());
+#ifdef _WIN32
+        _putenv_s("NAH_ROOT", "");
+#else
         unsetenv("NAH_ROOT");
+#endif
     }
 
     SUBCASE("create with non-existent root still succeeds") {
@@ -404,13 +422,21 @@ TEST_CASE("NahHost convenience functions") {
     env.installTestApp("com.test.app", "1.0.0");
 
     SUBCASE("listInstalledApps") {
+#ifdef _WIN32
+        _putenv_s("NAH_ROOT", env.root.c_str());
+#else
         setenv("NAH_ROOT", env.root.c_str(), 1);
+#endif
 
         auto apps = nah::host::listInstalledApps();
         CHECK(apps.size() == 1);
         CHECK(apps[0] == "com.test.app@1.0.0");
 
+#ifdef _WIN32
+        _putenv_s("NAH_ROOT", "");
+#else
         unsetenv("NAH_ROOT");
+#endif
     }
 
     SUBCASE("quickExecute requires actual execution") {

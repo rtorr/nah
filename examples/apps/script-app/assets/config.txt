@@ -1,0 +1,3 @@
+  greeting=Hello from Script App!
+  mode=demo
+  version=1.0.0

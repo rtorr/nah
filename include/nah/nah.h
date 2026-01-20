@@ -60,6 +60,9 @@
 // Core: Pure computation (no dependencies)
 #include "nah_core.h"
 
+// Semver: Semantic versioning support (requires cpp-semver)
+#include "nah_semver.h"
+
 // JSON: Parsing and serialization (requires nlohmann/json)
 #include "nah_json.h"
 

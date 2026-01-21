@@ -391,24 +391,25 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
             }
         }
 
-        // Check for loader in nak.loader
-        if (manifest["nak"].contains("loader") && manifest["nak"]["loader"].is_object()) {
-            auto& loader_json = manifest["nak"]["loader"];
-            nah::core::LoaderConfig loader;
-            
-            if (loader_json.contains("exec_path")) {
-                std::string exec_path = loader_json["exec_path"].get<std::string>();
-                if (!std::filesystem::path(exec_path).is_absolute()) {
-                    exec_path = install_dir + "/" + exec_path;
+        // Check for loaders in nak.loaders (v2.0 uses plural)
+        if (manifest["nak"].contains("loaders") && manifest["nak"]["loaders"].is_object()) {
+            for (auto& [name, loader_json] : manifest["nak"]["loaders"].items()) {
+                nah::core::LoaderConfig loader;
+                
+                if (loader_json.contains("exec_path")) {
+                    std::string exec_path = loader_json["exec_path"].get<std::string>();
+                    if (!std::filesystem::path(exec_path).is_absolute()) {
+                        exec_path = install_dir + "/" + exec_path;
+                    }
+                    loader.exec_path = exec_path;
                 }
-                loader.exec_path = exec_path;
-            }
-            if (loader_json.contains("args_template")) {
-                for (const auto& arg : loader_json["args_template"]) {
-                    loader.args_template.push_back(arg.get<std::string>());
+                if (loader_json.contains("args_template")) {
+                    for (const auto& arg : loader_json["args_template"]) {
+                        loader.args_template.push_back(arg.get<std::string>());
+                    }
                 }
+                runtime.loaders[name] = loader;
             }
-            runtime.loaders["default"] = loader;
         }
 
         // Write registry record (manually serialize since no serialization function exists)
@@ -490,12 +491,19 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
             auto nak_files = nah::fs::list_directory(paths.registry_naks);
             bool nak_found = false;
             for (const auto& f : nak_files) {
-                if (f.find(nak_id + "@") == 0 && f.substr(f.size() - 5) == ".json") {
+                // Extract basename from full path
+                std::string basename = f;
+                size_t last_slash = f.rfind('/');
+                if (last_slash != std::string::npos) {
+                    basename = f.substr(last_slash + 1);
+                }
+                
+                if (basename.find(nak_id + "@") == 0 && basename.substr(basename.size() - 5) == ".json") {
                     // Extract version from filename
-                    std::string nak_version = f.substr(nak_id.size() + 1, f.size() - nak_id.size() - 6);
+                    std::string nak_version = basename.substr(nak_id.size() + 1, basename.size() - nak_id.size() - 6);
                     record.nak.id = nak_id;
                     record.nak.version = nak_version;
-                    record.nak.record_ref = f;
+                    record.nak.record_ref = basename;  // Store just the basename
                     record.nak.loader = "default";  // Will be determined at composition time
                     record.nak.selection_reason = "matched_requirement";
                     nak_found = true;

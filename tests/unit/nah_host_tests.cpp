@@ -165,44 +165,24 @@ public:
             std::filesystem::perms::owner_read |
             std::filesystem::perms::owner_write);
 
-        // Create NAK install record in registry
+        // Create NAK install record in registry (RuntimeDescriptor format)
         std::string record_path = root + "/registry/naks/" + id + "@" + version + ".json";
         std::ofstream record(record_path);
         record << "{\n";
-        record << "  \"install\": {\n";
-        record << "    \"instance_id\": \"test-nak-" << id << "-" << version << "\"\n";
-        record << "  },\n";
-        record << "  \"app\": {\n";  // NahHost looks for app.id and app.version
+        record << "  \"nak\": {\n";
         record << "    \"id\": \"" << id << "\",\n";
         record << "    \"version\": \"" << version << "\"\n";
         record << "  },\n";
         record << "  \"paths\": {\n";
-        record << "    \"install_root\": \"" << json_escape_path(nak_dir) << "\"\n";
+        record << "    \"root\": \"" << json_escape_path(nak_dir) << "\"\n";
         record << "  },\n";
-        record << "  \"trust\": {\n";
-        record << "    \"state\": \"unknown\"\n";
+        record << "  \"loaders\": {\n";
+        record << "    \"default\": {\n";
+        record << "      \"exec_path\": \"" << json_escape_path(loader_path) << "\"\n";
+        record << "    }\n";
         record << "  }\n";
         record << "}\n";
         record.close();
-
-        // Create runtime descriptor in NAK directory
-        std::string runtime_desc_path = nak_dir + "/nah-runtime.json";
-        std::ofstream runtime_desc(runtime_desc_path);
-        runtime_desc << "{\n";
-        runtime_desc << "  \"nak\": {\n";
-        runtime_desc << "    \"id\": \"" << id << "\",\n";
-        runtime_desc << "    \"version\": \"" << version << "\"\n";
-        runtime_desc << "  },\n";
-        runtime_desc << "  \"paths\": {\n";
-        runtime_desc << "    \"root\": \"" << json_escape_path(nak_dir) << "\"\n";
-        runtime_desc << "  },\n";
-        runtime_desc << "  \"loaders\": {\n";
-        runtime_desc << "    \"default\": {\n";
-        runtime_desc << "      \"exec_path\": \"" << json_escape_path(loader_path) << "\"\n";
-        runtime_desc << "    }\n";
-        runtime_desc << "  }\n";
-        runtime_desc << "}\n";
-        runtime_desc.close();
     }
 
     void createHostConfig(const std::string& json_content) {

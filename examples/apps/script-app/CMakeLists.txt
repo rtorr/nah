@@ -66,7 +66,7 @@ add_custom_target(script_app ALL
 # We create the manifest file manually since we don't have a binary target
 set(MANIFEST_FILE "${CMAKE_BINARY_DIR}/script_app_nap.json")
 file(WRITE ${MANIFEST_FILE} "{
-  \"\\$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",
+  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",
   \"app\": {
     \"identity\": {
       \"id\": \"${APP_ID}\",

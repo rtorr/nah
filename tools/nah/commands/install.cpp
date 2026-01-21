@@ -165,6 +165,12 @@ bool extract_tar(const std::vector<uint8_t>& tar_data, const std::string& dest_d
             file.close();
 
             // Apply permissions from tar header
+            if (mode == 0) {
+                // If mode is 0, tar header might be corrupted or missing permissions
+                // Default to 0644 for regular files
+                mode = 0644;
+            }
+            
             std::filesystem::permissions(file_path,
                 static_cast<std::filesystem::perms>(mode),
                 std::filesystem::perm_options::replace);

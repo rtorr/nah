@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, refactor/header-only-cli]
+    branches: [main]
   pull_request:
     branches: [main]
 

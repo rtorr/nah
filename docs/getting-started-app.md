@@ -1,6 +1,6 @@
 # Getting Started: App Developer
 
-You're building an app that runs under NAH. This guide covers creating, building, and packaging your app.
+You're building an app that runs under NAH. This guide covers creating, building, and packaging your app - whether it's a native C++ app, a JavaScript bundle, a Python script, or any other type of application.
 
 See [Core Concepts](concepts.md) for terminology.
 
@@ -14,90 +14,142 @@ cd myapp
 This creates:
 ```
 myapp/
-├── main.cpp        # Simple app template
-├── manifest.json   # App manifest (JSON format)
+├── nap.json       # App manifest (JSON format)
+├── main.cpp       # Simple app template
 ├── README.md
-├── bin/            # Put compiled binary here
-├── lib/            # Optional libraries
-└── share/          # Optional assets
+├── bin/           # Put compiled binary here
+├── lib/           # Optional libraries
+└── assets/        # Optional assets
 ```
 
-## 2. The Generated Template
+## 2. Understanding the Manifest
 
-The generated `main.cpp` is a simple standalone app:
-
-```cpp
-#include <iostream>
-#include <cstdlib>
-
-int main() {
-    // NAH environment variables are set by the host at launch
-    const char* app_id = std::getenv("NAH_APP_ID");
-    const char* app_version = std::getenv("NAH_APP_VERSION");
-    const char* app_root = std::getenv("NAH_APP_ROOT");
-    
-    std::cout << "Hello from " << (app_id ? app_id : "unknown") << std::endl;
-    if (app_version) std::cout << "Version: " << app_version << std::endl;
-    if (app_root) std::cout << "Root: " << app_root << std::endl;
-    
-    return 0;
-}
-```
-
-The generated `manifest.json`:
+The generated `nap.json`:
 
 ```json
 {
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
   "app": {
-    "id": "com.example.myapp",
-    "version": "1.0.0",
-    "entrypoint": "bin/myapp"
+    "identity": {
+      "id": "com.example.myapp",
+      "version": "1.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/myapp"
+    }
+  },
+  "metadata": {
+    "description": "Example application",
+    "author": "Your Name",
+    "license": "MIT"
   }
 }
 ```
 
-## 3. Build
+### Key Fields
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `app.identity.id` | Unique identifier (reverse domain notation) | `com.yourcompany.myapp` |
+| `app.identity.version` | Your app's SemVer version | `1.0.0` |
+| `app.execution.entrypoint` | Path to binary/script relative to app root | `bin/myapp` or `index.js` |
+| `app.identity.nak_id` | NAK your app depends on (optional) | `com.example.sdk` |
+| `app.identity.nak_version_req` | Version requirement (SemVer range) | `>=2.0.0 <3.0.0` |
+| `app.layout.lib_dirs` | Library directories to add to library path | `["lib"]` |
+| `app.layout.asset_dirs` | Asset directories | `["assets"]` |
+| `app.environment` | Environment variables | `{"MY_VAR": "value"}` |
+
+The `$schema` field enables validation and IDE autocompletion. See [docs/schemas/README.md](schemas/README.md) for the complete schema documentation.
+
+## 3. Build Your App
+
+### Native C++ App
 
 ```bash
 mkdir -p bin
 g++ -o bin/myapp main.cpp
 ```
 
+### JavaScript Bundle
+
+```bash
+npm install
+npm run build  # Creates dist/bundle.js
+```
+
+Update `nap.json` entrypoint:
+```json
+{
+  "app": {
+    "execution": {
+      "entrypoint": "dist/bundle.js"
+    }
+  }
+}
+```
+
+### Python Script
+
+```bash
+# No build step needed
+```
+
+Update `nap.json` entrypoint:
+```json
+{
+  "app": {
+    "execution": {
+      "entrypoint": "main.py"
+    }
+  }
+}
+```
+
 ## 4. Package
 
 ```bash
 nah pack .
-# Creates: myapp.nap (or com.example.myapp-1.0.0.nap)
+# Creates: com.example.myapp-1.0.0.nap
 ```
 
-The `nah pack` command automatically converts `manifest.json` to binary format.
+The `.nap` package is a standard tar.gz archive containing your app and the `nap.json` manifest at the root.
 
 ## 5. Install and Run
 
 ```bash
-nah install myapp.nap
+nah install com.example.myapp-1.0.0.nap
 # First run: Creates ~/.nah (default) if it doesn't exist
 
 nah list
 # Shows: com.example.myapp@1.0.0
 
-nah status com.example.myapp
-# Shows contract details
+nah show com.example.myapp
+# Shows details
+
+nah run com.example.myapp
+# Runs your app
 ```
 
 ## Adding a NAK Dependency
 
-If your app depends on an SDK (NAK), add `nak_id` to your manifest:
+If your app depends on an SDK (NAK), add the NAK information to your manifest:
 
 ```json
 {
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
   "app": {
-    "id": "com.yourcompany.myapp",
-    "version": "1.0.0",
-    "nak_id": "com.example.sdk",
-    "nak_version_req": ">=2.0.0 <3.0.0",
-    "entrypoint": "bin/myapp",
-    "lib_dirs": ["lib"]
+    "identity": {
+      "id": "com.yourcompany.myapp",
+      "version": "1.0.0",
+      "nak_id": "com.example.sdk",
+      "nak_version_req": ">=2.0.0 <3.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/myapp"
+    },
+    "layout": {
+      "lib_dirs": ["lib"]
+    }
   }
 }
 ```
@@ -112,46 +164,114 @@ If your app depends on an SDK (NAK), add `nak_id` to your manifest:
 | `>=1.0.0 \|\| >=3.0.0` | 1.x or 3.0+ (pipe = OR) |
 | `*` | Any version |
 
-## Alternative: Embedded Manifest
+## Bundle Applications (JavaScript, Python, etc.)
 
-For native apps, you can embed the manifest in the binary instead of using a separate file:
+Bundle applications work identically to native apps in NAH v2.0. The key difference is that the `entrypoint` points to a script or bundle file, and the app typically depends on a NAK that provides the runtime:
+
+### JavaScript Example
+
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.myapp",
+      "version": "1.0.0",
+      "nak_id": "com.example.js-runtime",
+      "nak_version_req": ">=2.0.0 <3.0.0"
+    },
+    "execution": {
+      "entrypoint": "dist/bundle.js"
+    },
+    "layout": {
+      "asset_dirs": ["assets"]
+    },
+    "environment": {
+      "NODE_ENV": "production"
+    }
+  }
+}
+```
+
+The NAK's loader executes your bundle using the appropriate runtime.
+
+### Python Example
+
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.pyapp",
+      "version": "1.0.0",
+      "nak_id": "org.python",
+      "nak_version_req": "3.9.*"
+    },
+    "execution": {
+      "entrypoint": "main.py"
+    }
+  }
+}
+```
+
+## Environment Variables
+
+Your app receives these environment variables at runtime:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NAH_APP_ID` | Your app's ID | `com.example.myapp` |
+| `NAH_APP_VERSION` | Your app's version | `1.0.0` |
+| `NAH_APP_ROOT` | App install directory | `/nah/apps/com.example.myapp-1.0.0` |
+| `NAH_NAK_ID` | Resolved NAK ID (if any) | `com.example.sdk` |
+| `NAH_NAK_VERSION` | Resolved NAK version | `2.1.0` |
+| `NAH_NAK_ROOT` | NAK install directory | `/nah/naks/com.example.sdk/2.1.0` |
+
+Example usage:
 
 ```cpp
-#include <nah/manifest.h>
+#include <iostream>
+#include <cstdlib>
 
-NAH_APP_MANIFEST(
-    NAH_FIELD_ID("com.yourcompany.myapp")
-    NAH_FIELD_VERSION("1.0.0")
-    NAH_FIELD_NAK_ID("com.example.sdk")
-    NAH_FIELD_NAK_VERSION_REQ(">=2.0.0 <3.0.0")
-    NAH_FIELD_ENTRYPOINT("bin/myapp")
-    NAH_FIELD_LIB_DIR("lib")
-)
-
-int main(int argc, char* argv[]) {
-    // Your app code
+int main() {
+    const char* app_id = std::getenv("NAH_APP_ID");
+    const char* app_root = std::getenv("NAH_APP_ROOT");
+    
+    std::cout << "Running: " << (app_id ? app_id : "unknown") << std::endl;
+    std::cout << "From: " << (app_root ? app_root : "unknown") << std::endl;
     return 0;
 }
 ```
 
-This requires linking against libnahhost.
+## CMake Integration
 
-## Manifest Fields Reference
+For C++ projects, use the NAH CMake helpers:
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | Unique identifier (reverse domain notation) |
-| `version` | Yes | Your app's SemVer version |
-| `entrypoint` | Yes | Path to binary relative to app root |
-| `nak_id` | No | NAK your app depends on (omit for standalone apps) |
-| `nak_version_req` | No | Version requirement (SemVer range) |
-| `lib_dirs` | No | Library directories to add to library path |
-| `description` | No | Human-readable description |
-| `author` | No | Author name or email |
+```cmake
+cmake_minimum_required(VERSION 3.14)
+project(myapp)
 
-For non-native applications (JavaScript, Python, etc.), see [Getting Started: Bundle Apps](getting-started-bundle.md).
+include(path/to/NahAppTemplate.cmake)
+
+add_executable(myapp src/main.cpp)
+
+nah_app(myapp
+    ID "com.example.myapp"
+    VERSION "1.0.0"
+    NAK "com.example.sdk"
+    NAK_VERSION ">=1.0.0 <2.0.0"
+    ENTRYPOINT "bin/myapp"
+    ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+)
+
+# Build package with: make nah_package
+```
+
+See [examples/apps/](../../examples/apps/) for complete working examples.
 
 ## Next Steps
 
 - [CLI Reference](cli.md) for all commands
-- [SPEC.md](../SPEC.md) for the full manifest format
+- [Getting Started: NAK](getting-started-nak.md) to package an SDK
+- [Schema Documentation](schemas/README.md) for complete manifest reference
+- [SPEC.md](../SPEC.md) for the full specification

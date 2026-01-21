@@ -16,16 +16,21 @@ NAH eliminates this by making applications self-describing. Apps declare what th
 nah install vendor-sdk-2.1.0.nak
 nah install myapp-1.0.0.nap
 
-# Query the launch contract
-nah status com.example.myapp
+# List installed packages
+nah list
 ```
 
 ```
-Application: com.example.myapp v1.0.0
-NAK: com.vendor.sdk v2.1.0
-Binary: /opt/nah/apps/com.example.myapp-1.0.0/bin/myapp
-CWD: /opt/nah/apps/com.example.myapp-1.0.0
-Library Paths: /opt/nah/naks/com.vendor.sdk/2.1.0/lib
+Apps:
+  com.example.myapp@1.0.0 (nak: com.vendor.sdk)
+
+NAKs:
+  com.vendor.sdk@2.1.0
+```
+
+```bash
+# Run an application
+nah run com.example.myapp
 ```
 
 The contract is deterministic. Same inputs, same output. Auditable before execution.
@@ -33,14 +38,13 @@ The contract is deterministic. Same inputs, same output. Auditable before execut
 ## CLI
 
 ```
-nah install <source>      Install app (.nap) or SDK (.nak)
+nah install <source>      Install app (.nap) or NAK (.nak)
 nah uninstall <id>        Remove a package
 nah list                  List installed packages
-nah pack <dir>            Create a package
-nah status [target]       Show status and diagnose issues
-nah init <type> <dir>     Create new project (app, nak, root)
-nah profile list|set      Manage host profiles
-nah host install <dir>    Set up host from manifest
+nah run <id>              Run an installed application
+nah pack <dir>            Create a package from directory
+nah show <id>             Show installed package details
+nah init <type> <dir>     Create new project (app, nak, host)
 ```
 
 ## Installation
@@ -63,7 +67,7 @@ Download the appropriate binary from [Releases](https://github.com/rtorr/nah/rel
 
 ## Library Integration
 
-NAH v2.0 is now a **header-only library**, making integration even simpler:
+NAH v2.0 is a **header-only library**, making integration simple:
 
 ```cmake
 include(FetchContent)
@@ -82,7 +86,10 @@ target_link_libraries(your_target PRIVATE NAH::nah)
 #include <nah/nah.h>
 
 auto host = nah::host::NahHost::create();
-int exit_code = host->executeApplication("com.example.app");
+auto result = host->getLaunchContract("com.example.app");
+if (result.ok) {
+    nah::exec::exec_replace(result.contract);
+}
 ```
 
 `nah.h` includes everything. For finer control, include individual headers:
@@ -112,12 +119,12 @@ See [Library Headers](docs/README.md#library-headers) for detailed documentation
 - [How It Works](docs/how-it-works.md) - Internals of the launch contract system
 - [Concepts](docs/concepts.md) - Core terminology: manifests, NAKs, profiles, contracts
 - [Getting Started: Host](docs/getting-started-host.md) - Set up a host and deploy applications
-- [Getting Started: SDK](docs/getting-started-nak.md) - Package an SDK for distribution
+- [Getting Started: NAK](docs/getting-started-nak.md) - Package an SDK for distribution
 - [Getting Started: App](docs/getting-started-app.md) - Build an application with a manifest
 - [CLI Reference](docs/cli.md) - Command-line interface documentation
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 - [Specification](SPEC.md) - Normative specification
-- [Migration Guide](MIGRATION.md) - Migrating from v1.0 to v2.0
+- [Migration Guide](MIGRATION.md) - Migrating to v2.0
 - [Contributing](CONTRIBUTING.md) - Development setup and releasing
 
 ## License

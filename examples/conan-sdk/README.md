@@ -40,8 +40,7 @@ conan-sdk/
 ├── src/                  # SDK implementation
 ├── bin/                  # Loader source
 ├── resources/            # Engine resources
-└── META/
-    └── nak.json.in       # NAK manifest template
+└── nak.json.in           # NAK manifest template
 ```
 
 ## Dependencies
@@ -68,7 +67,7 @@ cmake .. --preset conan-release
 cmake --build build/Release
 
 # Package into NAK (collects SDK + all Conan deps)
-cmake --build build/Release --target package_nak
+cmake --build build/Release --target nah_package
 ```
 
 Output: `build/build/Release/com.example.gameengine-1.0.0.nak` (~9MB)
@@ -77,8 +76,7 @@ Output: `build/build/Release/com.example.gameengine-1.0.0.nak` (~9MB)
 
 ```
 com.example.gameengine-1.0.0.nak
-├── META/
-│   └── nak.json
+├── nak.json
 ├── lib/
 │   ├── libgameengine.a       # SDK library
 │   ├── libz.a                # zlib
@@ -120,12 +118,17 @@ The app's manifest:
 
 ```json
 {
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
   "app": {
-    "id": "com.example.mygame",
-    "version": "1.0.0",
-    "nak_id": "com.example.gameengine",
-    "nak_version_req": ">=1.0.0 <2.0.0",
-    "entrypoint": "bin/mygame"
+    "identity": {
+      "id": "com.example.mygame",
+      "version": "1.0.0",
+      "nak_id": "com.example.gameengine",
+      "nak_version_req": ">=1.0.0 <2.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/mygame"
+    }
   }
 }
 ```
@@ -133,6 +136,6 @@ The app's manifest:
 ## Installing the NAK
 
 ```bash
-# Install into a NAH root
-nah --root /path/to/nah_root nak install build/build/Release/com.example.gameengine-1.0.0.nak
+# Install into a NAH host
+nah install build/build/Release/com.example.gameengine-1.0.0.nak
 ```

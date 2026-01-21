@@ -10,28 +10,24 @@ This host installs:
 |------|----|---------|-------------|
 | NAK | `com.example.sdk` | 1.2.3 | Framework SDK for C/C++ apps |
 | App | `com.example.app` | 1.0.0 | Basic C app (uses sdk) |
-| App | `com.example.app_c` | 1.0.0 | C++ app with embedded manifest (uses sdk) |
+| App | `com.example.app_c` | 1.0.0 | C++ app (uses sdk) |
+| App | `com.example.script-app` | 1.0.0 | Script-only app |
 
 ## Usage
 
 ```bash
-# Install packages into NAH root using nah host install
-./setup.sh
-
-# Or directly with the nah CLI:
-nah host install .
+# Install packages into NAH root
+cd examples
+./scripts/setup_host.sh
 
 # Clean install (removes existing NAH root first)
-nah host install . --clean
+./scripts/setup_host.sh --clean
 
 # Run all apps
-./run.sh
-
-# Show launch contracts
-./run.sh --contract
+./scripts/run_apps.sh
 
 # Run specific app
-./run.sh com.example.app
+../build/tools/nah/nah --root demo_nah_root run com.example.app
 ```
 
 > **Note:** Packages must be built before running setup.
@@ -41,110 +37,38 @@ nah host install . --clean
 
 ```
 host/
-├── host.json           # Host environment configuration
-├── nah.json            # Host manifest - declares required packages (if using nah host install)
-├── setup.sh            # Wrapper for nah host install
-├── run.sh              # Run apps or show contracts
-├── src/                # Host integration examples (C++)
-└── nah_root/           # Generated NAH root (after setup)
+├── nah.json            # Host configuration
+└── README.md           # This file
 ```
 
-## Host Environment (host.json)
+## Host Configuration (nah.json)
 
 Configures host-specific environment variables and paths:
 
 ```json
 {
-  "environment": {
-    "NAH_HOST_NAME": "example-host"
-  },
-  "paths": {
-    "library_prepend": [],
-    "library_append": []
-  },
-  "overrides": {
-    "allow_env_overrides": true,
-    "allowed_env_keys": []
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "host": {
+    "root": "/opt/nah",
+    "environment": {
+      "NAH_HOST_NAME": "example-host"
+    },
+    "paths": {
+      "library_prepend": [],
+      "library_append": []
+    },
+    "overrides": {
+      "allow_env_overrides": true,
+      "allowed_env_keys": []
+    },
+    "install": [
+      "../sdk/build/com.example.sdk-1.2.3.nak",
+      "../apps/app/build/com.example.app-1.0.0.nap",
+      "../apps/app_c/build/com.example.app_c-1.0.0.nap",
+      "../apps/script-app/build/com.example.script-app-1.0.0.nap"
+    ]
   }
 }
 ```
 
-## Host Manifest (nah.json)
-
-Declares which packages to install:
-
-```json
-{
-  "$schema": "nah.host.manifest.v1",
-  "root": "./nah_root",
-  "host": {
-    "environment": {
-      "NAH_HOST_NAME": "example-host"
-    }
-  },
-  "install": [
-    "../sdk/build/com.example.sdk-1.2.3.nak",
-    "../apps/app/build/com.example.app-1.0.0.nap",
-    "../apps/app_c/build/com.example.app_c-1.0.0.nap"
-  ]
-}
-```
-
 Package paths are relative to the host directory. Packages are self-describing (id/version extracted from the package itself).
-
-## Host API Integration
-
-The `src/` directory contains both C and C++ examples.
-
-### C API (Stable ABI)
-
-For hosts using C, FFI, or requiring ABI stability:
-
-```c
-#include <nah/nah.h>
-
-/* Check ABI compatibility */
-if (nah_abi_version() != NAH_ABI_VERSION) {
-    fprintf(stderr, "ABI mismatch\n");
-    return 1;
-}
-
-NahHost* host = nah_host_create("./nah_root");
-NahContract* contract = nah_host_get_contract(host, "com.example.app", NULL);
-
-printf("Binary: %s\n", nah_contract_binary(contract));
-printf("CWD: %s\n", nah_contract_cwd(contract));
-
-/* Environment as JSON (caller must free) */
-char* env = nah_contract_environment_json(contract);
-printf("Env: %s\n", env);
-nah_free_string(env);
-
-nah_contract_destroy(contract);
-nah_host_destroy(host);
-```
-
-### C++ API
-
-For hosts using C++:
-
-```cpp
-#include <nah/nahhost.hpp>
-
-auto host = nah::NahHost::create("./nah_root");
-auto apps = host->listApplications();
-auto contract = host->getLaunchContract("com.example.app", "1.0.0");
-```
-
-### Build
-
-```bash
-mkdir build && cd build
-cmake .. && make
-
-# C++ demo
-./host_api_demo ../nah_root
-
-# C demo
-./host_c_api_demo ../nah_root
-```

@@ -7,39 +7,46 @@ See [Core Concepts](concepts.md) for terminology.
 ## 1. Create a NAK Skeleton
 
 ```bash
-nah nak init mysdk
+nah init nak mysdk
 cd mysdk
 ```
 
 This creates:
 ```
 mysdk/
-├── META/
-│   └── nak.json
-├── bin/
-├── lib/
-└── resources/
+├── nak.json          # NAK manifest
+├── bin/              # Optional loader
+├── lib/              # Shared libraries
+└── resources/        # SDK resources
 ```
 
 ## 2. Edit NAK Metadata
 
-Open `META/nak.json`:
+Open `nak.json`:
 
 ```json
 {
+  "$schema": "https://nah.rtorr.com/schemas/nak.v1.json",
   "nak": {
-    "id": "com.yourcompany.mysdk",
-    "version": "1.0.0"
+    "identity": {
+      "id": "com.yourcompany.mysdk",
+      "version": "1.0.0"
+    },
+    "layout": {
+      "resource_root": "resources",
+      "lib_dirs": ["lib"]
+    },
+    "environment": {
+      "MYSDK_VERSION": "1.0.0"
+    },
+    "execution": {
+      "cwd": "{NAH_APP_ROOT}"
+    }
   },
-  "paths": {
-    "resource_root": "resources",
-    "lib_dirs": ["lib"]
-  },
-  "environment": {
-    "MYSDK_VERSION": "1.0.0"
-  },
-  "execution": {
-    "cwd": "{NAH_APP_ROOT}"
+  "metadata": {
+    "description": "My SDK",
+    "author": "Your Company",
+    "license": "Apache-2.0"
   }
 }
 ```
@@ -48,17 +55,18 @@ Open `META/nak.json`:
 
 | Field | Description |
 |-------|-------------|
-| `nak.id` | Unique identifier (reverse domain notation) |
-| `nak.version` | SemVer version |
-| `paths.lib_dirs` | Directories containing shared libraries |
+| `nak.identity.id` | Unique identifier (reverse domain notation) |
+| `nak.identity.version` | SemVer version |
+| `nak.layout.lib_dirs` | Directories containing shared libraries |
 
 ### Optional Fields
 
 | Field | Description |
 |-------|-------------|
-| `paths.resource_root` | Directory for NAK resources |
-| `environment` | Environment variables to set |
-| `execution.cwd` | Working directory for apps |
+| `nak.layout.resource_root` | Directory for NAK resources |
+| `nak.environment` | Environment variables to set |
+| `nak.execution.cwd` | Working directory for apps |
+| `metadata` | Description, author, license, homepage |
 
 ## 3. Add Libraries
 

@@ -42,8 +42,7 @@ sdk/
 ├── bin/
 │   └── loader.c          # NAK loader binary
 ├── resources/            # SDK resources
-└── META/
-    └── nak.json.in       # NAK manifest template
+└── nak.json.in           # NAK manifest template
 ```
 
 ## Building and Packaging
@@ -53,7 +52,7 @@ cd sdk
 mkdir build && cd build
 cmake ..
 make
-make package_nak
+make nah_package
 ```
 
 Output: `build/com.example.sdk-1.2.3.nak`
@@ -62,8 +61,7 @@ Output: `build/com.example.sdk-1.2.3.nak`
 
 ```
 com.example.sdk-1.2.3.nak
-├── META/
-│   └── nak.json          # NAK manifest
+├── nak.json              # NAK manifest
 ├── lib/
 │   └── libframework.so   # SDK shared library
 ├── bin/
@@ -114,12 +112,17 @@ The app's manifest:
 
 ```json
 {
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
   "app": {
-    "id": "com.example.app",
-    "version": "1.0.0",
-    "nak_id": "com.example.sdk",
-    "nak_version_req": ">=1.0.0 <2.0.0",
-    "entrypoint": "bin/app"
+    "identity": {
+      "id": "com.example.app",
+      "version": "1.0.0",
+      "nak_id": "com.example.sdk",
+      "nak_version_req": ">=1.0.0 <2.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/app"
+    }
   }
 }
 ```
@@ -127,7 +130,7 @@ The app's manifest:
 ## Installing the NAK
 
 ```bash
-nah --root /path/to/nah_root nak install build/com.example.sdk-1.2.3.nak
+nah install build/com.example.sdk-1.2.3.nak
 ```
 
 ## Comparison with conan-sdk

@@ -111,13 +111,20 @@ public:
             std::filesystem::perms::owner_read |
             std::filesystem::perms::owner_write);
 
-        // Create app manifest
-        std::string manifest_path = app_dir + "/nah.json";
+        // Create app manifest (v1.1.0 JSON format)
+        std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"id\": \"" << id << "\",\n";
-        manifest << "  \"version\": \"" << version << "\",\n";
-        manifest << "  \"entrypoint\": \"bin/app\"\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"" << id << "\",\n";
+        manifest << "      \"version\": \"" << version << "\"\n";
+        manifest << "    },\n";
+        manifest << "    \"execution\": {\n";
+        manifest << "      \"entrypoint\": \"bin/app\"\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
         manifest << "}\n";
         manifest.close();
 
@@ -491,16 +498,21 @@ TEST_CASE("NahHost with app requiring NAK") {
     std::string app_dir = env.root + "/apps/com.test.nakapp-1.0.0";
     std::filesystem::create_directories(app_dir);
 
-    // Create app manifest with NAK requirement
-    std::string manifest_path = app_dir + "/nah.json";
+    // Create app manifest with NAK requirement (v1.1.0 format)
+    std::string manifest_path = app_dir + "/nap.json";
     std::ofstream manifest(manifest_path);
     manifest << "{\n";
-    manifest << "  \"id\": \"com.test.nakapp\",\n";
-    manifest << "  \"version\": \"1.0.0\",\n";
-    manifest << "  \"entrypoint\": \"main.script\",\n";
-    manifest << "  \"nak\": {\n";
-    manifest << "    \"id\": \"com.test.runtime\",\n";
-    manifest << "    \"version_req\": \">=1.0.0\"\n";
+    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+    manifest << "  \"app\": {\n";
+    manifest << "    \"identity\": {\n";
+    manifest << "      \"id\": \"com.test.nakapp\",\n";
+    manifest << "      \"version\": \"1.0.0\",\n";
+    manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+    manifest << "      \"nak_version_req\": \">=1.0.0\"\n";
+    manifest << "    },\n";
+    manifest << "    \"execution\": {\n";
+    manifest << "      \"entrypoint\": \"main.script\"\n";
+    manifest << "    }\n";
     manifest << "  }\n";
     manifest << "}\n";
     manifest.close();
@@ -620,15 +632,22 @@ TEST_CASE("NahHost with complex environment") {
     std::string app_dir = env.root + "/apps/env-test-1.0.0";
     std::filesystem::create_directories(app_dir);
 
-    std::ofstream manifest(app_dir + "/nah.json");
+    std::ofstream manifest(app_dir + "/nap.json");
     manifest << "{\n";
-    manifest << "  \"id\": \"env.test.app\",\n";
-    manifest << "  \"version\": \"1.0.0\",\n";
-    manifest << "  \"entrypoint\": \"run.sh\",\n";
-    manifest << "  \"env\": [\n";
-    manifest << "    \"APP_VAR=from_manifest\",\n";
-    manifest << "    \"DEFAULT_VAR=default_value\"\n";
-    manifest << "  ]\n";
+    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+    manifest << "  \"app\": {\n";
+    manifest << "    \"identity\": {\n";
+    manifest << "      \"id\": \"env.test.app\",\n";
+    manifest << "      \"version\": \"1.0.0\"\n";
+    manifest << "    },\n";
+    manifest << "    \"execution\": {\n";
+    manifest << "      \"entrypoint\": \"run.sh\"\n";
+    manifest << "    },\n";
+    manifest << "    \"environment\": {\n";
+    manifest << "      \"APP_VAR\": \"from_manifest\",\n";
+    manifest << "      \"DEFAULT_VAR\": \"default_value\"\n";
+    manifest << "    }\n";
+    manifest << "  }\n";
     manifest << "}\n";
     manifest.close();
 

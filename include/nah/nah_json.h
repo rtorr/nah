@@ -155,9 +155,30 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
 
         auto& app = result.value;
 
-        // Identity
-        app.id = detail::get_string(j, "id");
-        app.version = detail::get_string(j, "version");
+        // Identity (nested in v1.1.0 format, flat in older format)
+        if (j.contains("identity") && j["identity"].is_object()) {
+            // New format: app.identity
+            auto& identity = j["identity"];
+            app.id = detail::get_string(identity, "id");
+            app.version = detail::get_string(identity, "version");
+            app.nak_id = detail::get_string(identity, "nak_id");
+            app.nak_version_req = detail::get_string(identity, "nak_version_req");
+        } else {
+            // Legacy flat format
+            app.id = detail::get_string(j, "id");
+            app.version = detail::get_string(j, "version");
+            
+            // NAK requirements - check multiple possible formats
+            if (j.contains("nak") && j["nak"].is_object()) {
+                // Legacy: nak.id and nak.version_req
+                app.nak_id = detail::get_string(j["nak"], "id");
+                app.nak_version_req = detail::get_string(j["nak"], "version_req");
+            } else {
+                // Flat format: nak_id and nak_version_req
+                app.nak_id = detail::get_string(j, "nak_id");
+                app.nak_version_req = detail::get_string(j, "nak_version_req");
+            }
+        }
         
         if (app.id.empty()) {
             result.error = "missing required field: id";
@@ -168,15 +189,14 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
         
-        // Runtime requirements
-        if (j.contains("nak") && j["nak"].is_object()) {
-            app.nak_id = detail::get_string(j["nak"], "id");
-            app.nak_version_req = detail::get_string(j["nak"], "version_req");
-            app.nak_loader = detail::get_string(j["nak"], "loader");
-        }
-        
-        // Execution
-        if (j.contains("entrypoint")) {
+        // Execution (nested in v1.1.0 format)
+        if (j.contains("execution") && j["execution"].is_object()) {
+            // New format: app.execution
+            auto& execution = j["execution"];
+            app.entrypoint_path = detail::get_string(execution, "entrypoint");
+            app.entrypoint_args = detail::get_string_array(execution, "args");
+        } else if (j.contains("entrypoint")) {
+            // Legacy format
             if (j["entrypoint"].is_object()) {
                 app.entrypoint_path = detail::get_string(j["entrypoint"], "path");
                 app.entrypoint_args = detail::get_string_array(j["entrypoint"], "args");
@@ -193,15 +213,39 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
         
+        // Layout (nested in v1.1.0 format)
+        if (j.contains("layout") && j["layout"].is_object()) {
+            // New format: app.layout
+            auto& layout = j["layout"];
+            app.lib_dirs = detail::get_string_array(layout, "lib_dirs");
+            app.asset_dirs = detail::get_string_array(layout, "asset_dirs");
+        } else {
+            // Legacy flat format
+            app.lib_dirs = detail::get_string_array(j, "lib_dirs");
+            app.asset_dirs = detail::get_string_array(j, "asset_dirs");
+        }
+        
         // Environment
         app.env_vars = detail::get_string_array(j, "env_vars");
-        
-        // Paths
-        app.lib_dirs = detail::get_string_array(j, "lib_dirs");
-        app.asset_dirs = detail::get_string_array(j, "asset_dirs");
+        if (j.contains("environment") && j["environment"].is_object()) {
+            // Also support environment object (v1.1.0 format)
+            for (auto& [key, value] : j["environment"].items()) {
+                if (value.is_string()) {
+                    app.env_vars.push_back(key + "=" + value.get<std::string>());
+                }
+            }
+        }
         
         // Asset exports
-        if (j.contains("asset_exports") && j["asset_exports"].is_array()) {
+        if (j.contains("exports") && j["exports"].is_array()) {
+            for (const auto& exp : j["exports"]) {
+                core::AssetExportDecl aed;
+                aed.id = detail::get_string(exp, "id");
+                aed.path = detail::get_string(exp, "path");
+                aed.type = detail::get_string(exp, "type");
+                app.asset_exports.push_back(aed);
+            }
+        } else if (j.contains("asset_exports") && j["asset_exports"].is_array()) {
             for (const auto& exp : j["asset_exports"]) {
                 core::AssetExportDecl aed;
                 aed.id = detail::get_string(exp, "id");
@@ -217,11 +261,18 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             app.permissions_network = detail::get_string_array(j["permissions"], "network");
         }
         
-        // Metadata
-        app.description = detail::get_string(j, "description");
-        app.author = detail::get_string(j, "author");
-        app.license = detail::get_string(j, "license");
-        app.homepage = detail::get_string(j, "homepage");
+        // Metadata (can be flat or in metadata object)
+        if (j.contains("metadata") && j["metadata"].is_object()) {
+            app.description = detail::get_string(j["metadata"], "description");
+            app.author = detail::get_string(j["metadata"], "author");
+            app.license = detail::get_string(j["metadata"], "license");
+            app.homepage = detail::get_string(j["metadata"], "homepage");
+        } else {
+            app.description = detail::get_string(j, "description");
+            app.author = detail::get_string(j, "author");
+            app.license = detail::get_string(j, "license");
+            app.homepage = detail::get_string(j, "homepage");
+        }
         
         result.ok = true;
         

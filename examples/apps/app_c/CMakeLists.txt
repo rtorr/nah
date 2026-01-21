@@ -7,7 +7,7 @@
 #   mkdir build && cd build
 #   cmake ..
 #   make
-#   make package_all
+#   make nah_package
 #
 # Output: build/com.example.app_c-1.0.0.nap
 
@@ -49,5 +49,5 @@ nah_app(app_c
     ENV_VARS "APP_MODE=packaged"
 )
 
-message(STATUS "Run 'make package_all' to create NAP package.")
+message(STATUS "Run 'make nah_package' to create NAP package.")
 message(STATUS "Package will be: ${APP_ID}-${APP_VERSION}.nap")

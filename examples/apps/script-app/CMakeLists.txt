@@ -13,7 +13,7 @@
 # Build:
 #   mkdir build && cd build
 #   cmake ..
-#   make package_all
+#   make nah_package
 #
 # Output: build/com.example.script-app-1.0.0.nap
 
@@ -112,13 +112,13 @@ add_custom_target(script_app_package ALL
     BYPRODUCTS ${PACKAGE_FILE}
 )
 
-# Add to global package_all target
-if(NOT TARGET package_all)
-    add_custom_target(package_all)
+# Add to global nah_package target
+if(NOT TARGET nah_package)
+    add_custom_target(nah_package)
 endif()
-add_dependencies(package_all script_app_package)
+add_dependencies(nah_package script_app_package)
 
 message(STATUS "")
 message(STATUS "This app contains NO compiled code!")
-message(STATUS "Run 'make package_all' to create NAP package.")
+message(STATUS "Run 'make nah_package' to create NAP package.")
 message(STATUS "Package will be: ${APP_ID}-${APP_VERSION}.nap")

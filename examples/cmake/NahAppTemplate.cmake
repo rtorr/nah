@@ -432,11 +432,11 @@ function(nah_package TARGET_NAME)
         BYPRODUCTS ${PACKAGE_FILE}
     )
 
-    # Add to global package_all target
-    if(NOT TARGET package_all)
-        add_custom_target(package_all)
+    # Add to global nah_package target
+    if(NOT TARGET nah_package)
+        add_custom_target(nah_package)
     endif()
-    add_dependencies(package_all ${TARGET_NAME}_package)
+    add_dependencies(nah_package ${TARGET_NAME}_package)
 
     message(STATUS "Package target: ${TARGET_NAME}_package → ${PACKAGE_FILE}")
 endfunction()

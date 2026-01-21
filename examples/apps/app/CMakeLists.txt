@@ -7,7 +7,7 @@
 #   mkdir build && cd build
 #   cmake ..
 #   make
-#   make package_all
+#   make nah_package
 #
 # Output: build/com.example.app-1.0.0.nap
 
@@ -67,5 +67,5 @@ nah_package(app
 #     ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
 # )
 
-message(STATUS "Run 'make package_all' to create NAP package.")
+message(STATUS "Run 'make nah_package' to create NAP package.")
 message(STATUS "Package will be: ${APP_ID}-${APP_VERSION}.nap")

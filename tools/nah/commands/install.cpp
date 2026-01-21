@@ -65,6 +65,32 @@ std::string generate_uuid() {
     return std::string(uuid_str);
 }
 
+// Fix permissions recursively after copying files
+// This is needed because std::filesystem::copy() doesn't preserve permissions properly on some mounts
+// (e.g., Docker Desktop Mac's fakeowner filesystem)
+void fix_permissions_recursive(const std::filesystem::path& dir, const std::filesystem::path& source_dir) {
+#ifndef _WIN32
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+        // Get corresponding source path
+        auto rel_path = std::filesystem::relative(entry.path(), dir);
+        auto source_path = source_dir / rel_path;
+        
+        if (!std::filesystem::exists(source_path)) {
+            continue;
+        }
+        
+        // Get permissions from source
+        std::error_code ec;
+        auto source_perms = std::filesystem::status(source_path, ec).permissions();
+        if (ec) continue;
+        
+        // Apply to destination using POSIX chmod (more reliable than std::filesystem::permissions)
+        auto mode = static_cast<mode_t>(static_cast<int>(source_perms) & 0777);
+        chmod(entry.path().string().c_str(), mode);
+    }
+#endif
+}
+
 // Gzip decompression
 std::optional<std::vector<uint8_t>> gzip_decompress(const std::vector<uint8_t>& compressed) {
     z_stream stream;
@@ -175,29 +201,20 @@ bool extract_tar(const std::vector<uint8_t>& tar_data, const std::string& dest_d
                 mode = 0644;
             }
             
-            // Try to set permissions using std::filesystem
+            // Use POSIX chmod directly on Unix-like systems for maximum compatibility
+            // Some filesystems (like Docker Desktop Mac's fakeowner) don't properly support
+            // std::filesystem::permissions(), but do support POSIX chmod()
+#ifdef _WIN32
+            // Windows: use std::filesystem::permissions (no POSIX chmod available)
             std::error_code perm_ec;
             std::filesystem::permissions(file_path,
                 static_cast<std::filesystem::perms>(mode),
                 std::filesystem::perm_options::replace,
                 perm_ec);
-            
-            // Verify permissions were actually applied (some filesystems like Docker's fakeowner ignore them)
-            if (!perm_ec) {
-                auto actual_perms = std::filesystem::status(file_path, perm_ec).permissions();
-                auto expected_perms = static_cast<std::filesystem::perms>(mode);
-                
-                // If permissions don't match (common on Docker Desktop Mac fakeowner mounts),
-                // try direct POSIX chmod as fallback
-                if (perm_ec || (actual_perms != expected_perms)) {
-#ifdef _WIN32
-                    // Windows doesn't support POSIX chmod, just accept filesystem behavior
 #else
-                    // Try POSIX chmod - works on more filesystems than std::filesystem::permissions
-                    chmod(file_path.string().c_str(), static_cast<mode_t>(mode));
+            // Unix/Linux/Mac: use POSIX chmod for best compatibility
+            chmod(file_path.string().c_str(), static_cast<mode_t>(mode));
 #endif
-                }
-            }
         }
 
         offset += padded_size;
@@ -358,6 +375,9 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         std::filesystem::copy(source_dir, install_dir,
             std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
 
+        // Fix permissions after copy (needed for Docker Desktop Mac fakeowner mounts)
+        fix_permissions_recursive(install_dir, source_dir);
+
         // Create NAK descriptor (registry record)
         nah::core::RuntimeDescriptor runtime;
         runtime.nak.id = id;
@@ -448,6 +468,9 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         std::filesystem::create_directories(install_dir);
         std::filesystem::copy(source_dir, install_dir,
             std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+
+        // Fix permissions after copy (needed for Docker Desktop Mac fakeowner mounts)
+        fix_permissions_recursive(install_dir, source_dir);
 
         // Create install record
         nah::core::InstallRecord record;

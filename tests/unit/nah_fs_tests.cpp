@@ -12,7 +12,7 @@
 
 // Portable getenv helper to avoid MSVC warnings
 namespace {
-inline std::string safe_getenv(const char* name) {
+[[maybe_unused]] inline std::string safe_getenv(const char* name) {
 #ifdef _WIN32
     char* buf = nullptr;
     size_t sz = 0;

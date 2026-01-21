@@ -100,7 +100,7 @@ if (result.ok) {
 | `nah/nah_json.h` | JSON parsing (requires nlohmann/json) |
 | `nah/nah_fs.h` | Filesystem operations |
 | `nah/nah_exec.h` | Process execution |
-| `nah/nah_overrides.h` | NAH_OVERRIDE_* handling |
+| `nah/nah_overrides.h` | NAH\_OVERRIDE\_\* handling |
 | `nah/nah_host.h` | High-level NahHost class |
 
 See [Library Headers](docs/README.md#library-headers) for detailed documentation.
@@ -116,16 +116,16 @@ See [Library Headers](docs/README.md#library-headers) for detailed documentation
 
 ## Documentation
 
-- [How It Works](docs/how-it-works.md) - Internals of the launch contract system
-- [Concepts](docs/concepts.md) - Core terminology: manifests, NAKs, profiles, contracts
-- [Getting Started: Host](docs/getting-started-host.md) - Set up a host and deploy applications
-- [Getting Started: NAK](docs/getting-started-nak.md) - Package an SDK for distribution
-- [Getting Started: App](docs/getting-started-app.md) - Build an application with a manifest
-- [CLI Reference](docs/cli.md) - Command-line interface documentation
-- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
-- [Specification](SPEC.md) - Normative specification
-- [Migration Guide](MIGRATION.md) - Migrating to v2.0
-- [Contributing](CONTRIBUTING.md) - Development setup and releasing
+* [How It Works](docs/how-it-works.md) - Internals of the launch contract system
+* [Concepts](docs/concepts.md) - Core terminology: manifests, NAKs, profiles, contracts
+* [Getting Started: Host](docs/getting-started-host.md) - Set up a host and deploy applications
+* [Getting Started: NAK](docs/getting-started-nak.md) - Package an SDK for distribution
+* [Getting Started: App](docs/getting-started-app.md) - Build an application with a manifest
+* [CLI Reference](docs/cli.md) - Command-line interface documentation
+* [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+* [Specification](SPEC.md) - Normative specification
+* [Migration Guide](MIGRATION.md) - Migrating to v2.0
+* [Contributing](CONTRIBUTING.md) - Development setup and releasing
 
 ## License
 

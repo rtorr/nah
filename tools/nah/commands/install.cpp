@@ -195,18 +195,30 @@ SourceType detect_source_type(const std::string& source) {
         if (ext == ".nak") return SourceType::NakFile;
     }
 
-    // Directory - check for host manifest
+    // Directory - check manifest type (names match package extensions)
     if (nah::fs::is_directory(source)) {
-        auto manifest_path = source + "/nah.json";
-        auto content = nah::fs::read_file(manifest_path);
-        if (content) {
+        // Try app manifest
+        if (nah::fs::exists(source + "/nap.json")) {
+            return SourceType::Directory;
+        }
+        
+        // Try NAK manifest
+        if (nah::fs::exists(source + "/nak.json")) {
+            return SourceType::Directory;
+        }
+        
+        // Try host configuration
+        auto host_content = nah::fs::read_file(source + "/nah.json");
+        if (host_content) {
             try {
-                auto j = nlohmann::json::parse(*content);
-                if (j.contains("root")) {
+                auto j = nlohmann::json::parse(*host_content);
+                // Check if it's a host config (has host.root or host section)
+                if (j.contains("host") && j["host"].is_object()) {
                     return SourceType::Host;
                 }
             } catch (...) {}
         }
+        
         return SourceType::Directory;
     }
 
@@ -218,139 +230,26 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
     init_warning_collector(opts.json, opts.quiet);
     auto paths = get_nah_paths(nah_root);
 
-    // Try different manifest locations
-    auto manifest_content = nah::fs::read_file(source_dir + "/nah.json");
+    // Try NAH-specific manifest files (names match package extensions)
+    auto manifest_content = nah::fs::read_file(source_dir + "/nap.json");
+    std::string manifest_type = "nap";
+    
     if (!manifest_content) {
-        manifest_content = nah::fs::read_file(source_dir + "/META/nak.json");
+        manifest_content = nah::fs::read_file(source_dir + "/nak.json");
+        manifest_type = "nak";
     }
     if (!manifest_content) {
-        manifest_content = nah::fs::read_file(source_dir + "/META/app.json");
+        manifest_content = nah::fs::read_file(source_dir + "/nah.json");
+        manifest_type = "nah";
     }
+    
     if (!manifest_content) {
-        // Try to parse binary manifest if JSON not found
-        auto binary_manifest = nah::fs::read_file(source_dir + "/manifest.nah");
-        if (binary_manifest) {
-            // Parse binary manifest - it's a simple TLV format
-            const uint8_t* data = reinterpret_cast<const uint8_t*>(binary_manifest->data());
-            size_t len = binary_manifest->size();
-
-            // Check magic header "NAH\x02"
-            if (len < 4 || data[0] != 'N' || data[1] != 'A' || data[2] != 'H') {
-                print_error("Invalid binary manifest: missing or incorrect NAH magic header", opts.json);
-                return 1;
-            }
-
-            uint8_t version = data[3];
-            if (version != 0x02) {
-                print_error("Unsupported binary manifest version: " + std::to_string(version) +
-                           " (expected version 2)", opts.json);
-                return 1;
-            }
-
-            // Build JSON from binary manifest fields
-            nlohmann::json parsed_manifest;
-            size_t offset = 4; // Skip magic header
-
-            while (offset + 3 <= len) {
-                uint8_t field_type = data[offset];
-
-                // Validate field type is within expected range
-                if (field_type == 0 || field_type > 0x0F) {
-                    print_warning("Skipping unknown field type 0x" +
-                                 std::to_string(static_cast<int>(field_type)), opts.json);
-                    break;  // Stop parsing on unknown field to avoid corruption
-                }
-
-                uint16_t field_len = static_cast<uint16_t>(data[offset + 1]) |
-                                     static_cast<uint16_t>(data[offset + 2] << 8);
-                offset += 3;
-
-                // Validate field length
-                if (field_len > 65535 || offset + field_len > len) {
-                    print_error("Malformed binary manifest: invalid field length at offset " +
-                               std::to_string(offset - 3), opts.json);
-                    return 1;
-                }
-
-                std::string value(reinterpret_cast<const char*>(&data[offset]), field_len);
-                offset += field_len;
-
-                // Map field types to JSON (based on actual ManifestFieldType enum)
-                switch (field_type) {
-                    case 0x01: // ID
-                        parsed_manifest["id"] = value;
-                        break;
-                    case 0x02: // VERSION
-                        parsed_manifest["version"] = value;
-                        break;
-                    case 0x03: // NAK_ID
-                        parsed_manifest["nak_id"] = value;
-                        break;
-                    case 0x04: // NAK_VERSION_REQ
-                        parsed_manifest["nak_version_req"] = value;
-                        break;
-                    case 0x05: // ENTRYPOINT
-                        parsed_manifest["entrypoint"] = value;
-                        break;
-                    case 0x06: // LIB_DIRS
-                        if (!parsed_manifest.contains("lib_dirs")) {
-                            parsed_manifest["lib_dirs"] = nlohmann::json::array();
-                        }
-                        parsed_manifest["lib_dirs"].push_back(value);
-                        break;
-                    case 0x07: // ASSET_DIRS
-                        if (!parsed_manifest.contains("asset_dirs")) {
-                            parsed_manifest["asset_dirs"] = nlohmann::json::array();
-                        }
-                        parsed_manifest["asset_dirs"].push_back(value);
-                        break;
-                    case 0x08: // ENV_VARS
-                        // Skip for now - would need JSON parsing
-                        break;
-                    case 0x09: // CAPABILITIES
-                        // Skip for now - would need JSON parsing
-                        break;
-                    case 0x0A: // NAK_LOADER
-                        parsed_manifest["nak_loader"] = value;
-                        break;
-                }
-            }
-
-            // Convert to string for normal processing
-            manifest_content = parsed_manifest.dump();
-        } else {
-            // No manifest found - this might be an app with embedded manifest
-            // Try to detect type from directory structure
-            bool has_binary = nah::fs::exists(source_dir + "/bin");
-            if (has_binary) {
-                // Assume it's an app with embedded manifest - create minimal manifest
-                nlohmann::json minimal_manifest;
-
-                // Try to extract app name from first binary in bin/
-                auto bin_files = nah::fs::list_directory(source_dir + "/bin");
-                std::string app_name = "unknown";
-                for (const auto& f : bin_files) {
-                    if (f != "." && f != "..") {
-                        app_name = f;
-                        break;
-                    }
-                }
-
-                minimal_manifest["id"] = "embedded." + app_name;
-                minimal_manifest["version"] = "0.0.0";
-                minimal_manifest["entry"] = "bin/" + app_name;
-
-                manifest_content = minimal_manifest.dump();
-
-                print_warning("No manifest found, using minimal manifest for embedded app", opts.json);
-            } else {
-                print_error("No manifest found in: " + source_dir + "\n"
-                       "Expected one of: nah.json, META/nak.json, META/app.json, or manifest.nah", opts.json);
-                return 1;
-            }
-        }
+        print_error("No manifest found in: " + source_dir + "\n"
+                   "Expected one of: nap.json, nak.json, or nah.json", opts.json);
+        return 1;
     }
 
+    // Parse JSON manifest
     nlohmann::json manifest;
     try {
         manifest = nlohmann::json::parse(*manifest_content);
@@ -360,33 +259,40 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         return 1;
     }
 
-    // Handle both old schema (nested under "app"/"nak") and new flat schema
-    nlohmann::json app_data = manifest;
-    if (manifest.contains("app") && manifest["app"].is_object()) {
-        app_data = manifest["app"];
-    } else if (manifest.contains("nak") && manifest["nak"].is_object()) {
-        app_data = manifest["nak"];
+    // Detect manifest type from structure and extract identity
+    bool is_app = manifest.contains("app") && manifest["app"].is_object();
+    bool is_nak = manifest.contains("nak") && manifest["nak"].is_object();
+    bool is_host = manifest.contains("host") && manifest["host"].is_object();
+    
+    std::string id, version;
+    
+    if (is_app && !install_opts.as_nak) {
+        // Extract from nested app.identity structure
+        if (!manifest["app"].contains("identity") || !manifest["app"]["identity"].is_object()) {
+            print_error("Invalid app manifest: missing 'app.identity' section", opts.json);
+            return 1;
+        }
+        id = manifest["app"]["identity"].value("id", "");
+        version = manifest["app"]["identity"].value("version", "");
+    } else if (is_nak || install_opts.as_nak) {
+        // Extract from nested nak.identity structure
+        if (!manifest["nak"].contains("identity") || !manifest["nak"]["identity"].is_object()) {
+            print_error("Invalid NAK manifest: missing 'nak.identity' section", opts.json);
+            return 1;
+        }
+        id = manifest["nak"]["identity"].value("id", "");
+        version = manifest["nak"]["identity"].value("version", "");
+        is_nak = true;
+    } else if (is_host) {
+        print_error("Host manifest detected. Use 'nah host install' for host setup.", opts.json);
+        return 1;
+    } else {
+        print_error("Invalid manifest structure: expected 'app', 'nak', or 'host' section", opts.json);
+        return 1;
     }
 
-    // Detect type from manifest
-    bool is_nak = install_opts.as_nak ||
-                  manifest.contains("nak") ||
-                  manifest.contains("loaders") ||
-                  app_data.contains("loaders") ||
-                  (app_data.contains("lib_dirs") && !app_data.contains("nak_id"));
-    if (install_opts.as_app) is_nak = false;
-
-    std::string id = app_data.is_object() ? app_data.value("id", "") : "";
-    std::string version = app_data.is_object() ? app_data.value("version", "") : "";
-
     if (id.empty() || version.empty()) {
-        print_error("Invalid manifest: missing required fields 'id' and 'version'\n"
-                   "Example minimal manifest:\n"
-                   "  {\n"
-                   "    \"id\": \"com.example.app\",\n"
-                   "    \"version\": \"1.0.0\",\n"
-                   "    \"entry\": \"bin/app\"\n"
-                   "  }", opts.json);
+        print_error("Invalid manifest: missing required 'id' or 'version' in identity section", opts.json);
         return 1;
     }
 
@@ -434,43 +340,31 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         runtime.nak.version = version;
         runtime.paths.root = install_dir;
 
-        // Check lib_dirs in app_data and paths.lib_dirs in manifest
-        if (app_data.contains("lib_dirs")) {
-            for (const auto& dir : app_data["lib_dirs"]) {
-                runtime.paths.lib_dirs.push_back(install_dir + "/" + dir.get<std::string>());
-            }
-        } else if (manifest.contains("paths") && manifest["paths"].contains("lib_dirs")) {
-            for (const auto& dir : manifest["paths"]["lib_dirs"]) {
+        // Extract lib_dirs from nak.paths.lib_dirs
+        if (manifest["nak"].contains("paths") && manifest["nak"]["paths"].contains("lib_dirs")) {
+            for (const auto& dir : manifest["nak"]["paths"]["lib_dirs"]) {
                 runtime.paths.lib_dirs.push_back(install_dir + "/" + dir.get<std::string>());
             }
         }
 
-        // Check for loaders in both app_data and manifest root
-        nlohmann::json loaders_source;
-        if (app_data.contains("loaders")) {
-            loaders_source = app_data["loaders"];
-        } else if (manifest.contains("loaders")) {
-            loaders_source = manifest["loaders"];
-        }
-
-        if (!loaders_source.empty() && loaders_source.is_object()) {
-            for (auto& [name, loader_json] : loaders_source.items()) {
-                nah::core::LoaderConfig loader;
-                if (loader_json.contains("exec_path")) {
-                    std::string exec_path = loader_json["exec_path"].get<std::string>();
-                    if (!std::filesystem::path(exec_path).is_absolute()) {
-                        exec_path = install_dir + "/" + exec_path;
-                    }
-                    loader.exec_path = exec_path;
+        // Check for loader in nak.loader
+        if (manifest["nak"].contains("loader") && manifest["nak"]["loader"].is_object()) {
+            auto& loader_json = manifest["nak"]["loader"];
+            nah::core::LoaderConfig loader;
+            
+            if (loader_json.contains("exec_path")) {
+                std::string exec_path = loader_json["exec_path"].get<std::string>();
+                if (!std::filesystem::path(exec_path).is_absolute()) {
+                    exec_path = install_dir + "/" + exec_path;
                 }
-                if (loader_json.contains("args_template")) {
-                    for (const auto& arg : loader_json["args_template"]) {
-                        loader.args_template.push_back(arg.get<std::string>());
-                    }
-                }
-                // inherit_env not in LoaderConfig struct
-                runtime.loaders[name] = loader;
+                loader.exec_path = exec_path;
             }
+            if (loader_json.contains("args_template")) {
+                for (const auto& arg : loader_json["args_template"]) {
+                    loader.args_template.push_back(arg.get<std::string>());
+                }
+            }
+            runtime.loaders["default"] = loader;
         }
 
         // Write registry record (manually serialize since no serialization function exists)
@@ -538,10 +432,11 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         record.app.version = version;
         record.paths.install_root = install_dir;
 
-        // Handle NAK dependency
-        if (app_data.contains("nak_id")) {
-            record.app.nak_id = app_data["nak_id"].get<std::string>();
-            record.app.nak_version_req = app_data.is_object() ? app_data.value("nak_version_req", "") : "";
+        // Handle NAK dependency (for app manifests)
+        if (is_app && manifest["app"]["identity"].contains("nak_id")) {
+            auto& app_identity = manifest["app"]["identity"];
+            record.app.nak_id = app_identity["nak_id"].get<std::string>();
+            record.app.nak_version_req = app_identity.value("nak_version_req", "");
 
             // Try to find and pin NAK
             std::string nak_id = record.app.nak_id;
@@ -554,7 +449,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                     record.nak.id = nak_id;
                     record.nak.version = nak_version;
                     record.nak.record_ref = f;
-                    record.nak.loader = app_data.is_object() ? app_data.value("nak_loader", "default") : "default";
+                    record.nak.loader = "default";  // Will be determined at composition time
                     record.nak.selection_reason = "matched_requirement";
                     nak_found = true;
                     break;

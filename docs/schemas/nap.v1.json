@@ -1,0 +1,233 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "title": "NAH App Manifest (nap.json)",
+  "description": "Developer-owned, immutable manifest for NAH applications packaged in .nap files",
+  "type": "object",
+  "required": [
+    "app"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "envValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple string value (set operation)"
+        },
+        {
+          "type": "object",
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "set",
+                "prepend",
+                "append",
+                "unset"
+              ],
+              "description": "Environment variable operation"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for the operation (required for set/prepend/append)"
+            },
+            "separator": {
+              "type": "string",
+              "description": "Separator for prepend/append operations (default ':')",
+              "default": ":"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "identity",
+        "execution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Application identifier (reverse domain notation recommended, e.g., com.example.myapp)",
+              "pattern": "^[a-zA-Z0-9._-]+$",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "description": "Application version (semantic versioning recommended)",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
+            },
+            "nak_id": {
+              "type": "string",
+              "description": "Required NAK (Native App Kit) identifier",
+              "pattern": "^[a-zA-Z0-9._-]+$",
+              "minLength": 1
+            },
+            "nak_version_req": {
+              "type": "string",
+              "description": "NAK version requirement (SemVer range, e.g., >=1.0.0 <2.0.0 or ^1.2.0)",
+              "minLength": 1
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "required": [
+            "entrypoint"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "entrypoint": {
+              "type": "string",
+              "description": "Relative path to executable from app root (e.g., bin/myapp)",
+              "minLength": 1
+            },
+            "args": {
+              "type": "array",
+              "description": "Default arguments passed to entrypoint",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lib_dirs": {
+              "type": "array",
+              "description": "Relative paths to directories containing app-specific libraries",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "lib"
+              ]
+            },
+            "asset_dirs": {
+              "type": "array",
+              "description": "Relative paths to directories containing app assets/resources",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "assets"
+              ]
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "description": "Environment variables requested by the application (supports operations: set, prepend, append, unset)",
+          "additionalProperties": {
+            "$ref": "#/definitions/envValue"
+          },
+          "default": {}
+        },
+        "permissions": {
+          "type": "object",
+          "description": "Permissions requested by the application (host may deny or modify)",
+          "additionalProperties": false,
+          "properties": {
+            "filesystem": {
+              "type": "array",
+              "description": "Filesystem permissions (format: operation:selector, e.g., read:host://user-documents/*)",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            },
+            "network": {
+              "type": "array",
+              "description": "Network permissions (format: operation:selector, e.g., connect:https://api.example.com:443)",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            }
+          }
+        },
+        "exports": {
+          "type": "array",
+          "description": "Asset exports that can be referenced by id",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier for this export",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "description": "Relative path to the asset from app root",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "description": "MIME type or format hint (optional)"
+              }
+            }
+          },
+          "default": []
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Optional metadata about the application",
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "Human-readable description of the application"
+            },
+            "author": {
+              "type": "string",
+              "description": "Application author or organization"
+            },
+            "license": {
+              "type": "string",
+              "description": "License identifier (e.g., MIT, Apache-2.0)"
+            },
+            "homepage": {
+              "type": "string",
+              "description": "Homepage or documentation URL",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    }
+  }
+}

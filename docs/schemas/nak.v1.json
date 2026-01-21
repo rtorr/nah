@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nah.rtorr.com/schemas/nak.v1.json",
+  "title": "NAH NAK Manifest (nak.json)",
+  "description": "Vendor-owned, immutable manifest for NAH Native App Kits packaged in .nak files",
+  "type": "object",
+  "required": [
+    "nak"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "envValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple string value (set operation)"
+        },
+        {
+          "type": "object",
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "set",
+                "prepend",
+                "append",
+                "unset"
+              ],
+              "description": "Environment variable operation"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for the operation (required for set/prepend/append)"
+            },
+            "separator": {
+              "type": "string",
+              "description": "Separator for prepend/append operations (default ':')",
+              "default": ":"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "nak": {
+      "type": "object",
+      "required": [
+        "identity",
+        "paths"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "NAK identifier (reverse domain notation recommended, e.g., com.example.sdk)",
+              "pattern": "^[a-zA-Z0-9._-]+$",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "description": "NAK version (semantic versioning required)",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resource_root": {
+              "type": "string",
+              "description": "Relative path to NAK resources directory",
+              "minLength": 1,
+              "default": "resources"
+            },
+            "lib_dirs": {
+              "type": "array",
+              "description": "Relative paths to directories containing NAK libraries",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "lib"
+              ]
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "description": "Environment variables provided by the NAK (supports operations: set, prepend, append, unset)",
+          "additionalProperties": {
+            "$ref": "#/definitions/envValue"
+          },
+          "default": {}
+        },
+        "loader": {
+          "type": "object",
+          "description": "NAK loader configuration (optional)",
+          "additionalProperties": false,
+          "properties": {
+            "exec_path": {
+              "type": "string",
+              "description": "Relative path to loader executable from NAK root",
+              "minLength": 1
+            },
+            "args_template": {
+              "type": "array",
+              "description": "Argument template for loader (supports {NAH_APP_ROOT}, {NAH_NAK_ROOT}, {NAH_APP_ENTRY}, {NAH_APP_ID} placeholders)",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "description": "Execution context for the NAK",
+          "additionalProperties": false,
+          "properties": {
+            "cwd": {
+              "type": "string",
+              "description": "Working directory for NAK loader (supports {NAH_APP_ROOT}, {NAH_NAK_ROOT} placeholders)",
+              "minLength": 1,
+              "default": "{NAH_APP_ROOT}"
+            }
+          }
+        }
+      }
+    }
+  }
+}

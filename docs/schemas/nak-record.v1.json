@@ -1,0 +1,235 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nah.rtorr.com/schemas/nak-record.v1.json",
+  "title": "NAH NAK Install Record",
+  "description": "Host-owned, mutable record of an installed NAK instance",
+  "type": "object",
+  "required": [
+    "nak",
+    "paths"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "envValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple string value (set operation)"
+        },
+        {
+          "type": "object",
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "set",
+                "prepend",
+                "append",
+                "unset"
+              ],
+              "description": "Environment variable operation"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for the operation (required for set/prepend/append)"
+            },
+            "separator": {
+              "type": "string",
+              "description": "Separator for prepend/append operations (default ':')",
+              "default": ":"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "nak": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "NAK identifier",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "NAK version",
+          "minLength": 1
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "required": [
+        "root"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "Absolute path to NAK installation root",
+          "minLength": 1
+        },
+        "resource_root": {
+          "type": "string",
+          "description": "Absolute path to NAK resources directory",
+          "minLength": 1
+        },
+        "lib_dirs": {
+          "type": "array",
+          "description": "Absolute paths to NAK library directories",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment variables provided by this NAK (supports operations: set, prepend, append, unset)",
+      "additionalProperties": {
+        "$ref": "#/definitions/envValue"
+      },
+      "default": {}
+    },
+    "loader": {
+      "type": "object",
+      "description": "NAK loader configuration",
+      "additionalProperties": false,
+      "properties": {
+        "exec_path": {
+          "type": "string",
+          "description": "Absolute path to loader executable",
+          "minLength": 1
+        },
+        "args_template": {
+          "type": "array",
+          "description": "Argument template for loader (may contain placeholders)",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Execution context for the NAK",
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for NAK loader (may contain placeholders)",
+          "minLength": 1
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "description": "Installation metadata",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "description": "Installation timestamp (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the NAK package (file path, URL, etc.)"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "NAK provenance and audit trail",
+      "additionalProperties": false,
+      "properties": {
+        "package_hash": {
+          "type": "string",
+          "description": "SHA256 hash of installed NAK package",
+          "pattern": "^sha256:[a-fA-F0-9]{64}$"
+        },
+        "installed_at": {
+          "type": "string",
+          "description": "Installation timestamp (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "installed_by": {
+          "type": "string",
+          "description": "User or tool that performed installation"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the package"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Digital signature of the package"
+        },
+        "cert_chain": {
+          "type": "string",
+          "description": "Certificate chain for signature verification"
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "description": "Trust evaluation results for this NAK",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "Trust state",
+          "enum": [
+            "unknown",
+            "verified",
+            "unverified",
+            "failed",
+            "stale"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "description": "Trust verification source/method"
+        },
+        "evaluated_at": {
+          "type": "string",
+          "description": "When trust was evaluated (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "description": "When trust evaluation expires (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "inputs_hash": {
+          "type": "string",
+          "description": "Hash of inputs used for trust evaluation",
+          "pattern": "^sha256:[a-fA-F0-9]{64}$"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional trust evaluation details",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

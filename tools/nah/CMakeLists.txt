@@ -10,8 +10,6 @@ add_executable(nah
     commands/show.cpp
     commands/which.cpp
     commands/pack.cpp
-    commands/host.cpp
-    commands/manifest.cpp
 )
 
 target_link_libraries(nah PRIVATE

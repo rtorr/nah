@@ -1,13 +1,13 @@
-# Example Application - Standalone Manifest
-# ==========================================
-# Demonstrates a C application using the Framework SDK with NAH.
+# Example Application - JSON Manifest
+# ====================================
+# Demonstrates a C application using the Framework SDK with NAH v1.1.0.
 # Uses the shared NahAppTemplate.cmake for common build patterns.
 #
 # Build:
 #   mkdir build && cd build
 #   cmake ..
 #   make
-#   make package_nap
+#   make package_all
 #
 # Output: build/com.example.app-1.0.0.nap
 
@@ -35,36 +35,37 @@ message(STATUS "  Requires NAK: ${NAK_ID} ${NAK_VERSION_REQ}")
 # Include shared build template
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/NahAppTemplate.cmake)
 
-# Find dependencies
+# Find dependencies (CLI is now optional for pure CMake workflows)
 nah_find_cli()
 nah_find_sdk(framework)
 
 # Create application
 nah_create_app(app src/main.c)
 
-# Generate manifest
-set(MANIFEST_CONTENT "{
-  \"$schema\": \"nah.manifest.input.v2\",
-  \"app\": {
-    \"id\": \"${APP_ID}\",
-    \"version\": \"${APP_VERSION}\",
-    \"nak_id\": \"${NAK_ID}\",
-    \"nak_version_req\": \"${NAK_VERSION_REQ}\",
-    \"nak_loader\": \"default\",
-    \"entrypoint\": \"bin/app\",
-    \"lib_dirs\": [\"lib\"],
-    \"asset_dirs\": [\"assets\"],
-    \"permissions\": {
-      \"filesystem\": [\"read:assets/*\"]
-    }
-  }
-}")
-
-nah_generate_manifest(app "${MANIFEST_CONTENT}")
-
-# Package NAP
-nah_package_nap(app ${APP_ID} ${APP_VERSION}
-    ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets
+# Generate manifest and package (Option 1: Explicit)
+nah_app_manifest(app
+    ID "${APP_ID}"
+    VERSION "${APP_VERSION}"
+    NAK_ID "${NAK_ID}"
+    NAK_VERSION "${NAK_VERSION_REQ}"
+    ENTRYPOINT "bin/app"
+    LIB_DIRS "lib"
+    ASSET_DIRS "assets"
 )
 
-message(STATUS "Run 'make package_nap' to create NAP package.")
+nah_package(app
+    ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+)
+
+# Alternative (Option 2: Shorthand - commented out)
+# nah_app(app
+#     ID "${APP_ID}"
+#     VERSION "${APP_VERSION}"
+#     NAK "${NAK_ID}"
+#     NAK_VERSION "${NAK_VERSION_REQ}"
+#     ENTRYPOINT "bin/app"
+#     ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+# )
+
+message(STATUS "Run 'make package_all' to create NAP package.")
+message(STATUS "Package will be: ${APP_ID}-${APP_VERSION}.nap")

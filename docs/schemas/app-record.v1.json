@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nah.rtorr.com/schemas/app-record.v1.json",
+  "title": "NAH App Install Record",
+  "description": "Host-owned, mutable record of an installed application instance",
+  "type": "object",
+  "required": ["install", "app", "paths"],
+  "additionalProperties": false,
+  "definitions": {
+    "envValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple string value (set operation)"
+        },
+        {
+          "type": "object",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": ["set", "prepend", "append", "unset"],
+              "description": "Environment variable operation"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for the operation (required for set/prepend/append)"
+            },
+            "separator": {
+              "type": "string",
+              "description": "Separator for prepend/append operations (default ':')",
+              "default": ":"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "install": {
+      "type": "object",
+      "required": ["instance_id"],
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "description": "Unique identifier for this installation instance (UUID recommended)",
+          "minLength": 1
+        }
+      }
+    },
+    "app": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "description": "Audit snapshot of app identity at install time (does not affect composition)",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Application identifier from manifest",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "Application version from manifest",
+          "minLength": 1
+        },
+        "nak_id": {
+          "type": "string",
+          "description": "NAK identifier from app manifest (audit only)",
+          "minLength": 1
+        },
+        "nak_version_req": {
+          "type": "string",
+          "description": "NAK version requirement from app manifest (audit only)",
+          "minLength": 1
+        }
+      }
+    },
+    "nak": {
+      "type": "object",
+      "description": "Pinned NAK selection resolved at install time",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "NAK identifier of pinned NAK",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "NAK version of pinned NAK",
+          "minLength": 1
+        },
+        "record_ref": {
+          "type": "string",
+          "description": "Reference to NAK install record (e.g., com.example.sdk@1.2.3.json)",
+          "minLength": 1
+        },
+        "loader": {
+          "type": "string",
+          "description": "Pinned loader name if NAK has multiple loaders"
+        },
+        "selection_reason": {
+          "type": "string",
+          "description": "Audit info: why this NAK version was selected (e.g., latest_compatible)"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "required": ["install_root"],
+      "additionalProperties": false,
+      "properties": {
+        "install_root": {
+          "type": "string",
+          "description": "Absolute path to installed app root",
+          "minLength": 1
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Installation provenance and audit trail",
+      "additionalProperties": false,
+      "properties": {
+        "package_hash": {
+          "type": "string",
+          "description": "SHA256 hash of installed package",
+          "pattern": "^sha256:[a-fA-F0-9]{64}$"
+        },
+        "installed_at": {
+          "type": "string",
+          "description": "Installation timestamp (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "installed_by": {
+          "type": "string",
+          "description": "User or tool that performed installation"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the package (file path, URL, etc.)"
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "description": "Trust evaluation results",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "Trust state",
+          "enum": ["unknown", "verified", "unverified", "failed", "stale"]
+        },
+        "source": {
+          "type": "string",
+          "description": "Trust verification source/method"
+        },
+        "evaluated_at": {
+          "type": "string",
+          "description": "When trust was evaluated (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "description": "When trust evaluation expires (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "inputs_hash": {
+          "type": "string",
+          "description": "Hash of inputs used for trust evaluation",
+          "pattern": "^sha256:[a-fA-F0-9]{64}$"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional trust evaluation details",
+          "additionalProperties": true
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Verification history",
+      "additionalProperties": false,
+      "properties": {
+        "last_verified_at": {
+          "type": "string",
+          "description": "Last verification timestamp (ISO 8601 / RFC 3339)",
+          "format": "date-time"
+        },
+        "last_verifier_version": {
+          "type": "string",
+          "description": "Version of verification tool"
+        }
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "description": "Per-install overrides (subject to host policy)",
+      "additionalProperties": false,
+      "properties": {
+        "environment": {
+          "type": "object",
+          "description": "Environment variable overrides for this app instance (supports operations: set, prepend, append, unset)",
+          "additionalProperties": {
+            "$ref": "#/definitions/envValue"
+          },
+          "default": {}
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Argument overrides",
+          "additionalProperties": false,
+          "properties": {
+            "prepend": {
+              "type": "array",
+              "description": "Arguments to prepend to entrypoint args",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "append": {
+              "type": "array",
+              "description": "Arguments to append to entrypoint args",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "description": "Path overrides",
+          "additionalProperties": false,
+          "properties": {
+            "library_prepend": {
+              "type": "array",
+              "description": "Library paths to prepend for this app",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -16,8 +16,7 @@ Version 1.0
 8. [Contract Composition](#contract-composition)
 9. [NAK Selection](#nak-selection)
 10. [Security Model Integration](#security-model-integration)
-11. [Binary Manifest Format](#binary-manifest-format)
-12. [API Surface](#api-surface)
+11. [API Surface](#api-surface)
 13. [CLI Reference](#cli-reference)
 14. [Developer Flows](#developer-flows)
 15. [Implementation Architecture](#implementation-architecture)
@@ -69,7 +68,7 @@ The output is a directly executable Launch Contract (binary, argv, cwd, environm
 
 NAH enforces separation through exactly four artifacts:
 
-1. **App Manifest** — Application-authored portable contract (immutable; embedded in binary or provided as `manifest.nah`)
+1. **App Manifest** — Application-authored portable contract (immutable; JSON file packaged in `.nap`)
 2. **App Install Record** — Host-owned per-install-instance state and provenance (mutable; JSON)
 3. **NAK Install Record** — Host-owned record describing the installed Native App Kit used at launch (mutable; JSON)
 4. **Host Environment** — Host-owned configuration for environment variables, library paths, and override policy (mutable; JSON)
@@ -140,7 +139,7 @@ NAH is built on these design principles:
 
 - **Minimal mechanism**: NAH provides mechanism, not policy
 - **Default permissive**: NAH continues execution and records warnings for non-critical missing/invalid data; composition halts only on CriticalError conditions defined in this specification.
-- **Binary manifests, text configuration**: Embedded manifests use TLV, operational config uses JSON
+- **JSON manifests, text configuration**: All manifests and operational config use JSON
 - **Platform-native**: Direct binary format integration (ELF, Mach-O sections)
 - **Debuggable**: All configuration readable with standard text tools
 - **Escape hatches**: Environment overrides (`NAH_OVERRIDE_*`) are local-only and MAY override configuration only when permitted by Host Environment override policy. Overrides MUST NOT trigger any network access or artifact installation.
@@ -150,7 +149,7 @@ NAH is built on these design principles:
 ```
 ┌─────────────────────────────────────────┐
 │         Application Layer               │
-│   (User applications with embedded NAH manifest) │
+│   (User applications with packaged NAH manifest) │
 ├─────────────────────────────────────────┤
 │         Library Layer                   │
 │   (Core NAH headers and types)          │
@@ -177,8 +176,8 @@ If an implementation violates that rule, it is incorrect.
 
 **Owner:** Application developer  
 **Mutability:** Immutable after build  
-**Storage:** Embedded in binary via NAH_APP_MANIFEST(...) OR as manifest.nah file in app payload  
-**Format:** TLV binary (Tag-Length-Value)
+**Storage:** JSON file (`nap.json`) packaged in `.nap` archive  
+**Format:** JSON
 
 **What it is (Normative):** The application-authored, immutable contract that declares identity, layout, and the required NAK version constraint.
 
@@ -554,7 +553,7 @@ Derived output-only paths MUST be recomputable from (`paths.install_root` + `man
 /nah/
 ├── apps/
 │   └── <id>-<version>/
-│       ├── bin/                    # Binaries with embedded manifest
+│       ├── bin/                    # Application binaries
 │       ├── lib/                    # Libraries
 │       └── share/                  # Assets
 ├── naks/
@@ -832,7 +831,7 @@ Result: `PATH=/nak/bin:/usr/bin:/custom`
 **Inputs (Normative):**
 
 0. NAH root ("nah_root"): the filesystem root selected by CLI --root, NAH_ROOT environment variable, or auto-detected (default `~/.nah`). All registry paths in this specification are relative to nah_root unless explicitly stated otherwise.
-1. App Manifest (embedded in binary or `manifest.nah` within installed app root)
+1. App Manifest (`nap.json` within installed app root)
 2. App Install Record (selected installed instance)
 3. Pinned NAK Install Record (loaded only by `<nah_root>/registry/naks/<install_record.nak.record_ref>` when present)
 4. Host Environment (from `<nah_root>/host/host.json`)
@@ -858,7 +857,7 @@ Launch Contract (LaunchContract)
 
 - Load App Manifest, App Install Record as `install_record`, Host Environment as `host_env`, process environment, and now.
 
-- If no manifest is found (neither embedded nor `manifest.nah`), emit CriticalError::MANIFEST_MISSING and abort composition.
+- If no manifest is found (`nap.json`), emit CriticalError::MANIFEST_MISSING and abort composition.
 
 - If a manifest is found but fails the CRC32 verification, emit CriticalError::MANIFEST_MISSING and abort composition.
 
@@ -1524,163 +1523,6 @@ Warning output format:
 
 ---
 
-## Binary Manifest Format
-
-### TLV Format
-
-All NAH manifests use the unified TLV (Tag-Length-Value) binary format.
-
-### TLV Encoding Rules (Normative)
-
-Each TLV entry MUST be encoded as:
-
-- tag: uint16 little-endian
-- length: uint16 little-endian (number of value bytes)
-- value: length bytes
-
-Entries MUST appear in ascending tag order.
-
-If an entry’s tag is less than the previous successfully accepted tag, NAH MUST emit `invalid_manifest` and MUST ignore that entry; decoding MUST continue with subsequent entries.
-
-total_size MUST equal the exact number of bytes in the manifest blob (header + TLV payload). If total_size does not match the available bytes, NAH MUST emit invalid_manifest and treat all manifest fields as absent for this decode attempt (i.e., no TLV entries are trusted).
-
-**Decode Limits (Normative):**
-
-- `total_size` MUST be <= 64 KiB. If larger, NAH MUST emit `invalid_manifest` and treat all manifest fields as absent for this decode attempt.
-- The TLV payload MUST contain at most 512 entries. If exceeded, NAH MUST emit `invalid_manifest` and ignore all entries after the 512th.
-- Any single TLV string value MUST be <= 4096 bytes. If exceeded, NAH MUST emit `invalid_manifest` and ignore that entry.
-- Each repeated tag (ENTRYPOINT_ARG, ENV_VAR, LIB_DIR, ASSET_DIR, ASSET_EXPORT, PERMISSION_FILESYSTEM, PERMISSION_NETWORK) MUST have at most 128 occurrences; additional occurrences MUST emit `invalid_manifest` and MUST be ignored.
-
-The END tag (tag 0) is OPTIONAL. If present, it MUST be the final TLV entry and MUST have length = 0. Any END tag that is not final, or any END tag with non-zero length, MUST emit invalid_manifest and MUST be ignored.
-
-Repeated tags are allowed only for: ENTRYPOINT_ARG, ENV_VAR, LIB_DIR, ASSET_DIR, ASSET_EXPORT, PERMISSION_FILESYSTEM, PERMISSION_NETWORK. Repeated non-repeatable tags MUST emit invalid_manifest and MUST use the first occurrence while ignoring all subsequent occurrences.
-
-Strings MUST be UTF-8 without NUL terminator. Integer fields MUST be little-endian.
-
-SCHEMA_VERSION value MUST be a uint16 little-endian integer with value 1. If present and not equal to 1, NAH MUST emit invalid_manifest and MUST ignore the SCHEMA_VERSION field (treat it as absent).
-
-The crc32 field MUST be IEEE CRC-32 (poly 0x04C11DB7, reflected form 0xEDB88320) computed over the TLV payload bytes only (excluding the header), and verified before decode. CRC failure MUST be treated as manifest missing and MUST produce CriticalError::MANIFEST_MISSING; it is not permissive because the manifest cannot be trusted. Structural or semantic manifest issues (e.g., invalid tag ordering) MUST emit invalid_manifest and proceed permissively per warning policy. An invalid SemVer requirement MUST emit invalid_manifest and treat NAK as unresolved per warning policy.
-
-**Manifest invalidity handling (Normative):**
-
-- CRC32 failure is the ONLY manifest invalidity that is treated as CriticalError::MANIFEST_MISSING.
-- All other manifest invalidities MUST emit invalid_manifest and MUST be handled as field-scoped invalidity: NAH MUST ignore only the invalid TLV entry or invalid field value and treat that specific field as absent, while continuing to decode other valid entries.
-- If a required field for composition becomes absent due to invalidity (ID, VERSION, NAK_ID, NAK_VERSION_REQ, ENTRYPOINT_PATH), composition MUST still proceed until it reaches the first applicable CriticalError already defined by this specification (e.g., ENTRYPOINT_NOT_FOUND or PATH_TRAVERSAL). Implementations MUST NOT introduce any new CriticalError types.
-
-### Manifest Structure
-
-```cpp
-struct ManifestHeader {
-    uint32_t magic;      // ASCII bytes "NAHM" in little-endian; numeric value 0x4D48414E
-    uint16_t version;    // Format version (1)
-    uint16_t reserved;   // Reserved for future use
-    uint32_t total_size; // Total manifest size
-    uint32_t crc32;      // CRC32 checksum
-    // Followed by TLV entries
-};
-
-enum class ManifestTag : uint16_t {
-    END = 0,
-    SCHEMA_VERSION = 1,
-
-    // Identity
-    ID = 10,
-    VERSION = 11,
-    NAK_ID = 12,
-    NAK_VERSION_REQ = 13,
-
-    // Execution
-    ENTRYPOINT_PATH = 20,
-    ENTRYPOINT_ARG = 21,
-
-    // Environment
-    ENV_VAR = 30,
-
-    // Layout
-    LIB_DIR = 40,
-    ASSET_DIR = 41,
-    ASSET_EXPORT = 42,
-
-    // Permissions
-    PERMISSION_FILESYSTEM = 50,
-    PERMISSION_NETWORK = 51,
-
-    // Metadata
-    DESCRIPTION = 60,
-    AUTHOR = 61,
-    LICENSE = 62,
-    HOMEPAGE = 63,
-};
-```
-
-**ASSET_EXPORT encoding (Normative):** Each ASSET_EXPORT value MUST be a UTF-8 string of the form `<id>:<relative_path>[:<type>]`. `<id>` and `<relative_path>` MUST be non-empty. `<relative_path>` MUST be relative to the app root. `<type>` is optional. If the string lacks the first `:` or has an empty `<id>` or `<relative_path>`, NAH MUST emit `invalid_manifest` and ignore that ASSET_EXPORT entry. Repeated ASSET_EXPORT entries are allowed.
-
-**Other TLV string encodings (Normative):**
-
-- `ENTRYPOINT_PATH`, `ENTRYPOINT_ARG`, `LIB_DIR`, `ASSET_DIR`, `PERMISSION_FILESYSTEM`, and `PERMISSION_NETWORK` values MUST be UTF-8 strings without NUL.
-- `ENTRYPOINT_PATH`, `LIB_DIR`, and `ASSET_DIR` values MUST be relative paths. Absolute paths MUST emit `invalid_manifest` and be ignored.
-- `ENV_VAR` values MUST be UTF-8 strings of the form `KEY=VALUE`, where `KEY` is non-empty and MUST NOT contain `=`. Invalid `ENV_VAR` values MUST emit `invalid_manifest` and be ignored.
-
-### Embedding Mechanism
-
-```cpp
-// Application code
-#include <nah/manifest.hpp>
-
-NAH_APP_MANIFEST(
-    nah::manifest()
-        .id("myapp")
-        .version("1.0.0")
-        .nak_id("com.example.nak")
-        .nak_version_req("2.0.0")
-        .entrypoint("bin/myapp")
-        .lib_dir("lib")
-        .asset_dir("share")
-        .env("LOG_LEVEL", "info")
-        .filesystem_permission("read:host://user-documents/*")
-        .network_permission("connect:https://api.example.com:443")
-        .description("Example NAH application")
-        .author("Developer Name")
-        .license("MIT")
-        .build()
-);
-
-int main() {
-    // Application code
-    return 0;
-}
-```
-
-### Platform-Specific Sections
-
-#### macOS (Mach-O)
-
-```cpp
-#define NAH_MANIFEST_SECTION \
-    __attribute__((used)) \
-    __attribute__((section("__NAH,__manifest"))) \
-    __attribute__((aligned(16)))
-```
-
-#### Linux (ELF)
-
-```cpp
-#define NAH_MANIFEST_SECTION \
-    __attribute__((used)) \
-    __attribute__((section(".nah_manifest"))) \
-    __attribute__((aligned(16)))
-```
-
-#### Windows (PE/COFF)
-
-```cpp
-#pragma section(".nah", read)
-#define NAH_MANIFEST_SECTION \
-    __declspec(allocate(".nah"))
-```
-
----
-
 ## API Surface
 
 ### C++ Library API (libnahhost)
@@ -1976,90 +1818,6 @@ Semantics:
 ```
 nah manifest show <binary|id[@version]> [--json]
 ```
-
-#### Manifest generation
-
-```
-nah manifest generate <input.json> -o <manifest.nah> [--json]
-nah manifest generate --stdin -o <manifest.nah> [--json]
-```
-
-Semantics:
-
-- `nah manifest generate` MUST produce a valid TLV-encoded `manifest.nah` file from a JSON input.
-- The input JSON MUST conform to the Manifest Input Format (Normative) defined below.
-- The output MUST be a valid TLV binary manifest per the Binary Manifest Format specification.
-- If `-o` is omitted, the output MUST be written to `manifest.nah` in the current directory.
-- `--stdin` MUST read JSON input from standard input instead of a file.
-- `--json` MUST output a JSON object with `ok`, `path`, and `warnings` fields instead of human-readable output.
-- On validation failure, `nah manifest generate` MUST exit with code 1 and MUST NOT write any output file.
-- On success, `nah manifest generate` MUST exit with code 0.
-
-**Manifest Input Format (Normative):**
-
-The input JSON file MUST have the following structure:
-
-```json
-{
-  "$schema": "nah.manifest.input.v2",
-  "app": {
-    "id": "com.example.myapp",
-    "version": "1.0.0",
-    "nak_id": "com.example.runtime",
-    "nak_version_req": ">=2.0.0",
-    "entrypoint": "bundle.js",
-    "entrypoint_args": ["--mode", "production"],
-    "description": "My application",
-    "author": "Developer Name",
-    "license": "MIT",
-    "homepage": "https://example.com",
-    "lib_dirs": ["lib", "vendor/lib"],
-    "asset_dirs": ["assets", "share"],
-    "exports": [
-      {
-        "id": "config",
-        "path": "share/config.json",
-        "type": "application/json"
-      }
-    ],
-    "environment": {
-      "LOG_LEVEL": "info",
-      "NODE_ENV": "production"
-    },
-    "permissions": {
-      "filesystem": ["read:app://assets/*"],
-      "network": ["connect:https://api.example.com:443"]
-    }
-  }
-}
-```
-
-**Required fields (Normative):** `schema`, `[app].id`, `[app].version`, and `[app].entrypoint` MUST be present. Missing required fields MUST cause validation failure.
-
-**Optional fields (Normative):** `[app].nak_id` and `[app].nak_version_req` are OPTIONAL. If `nak_id` is omitted or empty, the app is a standalone app with no NAK dependency.
-
-**Schema field (Normative):** The `schema` field MUST equal `nah.manifest.input.v2`. Missing or mismatched schema MUST cause validation failure.
-
-**Path validation (Normative):**
-
-- `entrypoint`, `lib_dirs`, `asset_dirs`, and `exports[*].path` MUST be relative paths.
-- Absolute paths MUST cause validation failure.
-- Paths containing `..` MUST cause validation failure.
-
-**Permission format (Normative):**
-
-- `permissions.filesystem` entries MUST be strings of the form `<operation>:<selector>` where `<operation>` is one of `read`, `write`, `execute`.
-- `permissions.network` entries MUST be strings of the form `<operation>:<selector>` where `<operation>` is one of `connect`, `listen`, `bind`.
-- Invalid permission formats MUST cause validation failure.
-
-**TLV Generation (Normative):**
-
-- Fields MUST be encoded in ascending tag order per TLV Encoding Rules.
-- SCHEMA_VERSION (tag 1) MUST be emitted with value 1.
-- Repeated fields (entrypoint_args, lib_dirs, asset_dirs, exports, environment, permissions) MUST emit one TLV entry per item.
-- ENV_VAR entries MUST be encoded as `KEY=VALUE` strings.
-- ASSET_EXPORT entries MUST be encoded as `<id>:<path>[:<type>]` strings.
-- The CRC32 MUST be computed over the TLV payload bytes only (excluding header).
 
 #### Doctor
 
@@ -2415,11 +2173,26 @@ int main(int argc, char* argv[]) {
 #### 2. Build and Package
 
 ```bash
-# Build with embedded manifest
+# Build the application
 g++ -std=c++17 -I/path/to/nah/include main.cpp -o processor
 
-# Verify manifest is embedded
-nah manifest show processor
+# Create nap.json manifest at package root
+cat > package/nap.json <<EOF
+{
+  "\$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.processor",
+      "version": "1.0.0",
+      "nak_id": "com.example.sdk",
+      "nak_version_req": "^1.2.0"
+    },
+    "execution": {
+      "entrypoint": "bin/processor"
+    }
+  }
+}
+EOF
 
 # Create package structure
 mkdir -p package/bin package/lib package/share
@@ -2489,20 +2262,32 @@ Bundle applications (JavaScript, Python, or other interpreted code) use a file-b
 #### 2. Generate Manifest and Package
 
 ```bash
-# Generate TLV manifest from JSON input
-nah manifest generate manifest.json -o manifest.nah
-
-# Verify the generated manifest
-nah manifest show manifest.nah
+# Create nap.json manifest
+cat > nap.json <<EOF
+{
+  "\$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.rn-app",
+      "version": "1.0.0",
+      "nak_id": "com.mycompany.rn-runtime",
+      "nak_version_req": ">=0.72.0"
+    },
+    "execution": {
+      "entrypoint": "bundle.js"
+    }
+  }
+}
+EOF
 
 # Create package structure
 mkdir -p package/assets
 cp bundle.js package/
-cp manifest.nah package/
+cp nap.json package/
 cp -r assets/* package/assets/
 
-# Create NAP package
-nah app pack package -o my-rn-app-1.0.0.nap
+# Create NAP package (tar.gz with nap.json at root)
+cd package && tar czf ../my-rn-app-1.0.0.nap .
 ```
 
 #### 3. NAK Runtime Setup (Host/SDK Team)
@@ -2559,7 +2344,7 @@ nah contract show my-rn-app@1.0.0 --json
 
 | Aspect | Native App | Bundle App |
 |--------|------------|------------|
-| Manifest storage | Embedded in binary | `manifest.nah` file |
+| Manifest storage | `nap.json` in package | `nak.json` in package |
 | Manifest creation | C++ macro at compile time | `nah manifest generate` |
 | Entrypoint | Native executable | Script/bundle file |
 | Execution | Direct execution | NAK loader invokes runtime |
@@ -2803,7 +2588,7 @@ The test suite MUST include:
 
 **Fuzz Tests** (security hardening):
 
-- TLV decoder with malformed inputs
+- JSON parser with malformed manifests
 - JSON parser with malformed host environment
 - Variable expansion with malformed placeholders and overflow limits
 
@@ -2812,29 +2597,28 @@ The test suite MUST include:
 - **Fixed-size types**: All manifest strings/arrays have compile-time bounds
 - **RAII wrappers**: Automatic resource management
 - **Bounds checking**: Safe array access with debug assertions
-- **Static payload**: Embedded manifest uses fixed-size struct
+- **JSON manifests**: Parsed during install or composition
 - **Minimal allocation**: Registry uses string interning
 
 ### Performance Characteristics
 
 #### Compile-time Performance
 
-- Build-time validation via constexpr
-- Direct TLV decoding at runtime
+- Build-time validation via JSON schema
+- JSON parsing at install/composition time
 - Binary overhead: ~40KB
 
 #### Runtime Performance
 
 - O(1) registry lookups via hashtable
-- Single binary scan for extraction
-- Zero-copy buffer operations
+- Single JSON parse per manifest
+- Zero-copy buffer operations where possible
 - Mmap-friendly formats
 
 #### Memory Usage
 
-- Typical embedded manifest size: 200–2000 bytes, depending on string content and number of entries
-- Extraction cost: single section read + linear TLV decode
-- BinaryReader buffer: 8KB default
+- Typical JSON manifest size: 200–2000 bytes, depending on content complexity
+- Parsing cost: single JSON parse (cached during composition)
 - Registry: Varies by app count
 
 ---
@@ -2882,22 +2666,21 @@ A .nap package MUST be a gzip-compressed tar archive and MUST follow the Determi
 
 The archive root MUST contain:
 
+- `nap.json` (required) - App manifest at root
 - `bin/` (optional) - Application binaries
 - `lib/` (optional) - Application libraries
 - `share/` (optional) - Application assets
-- `manifest.nah` (optional; used only if binaries do not embed a manifest)
 - `META/install.json` (optional; installer hints; host-owned and ignored by apps)
 
-If both an embedded manifest and `manifest.nah` exist, the embedded manifest MUST take precedence.
-
-A package MUST supply a manifest (embedded in a binary or as `manifest.nah`). If neither is present or the manifest fails CRC/decoding, `nah app install` MUST fail with CriticalError::MANIFEST_MISSING and MUST NOT write any install state.
+A package MUST contain `nap.json` at its root. If the manifest is missing or fails JSON parsing, `nah install` MUST fail with CriticalError::MANIFEST_MISSING and MUST NOT write any install state.
 
 Example structure:
 
 ```
 myapp-1.0.0.nap
+├── nap.json          # Manifest at root (required)
 ├── bin/
-│   └── myapp          # Binary with embedded manifest
+│   └── myapp
 ├── lib/
 │   ├── libfoo.so
 │   └── libbar.so

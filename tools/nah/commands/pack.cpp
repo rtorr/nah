@@ -22,10 +22,25 @@ int cmd_pack(const GlobalOptions& opts, const PackOptions& pack_opts) {
     
     std::string source_dir = pack_opts.dir;
     
-    // Read manifest
-    auto manifest_content = nah::fs::read_file(source_dir + "/nah.json");
+    // Detect manifest type by filename (names match package extensions)
+    std::string manifest_path;
+    std::string manifest_type;
+    
+    if (nah::fs::exists(source_dir + "/nap.json")) {
+        manifest_path = source_dir + "/nap.json";
+        manifest_type = "nap";
+    } else if (nah::fs::exists(source_dir + "/nak.json")) {
+        manifest_path = source_dir + "/nak.json";
+        manifest_type = "nak";
+    } else {
+        print_error("No manifest found (expected nap.json or nak.json)", opts.json);
+        return 1;
+    }
+    
+    // Read and parse manifest
+    auto manifest_content = nah::fs::read_file(manifest_path);
     if (!manifest_content) {
-        print_error("Manifest not found: " + source_dir + "/nah.json", opts.json);
+        print_error("Failed to read manifest: " + manifest_path, opts.json);
         return 1;
     }
     
@@ -37,19 +52,30 @@ int cmd_pack(const GlobalOptions& opts, const PackOptions& pack_opts) {
         return 1;
     }
     
-    std::string id = manifest.value("id", "");
-    std::string version = manifest.value("version", "");
+    // Extract identity based on type
+    std::string id, version;
+    if (manifest_type == "nap") {
+        if (!manifest.contains("app") || !manifest["app"].contains("identity")) {
+            print_error("Invalid app manifest: missing app.identity section", opts.json);
+            return 1;
+        }
+        id = manifest["app"]["identity"].value("id", "");
+        version = manifest["app"]["identity"].value("version", "");
+    } else { // nak
+        if (!manifest.contains("nak") || !manifest["nak"].contains("identity")) {
+            print_error("Invalid NAK manifest: missing nak.identity section", opts.json);
+            return 1;
+        }
+        id = manifest["nak"]["identity"].value("id", "");
+        version = manifest["nak"]["identity"].value("version", "");
+    }
     
     if (id.empty() || version.empty()) {
         print_error("Manifest must contain id and version", opts.json);
         return 1;
     }
     
-    // Detect type
-    bool is_nak = manifest.contains("loaders") || 
-                  (manifest.contains("lib_dirs") && !manifest.contains("entrypoint_path"));
-    
-    std::string ext = is_nak ? ".nak" : ".nap";
+    std::string ext = "." + manifest_type; // .nap or .nak
     
     // Determine output path
     std::string output_path = pack_opts.output;
@@ -57,30 +83,33 @@ int cmd_pack(const GlobalOptions& opts, const PackOptions& pack_opts) {
         output_path = id + "-" + version + ext;
     }
     
-    // For now, report that this is not implemented
-    // Full implementation would create a tar.gz archive
+    // Create tar.gz package using system tar command
+    // Use deterministic flags for reproducible builds
+    std::string tar_cmd = "tar --sort=name --owner=0 --group=0 --numeric-owner "
+                          "--mtime='1970-01-01' -czf " + output_path + 
+                          " -C " + source_dir + " .";
     
-    if (opts.json) {
-        nlohmann::json j;
-        j["ok"] = false;
-        j["error"] = "Pack functionality not yet implemented";
-        j["type"] = is_nak ? "nak" : "app";
-        j["id"] = id;
-        j["version"] = version;
-        j["output"] = output_path;
-        output_json(j);
+    int result = std::system(tar_cmd.c_str());
+    
+    if (result == 0) {
+        if (opts.json) {
+            nlohmann::json j;
+            j["ok"] = true;
+            j["type"] = manifest_type;
+            j["id"] = id;
+            j["version"] = version;
+            j["package"] = output_path;
+            output_json(j);
+        } else {
+            std::cout << "Created " << manifest_type << " package: " << output_path << std::endl;
+            std::cout << "  ID: " << id << std::endl;
+            std::cout << "  Version: " << version << std::endl;
+        }
+        return 0;
     } else {
-        std::cerr << "Error: Pack functionality not yet implemented." << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "Would create " << (is_nak ? "NAK" : "app") << " package:" << std::endl;
-        std::cerr << "  ID: " << id << std::endl;
-        std::cerr << "  Version: " << version << std::endl;
-        std::cerr << "  Output: " << output_path << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "For now, use 'nah install <dir>' to install directly from directory." << std::endl;
+        print_error("Failed to create package (tar command failed)", opts.json);
+        return 1;
     }
-    
-    return 1;  // Return error since functionality is not implemented
 }
 
 } // anonymous namespace

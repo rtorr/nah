@@ -50,6 +50,9 @@ jobs:
           # Copy API docs
           cp -r docs/build/docs/html docs/build/site/api
 
+          # Copy JSON schemas
+          cp -r docs/schemas docs/build/site/schemas
+
           # Create index page
           cat > docs/build/site/index.html << 'EOF'
           <!DOCTYPE html>

@@ -58,38 +58,20 @@ update_version_file() {
 
 # Update CMakeLists.txt
 update_cmake() {
-    local version="$1"
-    local cmake_file="$ROOT_DIR/CMakeLists.txt"
-
-    # Extract just MAJOR.MINOR.PATCH for CMake (no prerelease/build metadata)
-    local cmake_version="${version%%-*}"  # Remove prerelease
-    cmake_version="${cmake_version%%+*}"  # Remove build metadata
-
-    sed -i.bak "s/^project(nah VERSION [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/project(nah VERSION $cmake_version/" "$cmake_file"
-    rm -f "$cmake_file.bak"
-    info "Updated CMakeLists.txt (version: $cmake_version)"
+    # CMakeLists.txt reads from VERSION file, so nothing to update
+    info "CMakeLists.txt reads version from VERSION file (no update needed)"
 }
 
 # Update conanfile.py
 update_conan() {
-    local version="$1"
-    local conan_file="$ROOT_DIR/conanfile.py"
-
-    sed -i.bak "s/^    version = \"[^\"]*\"/    version = \"$version\"/" "$conan_file"
-    rm -f "$conan_file.bak"
-    info "Updated conanfile.py"
+    # conanfile.py reads from VERSION file, so nothing to update
+    info "conanfile.py reads version from VERSION file (no update needed)"
 }
 
 # Update package.json
 update_npm() {
-    local version="$1"
-    local npm_file="$ROOT_DIR/package.json"
-
-    if [[ -f "$npm_file" ]]; then
-        sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$version\"/" "$npm_file"
-        rm -f "$npm_file.bak"
-        info "Updated package.json"
-    fi
+    # Package.json no longer exists - NAH is not published to npm
+    return 0
 }
 
 # Reconfigure CMake to pick up new version
@@ -180,7 +162,7 @@ main() {
 
     # Commit
     info "Committing version bump..."
-    git -C "$ROOT_DIR" add VERSION CMakeLists.txt conanfile.py package.json
+    git -C "$ROOT_DIR" add VERSION
     git -C "$ROOT_DIR" commit -m "Release v$new_version"
 
     # Tag

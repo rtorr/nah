@@ -411,20 +411,22 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
     for (const auto& entry : files) {
         // list_directory returns full paths, so use entry directly
         if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
-            auto record = loadInstallRecord(entry);
-            if (record) {
-                // Try to find runtime descriptor
-                std::string runtime_path = record->paths.install_root + "/nah-runtime.json";
-                auto runtime_content = nah::fs::read_file(runtime_path);
-                if (runtime_content) {
-                    // Use the NAK's record_ref as key (e.g., "lua@5.4.6.json")
-                    std::string record_ref = record->app.id + "@" + record->app.version + ".json";
+            // NAH v2.0: Registry files ARE the runtime descriptors
+            // Parse the registry file directly as a RuntimeDescriptor
+            auto runtime_content = nah::fs::read_file(entry);
+            if (runtime_content) {
+                // Extract record_ref from filename
+                std::string basename = entry;
+                size_t last_slash = entry.rfind('/');
+                if (last_slash != std::string::npos) {
+                    basename = entry.substr(last_slash + 1);
+                }
+                std::string record_ref = basename;
 
-                    auto result = nah::json::parse_runtime_descriptor(*runtime_content, entry);
-                    if (result.ok) {
-                        result.value.source_path = entry;
-                        inventory.runtimes[record_ref] = result.value;
-                    }
+                auto result = nah::json::parse_runtime_descriptor(*runtime_content, entry);
+                if (result.ok) {
+                    result.value.source_path = entry;
+                    inventory.runtimes[record_ref] = result.value;
                 }
             }
         }

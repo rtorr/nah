@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     using namespace nah::cli;
     
     CLI::App app{"nah - Native Application Host"};
-    app.set_version_flag("-V,--version", "1.0.0");
+    app.set_version_flag("-V,--version", NAH_VERSION);
     app.require_subcommand(0, 1);
     
     GlobalOptions opts;

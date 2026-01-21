@@ -5,14 +5,14 @@ Common issues and solutions for NAH.
 ## Quick Diagnostics
 
 ```bash
-# Overview of your NAH root
-nah status
+# List installed packages
+nah list
 
-# Check a specific app
-nah status com.example.app
+# Show details for a specific app
+nah show com.example.app
 
-# See where each value comes from
-nah status com.example.app --trace
+# Run with verbose output
+nah run com.example.app --verbose
 ```
 
 ## Common Errors
@@ -28,7 +28,7 @@ hint: Initialize a new NAH root with: nah init root /nah
 **Cause:** NAH looks for a root directory but none exists or was specified.
 
 **Solutions:**
-1. Create a new root: `nah init root /path/to/nah`
+1. Create a new host: `nah init host /path/to/nah`
 2. Specify an existing root: `nah --root /existing/nah list`
 3. Set the environment variable: `export NAH_ROOT=/path/to/nah`
 4. Run from within a directory containing `host/` or `.nah/`
@@ -47,8 +47,8 @@ hint: The source doesn't have a recognized extension (.nap or .nak)
 **Solutions:**
 1. Use proper extension: rename to `.nap` for apps, `.nak` for NAKs
 2. For directories, ensure you have:
-   - Apps: `manifest.json` or binary with embedded manifest
-   - NAKs: `META/nak.json`
+   - Apps: `nap.json` at directory root
+   - NAKs: `nak.json` at directory root
 3. Force the type: `nah install ./mydir --app` or `--nak`
 
 ### "Not found: com.example.app"
@@ -96,7 +96,7 @@ warning: pinned NAK is not available
 **Solutions:**
 1. Reinstall the NAK: `nah install <nak-file>`
 2. Reinstall the app to pin to a different NAK version
-3. Check which NAK is needed: `nah status <app-id> --trace`
+3. Check which NAK is needed: `nah show <app-id>`
 
 ### "Invalid manifest"
 
@@ -108,58 +108,59 @@ error: manifest parse failed: missing required field 'id'
 **Cause:** The manifest in your package is malformed.
 
 **Solutions:**
-1. Check manifest structure matches the schema
-2. For embedded manifests, ensure correct binary section
-3. Validate the file: `nah status manifest.json`
+1. Check manifest structure matches the schema: https://nah.rtorr.com/schemas/
+2. Validate JSON syntax: `cat nap.json | jq .`
+3. Use `$schema` in your manifest for IDE validation
 
 ## Debugging Techniques
 
-### Trace Mode
-
-Add `--trace` to see provenance of every value:
-
-```bash
-nah status com.example.app --trace
-```
-
-This shows:
-- Where each environment variable came from (manifest, NAK, profile)
-- Which NAK version was selected and why
-- Profile settings that affected the contract
-
-### Compare Profiles
-
-See how different profiles affect an app:
-
-```bash
-nah status com.example.app --diff staging
-```
-
-This shows all differences between the current profile and `staging`.
-
-### Validate Files
-
-Check if a configuration file is valid:
-
-```bash
-nah status profile.json
-nah status install-record.json
-```
-
 ### JSON Output
 
-For scripting or detailed inspection:
+For detailed inspection and scripting:
 
 ```bash
-nah status com.example.app --json | jq '.environment'
+nah show com.example.app --json
+nah list --json
+```
+
+### Verbose Mode
+
+See detailed progress during operations:
+
+```bash
+nah install myapp.nap --verbose
+nah run com.example.app --verbose
+```
+
+### Check Manifests
+
+Inspect manifests in installed packages:
+
+```bash
+# App manifest
+cat ~/.nah/apps/com.example.app-1.0.0/nap.json
+
+# NAK manifest
+cat ~/.nah/naks/com.example.sdk/1.0.0/nak.json
+
+# Host configuration
+cat ~/.nah/host/nah.json
+```
+
+### Validate JSON
+
+Check JSON syntax:
+
+```bash
+cat nap.json | jq .
+cat nak.json | jq .
 ```
 
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
-| `NAH_ROOT` | Default NAH root directory |
-| `NAH_PROFILE` | Override active profile |
+| `NAH_ROOT` | Default NAH host directory |
 
 ## Exit Codes
 

@@ -11,34 +11,41 @@
 #include <ctime>
 
 // Portable getenv helper to avoid MSVC warnings
-namespace {
-[[maybe_unused]] inline std::string safe_getenv(const char* name) {
+namespace
+{
+    [[maybe_unused]] inline std::string safe_getenv(const char *name)
+    {
 #ifdef _WIN32
-    char* buf = nullptr;
-    size_t sz = 0;
-    if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr) {
-        std::string result(buf);
-        free(buf);
-        return result;
-    }
-    return "";
+        char *buf = nullptr;
+        size_t sz = 0;
+        if (_dupenv_s(&buf, &sz, name) == 0 && buf != nullptr)
+        {
+            std::string result(buf);
+            free(buf);
+            return result;
+        }
+        return "";
 #else
-    const char* val = std::getenv(name);
-    return val ? val : "";
+        const char *val = std::getenv(name);
+        return val ? val : "";
 #endif
-}
+    }
 } // anonymous namespace
 
 // Helper to create temporary test directory
-class TempTestDir {
+class TempTestDir
+{
 public:
-    TempTestDir() {
+    TempTestDir()
+    {
         // Create unique temp directory using portable C++
         std::string temp_base;
 #ifdef _WIN32
         temp_base = safe_getenv("TEMP");
-        if (temp_base.empty()) temp_base = safe_getenv("TMP");
-        if (temp_base.empty()) temp_base = ".";
+        if (temp_base.empty())
+            temp_base = safe_getenv("TMP");
+        if (temp_base.empty())
+            temp_base = ".";
 #else
         temp_base = "/tmp";
 #endif
@@ -49,8 +56,10 @@ public:
         std::filesystem::create_directories(path);
     }
 
-    ~TempTestDir() {
-        if (!path.empty()) {
+    ~TempTestDir()
+    {
+        if (!path.empty())
+        {
             std::filesystem::remove_all(path);
         }
     }
@@ -58,68 +67,82 @@ public:
     std::string path;
 };
 
-TEST_CASE("nah::fs::exists") {
+TEST_CASE("nah::fs::exists")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("directory exists") {
+    SUBCASE("directory exists")
+    {
         CHECK(nah::fs::exists(temp_dir.path));
     }
 
-    SUBCASE("file exists") {
+    SUBCASE("file exists")
+    {
         std::string file_path = temp_dir.path + "/test.txt";
         std::ofstream(file_path) << "test content";
         CHECK(nah::fs::exists(file_path));
     }
 
-    SUBCASE("non-existent path") {
+    SUBCASE("non-existent path")
+    {
         CHECK(!nah::fs::exists(temp_dir.path + "/non_existent"));
     }
 }
 
-TEST_CASE("nah::fs::is_directory") {
+TEST_CASE("nah::fs::is_directory")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("is directory") {
+    SUBCASE("is directory")
+    {
         CHECK(nah::fs::is_directory(temp_dir.path));
     }
 
-    SUBCASE("file is not directory") {
+    SUBCASE("file is not directory")
+    {
         std::string file_path = temp_dir.path + "/test.txt";
         std::ofstream(file_path) << "test content";
         CHECK(!nah::fs::is_directory(file_path));
     }
 
-    SUBCASE("non-existent path is not directory") {
+    SUBCASE("non-existent path is not directory")
+    {
         CHECK(!nah::fs::is_directory(temp_dir.path + "/non_existent"));
     }
 }
 
-TEST_CASE("nah::fs::is_file") {
+TEST_CASE("nah::fs::is_file")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("regular file is file") {
+    SUBCASE("regular file is file")
+    {
         std::string file_path = temp_dir.path + "/test.txt";
         std::ofstream(file_path) << "test content";
         CHECK(nah::fs::is_file(file_path));
     }
 
-    SUBCASE("directory is not file") {
+    SUBCASE("directory is not file")
+    {
         CHECK(!nah::fs::is_file(temp_dir.path));
     }
 
-    SUBCASE("non-existent path is not file") {
+    SUBCASE("non-existent path is not file")
+    {
         CHECK(!nah::fs::is_file(temp_dir.path + "/non_existent"));
     }
 }
 
-TEST_CASE("nah::fs::read_file") {
+TEST_CASE("nah::fs::read_file")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("read existing file") {
+    SUBCASE("read existing file")
+    {
         std::string test_file = temp_dir.path + "/test.txt";
         std::string content = "Hello, NAH!";
         std::ofstream(test_file) << content;
@@ -129,14 +152,16 @@ TEST_CASE("nah::fs::read_file") {
         CHECK(*result == content);
     }
 
-    SUBCASE("read non-existent file") {
+    SUBCASE("read non-existent file")
+    {
         auto result = nah::fs::read_file(temp_dir.path + "/non_existent.txt");
         CHECK(!result.has_value());
     }
 
-    SUBCASE("read empty file") {
+    SUBCASE("read empty file")
+    {
         std::string empty_file = temp_dir.path + "/empty.txt";
-        std::ofstream ofs(empty_file);  // Create empty file
+        std::ofstream ofs(empty_file); // Create empty file
         ofs.close();
 
         auto result = nah::fs::read_file(empty_file);
@@ -144,7 +169,8 @@ TEST_CASE("nah::fs::read_file") {
         CHECK(result->empty());
     }
 
-    SUBCASE("read file with newlines") {
+    SUBCASE("read file with newlines")
+    {
         std::string multi_file = temp_dir.path + "/multiline.txt";
         std::string content = "Line 1\nLine 2\nLine 3";
         std::ofstream(multi_file) << content;
@@ -155,11 +181,13 @@ TEST_CASE("nah::fs::read_file") {
     }
 }
 
-TEST_CASE("nah::fs::write_file") {
+TEST_CASE("nah::fs::write_file")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("write new file") {
+    SUBCASE("write new file")
+    {
         std::string new_file = temp_dir.path + "/new.txt";
         std::string content = "New file content";
 
@@ -172,7 +200,8 @@ TEST_CASE("nah::fs::write_file") {
         CHECK(*read_result == content);
     }
 
-    SUBCASE("overwrite existing file") {
+    SUBCASE("overwrite existing file")
+    {
         std::string existing_file = temp_dir.path + "/existing.txt";
         std::ofstream(existing_file) << "Old content";
 
@@ -186,13 +215,15 @@ TEST_CASE("nah::fs::write_file") {
         CHECK(*read_result == new_content);
     }
 
-    SUBCASE("write to non-existent directory fails") {
+    SUBCASE("write to non-existent directory fails")
+    {
         std::string bad_file = temp_dir.path + "/non_existent_dir/file.txt";
         bool success = nah::fs::write_file(bad_file, "content");
         CHECK(!success);
     }
 
-    SUBCASE("write empty content") {
+    SUBCASE("write empty content")
+    {
         std::string empty_out = temp_dir.path + "/empty.txt";
         bool success = nah::fs::write_file(empty_out, "");
         CHECK(success);
@@ -207,16 +238,19 @@ TEST_CASE("nah::fs::write_file") {
 
 // Note: write_file_atomic not in current nah_fs.h API
 
-TEST_CASE("nah::fs::list_directory") {
+TEST_CASE("nah::fs::list_directory")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("list empty directory") {
+    SUBCASE("list empty directory")
+    {
         auto entries = nah::fs::list_directory(temp_dir.path);
         CHECK(entries.empty());
     }
 
-    SUBCASE("list directory with files") {
+    SUBCASE("list directory with files")
+    {
         // Create some test files
         std::ofstream(temp_dir.path + "/file1.txt") << "content1";
         std::ofstream(temp_dir.path + "/file2.json") << "{}";
@@ -227,27 +261,33 @@ TEST_CASE("nah::fs::list_directory") {
 
         // Entries should contain expected filenames
         bool found_file1 = false, found_file2 = false, found_file3 = false;
-        for (const auto& entry : entries) {
-            if (entry.find("file1.txt") != std::string::npos) found_file1 = true;
-            if (entry.find("file2.json") != std::string::npos) found_file2 = true;
-            if (entry.find("file3.dat") != std::string::npos) found_file3 = true;
+        for (const auto &entry : entries)
+        {
+            if (entry.find("file1.txt") != std::string::npos)
+                found_file1 = true;
+            if (entry.find("file2.json") != std::string::npos)
+                found_file2 = true;
+            if (entry.find("file3.dat") != std::string::npos)
+                found_file3 = true;
         }
         CHECK(found_file1);
         CHECK(found_file2);
         CHECK(found_file3);
     }
 
-    SUBCASE("list directory with subdirectories") {
+    SUBCASE("list directory with subdirectories")
+    {
         // Create subdirectory
         std::string subdir = temp_dir.path + "/subdir";
         std::filesystem::create_directory(subdir);
         std::ofstream(temp_dir.path + "/file.txt") << "content";
 
         auto entries = nah::fs::list_directory(temp_dir.path);
-        CHECK(entries.size() == 2);  // One file, one directory
+        CHECK(entries.size() == 2); // One file, one directory
     }
 
-    SUBCASE("list non-existent directory") {
+    SUBCASE("list non-existent directory")
+    {
         auto entries = nah::fs::list_directory(temp_dir.path + "/non_existent");
         CHECK(entries.empty());
     }
@@ -255,18 +295,21 @@ TEST_CASE("nah::fs::list_directory") {
 
 // Note: make_executable not in current nah_fs.h API
 
-TEST_CASE("nah::fs::current_path") {
+TEST_CASE("nah::fs::current_path")
+{
     auto cwd = nah::fs::current_path();
     CHECK(!cwd.empty());
     CHECK(nah::fs::exists(cwd));
     CHECK(nah::fs::is_directory(cwd));
 }
 
-TEST_CASE("nah::fs::create_directories") {
+TEST_CASE("nah::fs::create_directories")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("create new directory") {
+    SUBCASE("create new directory")
+    {
         std::string new_dir = temp_dir.path + "/new_directory";
         CHECK(!nah::fs::exists(new_dir));
 
@@ -276,7 +319,8 @@ TEST_CASE("nah::fs::create_directories") {
         CHECK(nah::fs::is_directory(new_dir));
     }
 
-    SUBCASE("create nested directories") {
+    SUBCASE("create nested directories")
+    {
         std::string nested = temp_dir.path + "/level1/level2/level3";
         CHECK(!nah::fs::exists(nested));
 
@@ -286,17 +330,20 @@ TEST_CASE("nah::fs::create_directories") {
         CHECK(nah::fs::is_directory(nested));
     }
 
-    SUBCASE("existing directory returns true") {
+    SUBCASE("existing directory returns true")
+    {
         bool success = nah::fs::create_directories(temp_dir.path);
         CHECK(success);
     }
 }
 
-TEST_CASE("nah::fs::remove_file") {
+TEST_CASE("nah::fs::remove_file")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("remove existing file") {
+    SUBCASE("remove existing file")
+    {
         std::string file_path = temp_dir.path + "/to_remove.txt";
         std::ofstream(file_path) << "content";
         CHECK(nah::fs::exists(file_path));
@@ -306,28 +353,32 @@ TEST_CASE("nah::fs::remove_file") {
         CHECK(!nah::fs::exists(file_path));
     }
 
-    SUBCASE("remove non-existent file") {
+    SUBCASE("remove non-existent file")
+    {
         std::string file_path = temp_dir.path + "/non_existent.txt";
         bool success = nah::fs::remove_file(file_path);
-        CHECK(success);  // Removing non-existent file is considered success
+        CHECK(success); // Removing non-existent file is considered success
     }
 
-    SUBCASE("can remove directory with remove_file") {
+    SUBCASE("can remove directory with remove_file")
+    {
         // Note: nah::fs::remove_file appears to handle both files and directories
         std::string subdir = temp_dir.path + "/subdir";
         std::filesystem::create_directory(subdir);
 
         bool success = nah::fs::remove_file(subdir);
         CHECK(success);
-        CHECK(!nah::fs::exists(subdir));  // Directory should be removed
+        CHECK(!nah::fs::exists(subdir)); // Directory should be removed
     }
 }
 
-TEST_CASE("nah::fs::remove_directory") {
+TEST_CASE("nah::fs::remove_directory")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("remove empty directory") {
+    SUBCASE("remove empty directory")
+    {
         std::string subdir = temp_dir.path + "/empty_dir";
         std::filesystem::create_directory(subdir);
         CHECK(nah::fs::exists(subdir));
@@ -337,7 +388,8 @@ TEST_CASE("nah::fs::remove_directory") {
         CHECK(!nah::fs::exists(subdir));
     }
 
-    SUBCASE("remove directory with contents") {
+    SUBCASE("remove directory with contents")
+    {
         std::string subdir = temp_dir.path + "/full_dir";
         std::filesystem::create_directory(subdir);
         std::ofstream(subdir + "/file1.txt") << "content1";
@@ -350,18 +402,21 @@ TEST_CASE("nah::fs::remove_directory") {
         CHECK(!nah::fs::exists(subdir));
     }
 
-    SUBCASE("remove non-existent directory") {
+    SUBCASE("remove non-existent directory")
+    {
         std::string subdir = temp_dir.path + "/non_existent";
         bool success = nah::fs::remove_directory(subdir);
-        CHECK(success);  // Removing non-existent directory is considered success
+        CHECK(success); // Removing non-existent directory is considered success
     }
 }
 
-TEST_CASE("nah::fs::copy_file") {
+TEST_CASE("nah::fs::copy_file")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("copy file") {
+    SUBCASE("copy file")
+    {
         std::string source = temp_dir.path + "/source.txt";
         std::string dest = temp_dir.path + "/dest.txt";
         std::string content = "File content to copy";
@@ -377,7 +432,8 @@ TEST_CASE("nah::fs::copy_file") {
         CHECK(*dest_content == content);
     }
 
-    SUBCASE("overwrite existing destination") {
+    SUBCASE("overwrite existing destination")
+    {
         std::string source = temp_dir.path + "/source.txt";
         std::string dest = temp_dir.path + "/dest.txt";
 
@@ -392,7 +448,8 @@ TEST_CASE("nah::fs::copy_file") {
         CHECK(*dest_content == "New content");
     }
 
-    SUBCASE("copy non-existent source fails") {
+    SUBCASE("copy non-existent source fails")
+    {
         std::string source = temp_dir.path + "/non_existent.txt";
         std::string dest = temp_dir.path + "/dest.txt";
 
@@ -402,8 +459,10 @@ TEST_CASE("nah::fs::copy_file") {
     }
 }
 
-TEST_CASE("nah::fs::filename") {
-    SUBCASE("extract filename from path") {
+TEST_CASE("nah::fs::filename")
+{
+    SUBCASE("extract filename from path")
+    {
         CHECK(nah::fs::filename("/path/to/file.txt") == "file.txt");
         CHECK(nah::fs::filename("/path/to/directory/") == "");
         CHECK(nah::fs::filename("file.txt") == "file.txt");
@@ -412,8 +471,10 @@ TEST_CASE("nah::fs::filename") {
     }
 }
 
-TEST_CASE("nah::fs::parent_path") {
-    SUBCASE("extract parent directory from path") {
+TEST_CASE("nah::fs::parent_path")
+{
+    SUBCASE("extract parent directory from path")
+    {
         CHECK(nah::fs::parent_path("/path/to/file.txt") == "/path/to");
         CHECK(nah::fs::parent_path("/path/to/directory/") == "/path/to/directory");
         CHECK(nah::fs::parent_path("file.txt") == "");
@@ -422,24 +483,29 @@ TEST_CASE("nah::fs::parent_path") {
     }
 }
 
-TEST_CASE("nah::fs::canonical_path") {
+TEST_CASE("nah::fs::canonical_path")
+{
     TempTestDir temp_dir;
     REQUIRE(!temp_dir.path.empty());
 
-    SUBCASE("resolve existing path") {
+    SUBCASE("resolve existing path")
+    {
         auto resolved = nah::fs::canonical_path(temp_dir.path);
         REQUIRE(resolved.has_value());
         CHECK(nah::fs::exists(*resolved));
     }
 
-    SUBCASE("resolve non-existent path returns nullopt") {
+    SUBCASE("resolve non-existent path returns nullopt")
+    {
         auto resolved = nah::fs::canonical_path(temp_dir.path + "/non_existent");
         CHECK(!resolved.has_value());
     }
 }
 
-TEST_CASE("nah::fs::absolute_path") {
-    SUBCASE("convert relative to absolute") {
+TEST_CASE("nah::fs::absolute_path")
+{
+    SUBCASE("convert relative to absolute")
+    {
         std::string abs = nah::fs::absolute_path(".");
         CHECK(!abs.empty());
 #ifdef _WIN32
@@ -452,7 +518,8 @@ TEST_CASE("nah::fs::absolute_path") {
 #endif
     }
 
-    SUBCASE("absolute path unchanged") {
+    SUBCASE("absolute path unchanged")
+    {
 #ifdef _WIN32
         std::string path = "C:\\absolute\\path";
 #else

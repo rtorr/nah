@@ -1,0 +1,25 @@
+{
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "host": {
+    "name": "example-host",
+    "version": "1.0.0",
+    "description": "Example NAH host demonstrating multi-NAK setup",
+    "root": "./nah_root",
+    "environment": {
+      "NAH_HOST_NAME": "example-host"
+    },
+    "paths": {
+      "library_prepend": [],
+      "library_append": []
+    },
+    "overrides": {
+      "allow_env_overrides": true,
+      "allowed_env_keys": []
+    }
+  },
+  "install": [
+    "../sdk/build/com.example.sdk-1.2.3.nak",
+    "../apps/app/build/com.example.app-1.0.0.nap"
+  ]
+}
+

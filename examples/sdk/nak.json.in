@@ -1,0 +1,24 @@
+{
+  "$schema": "https://nah.rtorr.com/schemas/nak.v1.json",
+  "nak": {
+    "identity": {
+      "id": "com.example.sdk",
+      "version": "1.2.3"
+    },
+    "paths": {
+      "resource_root": "resources",
+      "lib_dirs": ["lib"]
+    },
+    "environment": {
+      "NAK_FRAMEWORK_VERSION": "1.2.3"
+    },
+    "loader": {
+      "exec_path": "bin/framework_loader",
+      "args_template": ["--app", "{NAH_APP_ENTRY}"]
+    },
+    "execution": {
+      "cwd": "{NAH_APP_ROOT}"
+    }
+  }
+}
+

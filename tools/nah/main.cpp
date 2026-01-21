@@ -17,8 +17,6 @@ namespace nah::cli::commands {
     void setup_show(CLI::App* app, GlobalOptions& opts);
     void setup_which(CLI::App* app, GlobalOptions& opts);
     void setup_pack(CLI::App* app, GlobalOptions& opts);
-    void setup_host(CLI::App* app, GlobalOptions& opts);
-    void setup_manifest(CLI::App* app, GlobalOptions& opts);
 }
 
 int main(int argc, char** argv) {
@@ -61,12 +59,6 @@ int main(int argc, char** argv) {
     
     auto* pack_cmd = app.add_subcommand("pack", "Create a .nap or .nak package");
     commands::setup_pack(pack_cmd, opts);
-    
-    auto* host_cmd = app.add_subcommand("host", "Host management commands");
-    commands::setup_host(host_cmd, opts);
-
-    auto* manifest_cmd = app.add_subcommand("manifest", "Manifest tools");
-    commands::setup_manifest(manifest_cmd, opts);
 
     CLI11_PARSE(app, argc, argv);
     

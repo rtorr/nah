@@ -3,11 +3,13 @@
 # This represents a framework team's SDK deliverable.
 # It builds completely independently and produces a NAK pack.
 #
+# v1.1.0: Updated to use JSON manifest at root (not META/)
+#
 # Build:
 #   mkdir build && cd build
 #   cmake ..
 #   make
-#   make package_nak
+#   make package_all
 #
 # Output: build/com.example.sdk-1.2.3.nak
 
@@ -60,20 +62,20 @@ add_executable(framework_loader
 target_link_libraries(framework_loader PRIVATE framework)
 
 # =============================================================================
-# NAK Pack Generation
+# NAK Pack Generation (v1.1.0 format)
 # =============================================================================
 
 set(NAK_STAGING_DIR "${CMAKE_BINARY_DIR}/nak_staging")
 
-# Generate nak.json from template
+# Generate nak.json from template (now at root, with nested structure)
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.json.in
-    ${CMAKE_BINARY_DIR}/META/nak.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/nak.json.in
+    ${CMAKE_BINARY_DIR}/nak.json
     @ONLY
 )
 
 add_custom_target(stage_nak
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/META
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${NAK_STAGING_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/lib
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/bin
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/resources
@@ -88,23 +90,31 @@ add_custom_target(stage_nak
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${NAK_STAGING_DIR}/resources
 
-    # Copy metadata
+    # Copy nak.json to root (NEW: not in META/)
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/META/nak.json ${NAK_STAGING_DIR}/META/
+        ${CMAKE_BINARY_DIR}/nak.json ${NAK_STAGING_DIR}/nak.json
 
     DEPENDS framework framework_loader
     COMMENT "Staging NAK pack: ${NAK_ID}@${NAK_VERSION}"
 )
 
-add_custom_target(package_nak
+add_custom_target(package_nak ALL
     COMMAND ${CMAKE_COMMAND} -E echo "Creating NAK pack: ${NAK_ID}-${NAK_VERSION}.nak"
-    COMMAND ${CMAKE_COMMAND} -E chdir ${NAK_STAGING_DIR}
-        ${CMAKE_COMMAND} -E tar czf
+    COMMAND ${CMAKE_COMMAND} -E tar czf
         ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak
         --format=gnutar
         .
+    WORKING_DIRECTORY ${NAK_STAGING_DIR}
     DEPENDS stage_nak
     COMMENT "Packaging NAK: ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak"
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak
 )
 
-message(STATUS "SDK build configured. Run 'make package_nak' to create NAK pack.")
+# Add to global package_all target
+if(NOT TARGET package_all)
+    add_custom_target(package_all)
+endif()
+add_dependencies(package_all package_nak)
+
+message(STATUS "SDK build configured. Run 'make package_all' to create NAK pack.")
+message(STATUS "Package will be: ${NAK_ID}-${NAK_VERSION}.nak")

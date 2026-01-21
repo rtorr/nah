@@ -165,15 +165,9 @@ bool extract_tar(const std::vector<uint8_t>& tar_data, const std::string& dest_d
             file.close();
 
             // Apply permissions from tar header
-            // Check if any execute bit is set in the original mode
-            if (mode & 0111) {
-                // File was executable, preserve that
-                std::filesystem::permissions(file_path,
-                    std::filesystem::perms::owner_exec |
-                    std::filesystem::perms::owner_read |
-                    std::filesystem::perms::owner_write,
-                    std::filesystem::perm_options::add);
-            }
+            std::filesystem::permissions(file_path,
+                static_cast<std::filesystem::perms>(mode),
+                std::filesystem::perm_options::replace);
         }
 
         offset += padded_size;

@@ -41,11 +41,17 @@ The manifest declares what the app needs:
 
 ```json
 {
-  "id": "com.example.myapp",
-  "version": "1.0.0",
-  "nak_id": "com.vendor.sdk",
-  "nak_version_req": "^2.0.0",
-  "entrypoint": "bin/myapp"
+  "app": {
+    "identity": {
+      "id": "com.example.myapp",
+      "version": "1.0.0",
+      "nak_id": "com.vendor.sdk",
+      "nak_version_req": ">=2.0.0 <3.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/myapp"
+    }
+  }
 }
 ```
 
@@ -134,14 +140,17 @@ Benefits:
 ```
 /nah/                           # NAH root
 ├── host/
-│   └── host.json              # Host environment configuration
+│   └── nah.json               # Host environment configuration
 ├── apps/
 │   └── com.example.myapp-1.0.0/
+│       ├── nap.json           # App manifest
 │       ├── bin/myapp          # Application binary
-│       └── manifest.nah       # Manifest copy
+│       ├── lib/               # Libraries
+│       └── assets/            # Assets
 ├── naks/
 │   └── com.vendor.sdk/
 │       └── 2.1.0/
+│           ├── nak.json       # NAK manifest
 │           ├── lib/           # SDK libraries
 │           └── resources/     # SDK resources
 └── registry/
@@ -217,16 +226,18 @@ Higher numbers have higher priority (overwrite lower numbers).
 
 ## Trace Mode
 
-Use `--trace` to see the provenance of each value:
+Use `nah show` or `nah run` with `--json` to see contract details:
 
 ```bash
-nah status com.example.app --trace
+nah show com.example.app --json
 ```
 
-The trace shows:
-- Which source contributed each value
-- The precedence rank
-- The file path where it was defined
+The output shows:
+- App and NAK identity
+- Execution parameters (entrypoint, working directory)
+- Environment variables
+- Library paths
+- Install locations
 
 ## Determinism
 

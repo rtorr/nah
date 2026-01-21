@@ -1,146 +1,198 @@
 # Getting Started: Host Integrator
 
-You run apps and SDKs from different vendors. This guide covers setting up a NAH root and deploying packages.
+You run apps and SDKs from different vendors. This guide covers setting up a NAH host and deploying packages.
 
 See [Core Concepts](concepts.md) for terminology.
 
-## Quick Start with Host Manifest
+## Quick Start
 
-The fastest way to set up a host is with `nah host install`:
-
-```bash
-# Create a host directory with manifest
-mkdir myhost
-
-# Create nah.json (host manifest)
-cat > myhost/nah.json << 'EOF'
-{
-  "$schema": "nah.host.manifest.v1",
-  "root": "./nah_root",
-  "host": {
-    "environment": {
-      "DEPLOYMENT_ENV": "production"
-    }
-  },
-  "install": [
-    "../path/to/vendor-sdk-2.1.0.nak",
-    "../path/to/myapp-1.0.0.nap"
-  ]
-}
-EOF
-
-# Install everything
-nah host install myhost
-```
-
-This creates the NAH root, sets up host configuration, and installs all packages in one command.
-
-## Manual Setup
-
-For more control, you can set up a host step by step.
-
-### 1. Initialize a NAH Root
+Initialize a NAH host directory:
 
 ```bash
-nah init root /opt/myplatform
+nah init host ./myhost
+cd myhost
 ```
 
 This creates:
+
 ```
-/opt/myplatform/
-├── host/
-│   └── host.json
-├── apps/
-├── naks/
-└── registry/
+myhost/
+├── nah.json          # Host configuration
+├── apps/             # Apps install here
+├── naks/             # NAKs install here
+└── registry/         # Install records
     ├── apps/
     └── naks/
 ```
 
-### 2. Configure the Host Environment
+Install packages:
 
-Edit `host/host.json`:
+```bash
+nah install vendor-sdk-2.1.0.nak
+nah install myapp-1.0.0.nap
+```
+
+List what's installed:
+
+```bash
+nah list
+```
+
+Run an app:
+
+```bash
+nah run com.example.myapp
+```
+
+## Host Configuration
+
+Edit `nah.json` to configure the host environment:
 
 ```json
 {
-  "environment": {
-    "DEPLOYMENT_ENV": "production",
-    "NAH_HOST_NAME": "myplatform"
-  },
-  "paths": {
-    "library_prepend": [],
-    "library_append": []
-  },
-  "overrides": {
-    "allow_env_overrides": true,
-    "allowed_env_keys": []
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "host": {
+    "root": "/opt/myplatform",
+    "environment": {
+      "DEPLOYMENT_ENV": "production",
+      "NAH_HOST_NAME": "myplatform"
+    },
+    "paths": {
+      "library_prepend": [],
+      "library_append": []
+    },
+    "overrides": {
+      "allow_env_overrides": true,
+      "allowed_env_keys": []
+    },
+    "install": [
+      "packages/sdk.nak",
+      "packages/app.nap"
+    ]
   }
 }
 ```
 
-### Host Environment Fields
+### Configuration Fields
 
 | Field | Description |
 |-------|-------------|
-| `environment` | Environment variables to inject into all apps |
-| `paths.library_prepend` | Library paths added before app/NAK paths |
-| `paths.library_append` | Library paths added after app/NAK paths |
-| `overrides.allow_env_overrides` | Allow `NAH_OVERRIDE_ENVIRONMENT` |
-| `overrides.allowed_env_keys` | If non-empty, only these keys can be overridden |
+| `host.root` | Absolute path to NAH root (optional, uses cwd if omitted) |
+| `host.environment` | Environment variables to inject into all apps |
+| `host.paths.library_prepend` | Library paths added before app/NAK paths |
+| `host.paths.library_append` | Library paths added after app/NAK paths |
+| `host.overrides.allow_env_overrides` | Allow `NAH_OVERRIDE_ENVIRONMENT` |
+| `host.overrides.allowed_env_keys` | If non-empty, only these keys can be overridden |
+| `host.install` | Packages to auto-install (optional) |
 
-### 3. Install NAKs
+## Managing Packages
+
+### Install NAKs
 
 ```bash
-nah --root /opt/myplatform install vendor-sdk-2.1.0.nak
-nah --root /opt/myplatform list --naks
+nah install vendor-sdk-2.1.0.nak
+nah list --naks
 ```
 
 Multiple versions can coexist:
+
 ```bash
-nah --root /opt/myplatform install vendor-sdk-1.0.0.nak
-nah --root /opt/myplatform install vendor-sdk-2.1.0.nak
+nah install vendor-sdk-1.0.0.nak
+nah install vendor-sdk-2.1.0.nak
 ```
 
-### 4. Install Apps
+### Install Apps
 
 ```bash
-nah --root /opt/myplatform install myapp-1.0.0.nap
-nah --root /opt/myplatform list --apps
+nah install myapp-1.0.0.nap
+nah list --apps
 ```
 
 At install time, NAH selects a compatible NAK and pins it.
 
-### 5. Verify
+### Uninstall
 
 ```bash
-nah --root /opt/myplatform status com.example.myapp
+nah uninstall com.example.myapp
+nah uninstall com.example.sdk@2.1.0
 ```
 
-Clean output means the app is ready.
-
-### 6. View the Launch Contract
+## Viewing Package Details
 
 ```bash
-nah --root /opt/myplatform status com.example.myapp
+nah show com.example.myapp
 ```
 
 Output shows:
-- Binary path
-- Library paths
-- Environment variables
-- Working directory
+
+* Identity (ID, version)
+* NAK dependency
+* Entrypoint
+* Layout (lib dirs, asset dirs)
+* Install location
 
 For scripting:
+
 ```bash
-nah --root /opt/myplatform status com.example.myapp --json
+nah show com.example.myapp --json
 ```
 
-With provenance trace:
+## Running Applications
+
 ```bash
-nah --root /opt/myplatform status com.example.myapp --trace
+nah run com.example.myapp
 ```
+
+NAH automatically:
+
+1. Loads the app manifest
+2. Resolves the NAK dependency
+3. Composes the launch contract (paths, environment)
+4. Executes the application
+
+## Using NAH\_ROOT
+
+Set `NAH_ROOT` to avoid repeating `--root`:
+
+```bash
+export NAH_ROOT=/opt/myplatform
+nah install myapp.nap
+nah list
+nah run com.example.myapp
+```
+
+## Declarative Host Setup
+
+For reproducible deployments, use a declarative host manifest:
+
+**nah.json:**
+
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "host": {
+    "root": "./nah_root",
+    "environment": {
+      "DEPLOYMENT_ENV": "production"
+    },
+    "install": [
+      "packages/vendor-sdk-2.1.0.nak",
+      "packages/myapp-1.0.0.nap",
+      "packages/another-app-1.5.0.nap"
+    ]
+  }
+}
+```
+
+Then install everything:
+
+```bash
+nah install myapp.nap  # Will also install NAK dependencies
+```
+
+Package paths in `install` are resolved relative to the `nah.json` file location.
 
 ## Next Steps
 
-- [CLI Reference](cli.md) for all commands
-- [SPEC.md](../SPEC.md) for the full specification
+* [CLI Reference](cli.md) for all commands
+* [SPEC.md](../SPEC.md) for the full specification

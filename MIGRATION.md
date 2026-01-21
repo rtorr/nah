@@ -1,264 +1,334 @@
-# NAH Header-Only Library Migration Guide
+# NAH v2.0 Migration Guide
 
 ## Overview
 
-The header-only refactor represents a complete architectural redesign, moving from a traditional C++ library to a header-only library design. This is a **breaking change** with no direct migration path.
+NAH v2.0 is a **major breaking release** that eliminates custom binary formats in favor of pure JSON manifests and standard tar.gz packaging. This is an architectural simplification with **no migration path** from v1.x.
 
-## Major Changes
+**If you are upgrading from v1.x, you must rebuild all packages.**
 
-### 1. Architecture
-- **Old**: Traditional C++ library with separate compilation units
-- **New**: Header-only library with pure functional core
+## What Changed in v2.0
 
-### 2. API Changes
+### 1. Manifest Format: Binary TLV → Pure JSON
 
-#### Composition API
-```cpp
-// Old (v1.0)
-auto result = nah::compose(app_decl, profile, install_record, inventory, enable_trace);
+**v1.x:**
+- Binary TLV manifest format (custom encoding)
+- `manifest.nah` files
+- Embedded manifests in binaries via `NAH_APP_MANIFEST()` macro
+- `nah manifest generate` command to create binary manifests
 
-// New (v2.0)
-nah::core::CompositionOptions opts;
-opts.enable_trace = enable_trace;
-auto result = nah::core::nah_compose(app_decl, profile, install_record, inventory, opts);
-```
+**v2.0:**
+- Pure JSON manifests throughout
+- `nap.json` for apps, `nak.json` for NAKs, `nah.json` for host config
+- No binary format, no embedded manifests
+- Manifests at package root (not in `META/`)
 
-#### Error Handling
-```cpp
-// Old (v1.0)
-if (!result.ok) {
-    std::cerr << result.error_message << std::endl;
+**Migration:**
+- Delete all `.nah` binary manifest files
+- Create JSON manifests using the new schema
+- Remove `nah manifest generate` from build scripts
+
+### 2. Package Format: Custom Binary → Standard tar.gz
+
+**v1.x:**
+- Custom `.nap` binary format with embedded TLV manifest
+- Mixed formats (binary + JSON)
+
+**v2.0:**
+- Standard `tar.gz` archives for both `.nap` and `.nak`
+- JSON manifest at root of archive
+- Use standard tools (`tar`, `gzip`) for inspection
+
+**Migration:**
+- Rebuild all packages with `nah pack`
+- Old `.nap`/`.nak` files will not work
+
+### 3. Manifest Structure: Flat → Nested
+
+**v1.x (flat):**
+```json
+{
+  "id": "com.example.app",
+  "version": "1.0.0",
+  "entrypoint": "bin/app",
+  "nak_id": "com.example.sdk",
+  "nak_version_req": ">=1.0.0"
 }
+```
 
-// New (v2.0)
-if (!result.ok) {
-    std::cerr << result.critical_error_context << std::endl;
+**v2.0 (nested):**
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.app",
+      "version": "1.0.0",
+      "nak_id": "com.example.sdk",
+      "nak_version_req": ">=1.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/app"
+    },
+    "layout": {
+      "lib_dirs": ["lib"],
+      "asset_dirs": ["assets"]
+    }
+  }
 }
 ```
 
-#### Namespaces
-- `nah::` → `nah::core::`
-- `nah::manifest::` → `nah::json::`
-- `nah::platform::` → `nah::fs::`
-- `nah::exec::` (new namespace)
-- `nah::overrides::` (new namespace)
+**Migration:**
+- Use JSON Schema: `https://nah.rtorr.com/schemas/nap.v1.json`
+- Restructure manifests into nested sections
+- See [docs/schemas/README.md](docs/schemas/README.md) for full schema documentation
 
-### 3. Header Files
+### 4. CMake Integration: Manifest Generation → Direct JSON
 
-#### Removed Headers
-All headers in `include/nah/` have been replaced:
-- `capabilities.hpp` → functionality in `nah_core.h`
-- `compose.hpp` → `nah_core.h`
-- `contract.hpp` → `nah_core.h`
-- `manifest.hpp` → `nah_json.h`
-- `platform.hpp` → `nah_fs.h`
-- `packaging.hpp` → removed (CLI-only functionality)
-
-#### New Headers
-- `nah_core.h` - Core composition engine
-- `nah_json.h` - JSON parsing and serialization
-- `nah_fs.h` - Filesystem operations
-- `nah_exec.h` - Process execution
-- `nah_overrides.h` - Environment overrides
-
-### 4. CLI Changes
-
-The CLI has been completely reorganized with a modular command structure:
-
-```bash
-# Old (v1.0)
-nah install app@version
-nah run app@version
-
-# New (v2.0) - Same interface, different implementation
-nah install app@version
-nah run app@version
-```
-
-### 5. Build System
-
-#### CMake Changes
+**v1.x:**
 ```cmake
-# Old (v1.0)
-find_package(NAH REQUIRED)
-target_link_libraries(myapp NAH::nah)
+nah_generate_manifest(myapp
+    ID "com.example.app"
+    VERSION "1.0.0"
+    ENTRYPOINT "bin/app"
+)
 
-# New (v2.0) - Header-only
-find_package(NAH REQUIRED)
-target_link_libraries(myapp NAH::nah)  # Interface library only
+nah_package_nap(myapp)
 ```
 
-#### Dependencies
-- No longer uses system libraries
-- All dependencies via FetchContent or Conan
-- zlib fetched automatically for tar/gzip support
+**v2.0:**
+```cmake
+# Convenience wrapper
+nah_app(myapp
+    ID "com.example.app"
+    VERSION "1.0.0"
+    NAK "com.example.sdk"
+    NAK_VERSION ">=1.0.0"
+    ENTRYPOINT "bin/app"
+    ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+)
 
-## Migration Steps
+# Creates target: myapp_package
+# Build with: make nah_package
+```
+
+Or use separate functions for more control:
+```cmake
+nah_app_manifest(myapp ...)  # Generates nap.json
+nah_package(myapp ...)        # Creates tar.gz
+```
+
+**Migration:**
+- Remove `nah_generate_manifest()` calls
+- Replace with `nah_app()` or `nah_nak()` convenience functions
+- Update build targets from `package_nap` to `nah_package`
+- See [examples/cmake/NahAppTemplate.cmake](examples/cmake/NahAppTemplate.cmake)
+
+### 5. CLI Changes: Simplified Commands
+
+**v1.x:**
+```bash
+nah manifest generate manifest.json -o manifest.nah
+nah app install myapp.nap
+nah nak install sdk.nak
+nah host install ./host_manifest
+nah status app@version
+nah profile list
+```
+
+**v2.0:**
+```bash
+nah install myapp.nap        # Unified install for apps and NAKs
+nah install sdk.nak
+nah list                     # Show installed packages
+nah run com.example.app      # Run an app
+nah show com.example.app     # Show details
+nah pack ./app_dir           # Create package
+
+# Removed commands:
+# - nah manifest generate (no binary manifests)
+# - nah host install (merged into nah install)
+# - nah status (use nah show)
+# - nah profile * (profiles removed)
+```
+
+**Migration:**
+- Replace `nah manifest generate` with direct JSON creation
+- Use `nah install` for all package types
+- Use `nah show` instead of `nah status`
+- No more profile commands (see below)
+
+### 6. Host Configuration: Profiles → Single nah.json
+
+**v1.x:**
+- Multiple profiles in `<nah_root>/host/profiles/`
+- `profile.current` symlink
+- Profile switching with `nah profile set`
+
+**v2.0:**
+- Single `<nah_root>/host/nah.json` file
+- No profile concept
+- Simpler, single configuration
+
+**v1.x host.json:**
+```json
+{
+  "root": "/opt/nah",
+  "host": { "environment": { "KEY": "value" } }
+}
+```
+
+**v2.0 nah.json:**
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "host": {
+    "root": "/opt/nah",
+    "environment": {
+      "DEPLOYMENT_ENV": "production"
+    },
+    "paths": {
+      "library_prepend": [],
+      "library_append": []
+    },
+    "overrides": {
+      "allow_env_overrides": true,
+      "allowed_env_keys": []
+    },
+    "install": [
+      "packages/sdk.nak",
+      "packages/app.nap"
+    ]
+  }
+}
+```
+
+**Migration:**
+- Delete `<nah_root>/host/profiles/` directory
+- Delete `<nah_root>/host/profile.current` symlink
+- Rename `host.json` to `nah.json`
+- Update structure to match schema
+- Remove `--profile` flags from scripts
+
+### 7. Environment Variables: Simple → Operations
+
+**v1.x:**
+```json
+{
+  "environment": {
+    "PATH": "/custom/path",
+    "MY_VAR": "value"
+  }
+}
+```
+
+**v2.0 (supports operations):**
+```json
+{
+  "environment": {
+    "MY_VAR": "value",
+    "PATH": {
+      "op": "prepend",
+      "value": "/custom/path",
+      "separator": ":"
+    },
+    "REMOVED_VAR": {
+      "op": "unset"
+    }
+  }
+}
+```
+
+Operations: `set`, `prepend`, `append`, `unset`
+
+### 8. Library API: Same Core, New JSON Parser
+
+**No breaking changes to core composition API.**
+
+The library API remains largely compatible, but JSON parsing is enhanced:
+
+```cpp
+// v1.x and v2.0 - Same API
+#define NAH_HOST_IMPLEMENTATION
+#include <nah/nah_host.h>
+
+auto host = nah::host::NahHost::create(nah_root);
+auto result = host->getLaunchContract("com.example.app");
+```
+
+The JSON parser now handles both:
+- v2.0 nested format (preferred)
+- v1.x flat format (backward compatible for parsed JSON only)
+
+**Note:** Binary manifests are NOT supported. Only JSON manifests work.
+
+## Complete Migration Checklist
+
+### For Application Developers
+
+- [ ] Create `nap.json` with nested structure
+- [ ] Update CMakeLists.txt to use `nah_app()` function
+- [ ] Change build target from `package_nap` to `nah_package`
+- [ ] Remove any `nah manifest generate` commands
+- [ ] Rebuild packages with `make nah_package`
+- [ ] Test installation with `nah install myapp-1.0.0.nap`
+
+### For NAK/SDK Developers
+
+- [ ] Create `nak.json` at package root (not in `META/`)
+- [ ] Update CMakeLists.txt to use `nah_nak()` function
+- [ ] Change build target to `nah_package`
+- [ ] Rebuild packages
+- [ ] Update distribution documentation
+
+### For Host Administrators
+
+- [ ] Backup existing NAH root
+- [ ] Remove all old `.nap` and `.nak` packages
+- [ ] Delete `<nah_root>/host/profiles/` directory
+- [ ] Rename `host.json` to `nah.json`
+- [ ] Update `nah.json` structure to match v2.0 schema
+- [ ] Remove `--profile` flags from automation scripts
+- [ ] Reinstall all packages from v2.0 builds
 
 ### For Library Users
 
-1. **Update includes**:
-   ```cpp
-   // Replace old headers
-   #include <nah/compose.hpp>
-   #include <nah/contract.hpp>
+- [ ] Update includes (if using low-level APIs)
+- [ ] No changes needed if using `NahHost` class
+- [ ] Test with new JSON manifest format
 
-   // With new headers
-   #include <nah/nah_core.h>
-   ```
+## Examples
 
-2. **Update namespace usage**:
-   ```cpp
-   // Old
-   nah::compose(...)
+See the [examples/](examples/) directory for complete working examples:
 
-   // New
-   nah::core::nah_compose(...)
-   ```
+- **[examples/apps/app/](examples/apps/app/)** - Simple C app with CMake
+- **[examples/apps/script-app/](examples/apps/script-app/)** - Script-only app (no binary)
+- **[examples/sdk/](examples/sdk/)** - Framework SDK (NAK)
+- **[examples/host/](examples/host/)** - Host configuration
 
-3. **Update error handling**:
-   ```cpp
-   // Check for critical_error_context instead of error_message
-   if (!result.ok) {
-       handle_error(result.critical_error_context);
-   }
-   ```
+## Schema Documentation
 
-### For CLI Users
+Full JSON Schemas are available at:
+- https://nah.rtorr.com/schemas/nap.v1.json (App manifest)
+- https://nah.rtorr.com/schemas/nak.v1.json (NAK manifest)
+- https://nah.rtorr.com/schemas/nah.v1.json (Host configuration)
 
-The CLI interface remains largely the same, but the underlying implementation has changed:
-
-- All commands now use the header-only library
-- Binary manifest parsing is fully supported
-- tar/gzip archives are handled natively
-
-### For Contributors
-
-1. **New project structure**:
-   ```
-   include/nah/        # Header-only library
-   tools/nah/          # CLI implementation
-     commands/         # Modular command files
-     main.cpp         # Entry point
-   ```
-
-2. **Testing**:
-   - Tests reduced from 219 to 57 comprehensive tests
-   - Focus on integration over unit testing
-   - All tests updated for new API
+See [docs/schemas/README.md](docs/schemas/README.md) for detailed documentation.
 
 ## Breaking Changes Summary
 
-1. **No backward compatibility** - Complete API redesign
-2. **Header-only** - No more compiled library
-3. **Pure functional core** - No I/O in composition engine
-4. **New error types** - Result<T> pattern throughout
-5. **Namespace reorganization** - More logical grouping
-
-## Profile Removal (v2.1)
-
-Version 2.1 removes the multi-profile system in favor of a simpler single `host.json` configuration.
-
-### What Changed
-
-1. **Profiles removed**: No more `<nah_root>/host/profiles/` directory or `profile.current` symlink
-2. **Single host.json**: All host configuration is now in `<nah_root>/host/host.json`
-3. **CLI changes**:
-   - Removed `--profile` global flag
-   - Removed `nah profile` command family (list, set, init, validate)
-4. **Simplified composition**: No more profile-based warning policy upgrades or NAK binding modes
-
-### Old Profile Format (removed)
-
-```json
-{
-  "$schema": "nah.host.profile.v2",
-  "nak": {
-    "binding_mode": "canonical",
-    "allow_versions": ["3.*"]
-  },
-  "environment": {
-    "DEPLOYMENT_ENV": "production"
-  },
-  "warnings": {
-    "nak_not_found": "error"
-  },
-  "capabilities": {
-    "filesystem.read": "apparmor.profile.readonly"
-  }
-}
-```
-
-### New Host Environment Format
-
-```json
-{
-  "environment": {
-    "DEPLOYMENT_ENV": "production",
-    "NAH_HOST_NAME": "myhost"
-  },
-  "paths": {
-    "library_prepend": [],
-    "library_append": []
-  },
-  "overrides": {
-    "allow_env_overrides": true,
-    "allowed_env_keys": []
-  }
-}
-```
-
-### Migration Steps
-
-1. **Remove profiles directory**:
-   ```bash
-   rm -rf <nah_root>/host/profiles
-   rm -f <nah_root>/host/profile.current
-   ```
-
-2. **Create host.json** from your default profile:
-   ```bash
-   # Extract environment from old profile
-   cat <nah_root>/host/profiles/default.json | jq '{
-     environment: .environment,
-     paths: { library_prepend: [], library_append: [] },
-     overrides: { allow_env_overrides: true, allowed_env_keys: [] }
-   }' > <nah_root>/host/host.json
-   ```
-
-3. **Update scripts**: Remove `--profile` flags from any automation scripts.
-
-4. **Update host manifests**: Change `host.json` format for `nah host install`:
-   ```json
-   {
-     "$schema": "nah.host.manifest.v1",
-     "root": "./nah_root",
-     "host": {
-       "environment": { "KEY": "value" }
-     },
-     "install": ["app.nap", "sdk.nak"]
-   }
-   ```
-
-### Removed Features
-
-- **NAK binding modes**: `canonical` and `mapped` modes are gone. NAK selection uses the highest compatible version at install time.
-- **Warning policy**: All warnings now default to "warn". No ability to upgrade warnings to errors via configuration.
-- **Capability mapping**: The `capabilities` section for mapping permissions to enforcement IDs is removed.
-
-### API Changes
-
-```cpp
-// Old (v2.0)
-auto profile = host->getActiveProfile();
-host->setActiveProfile("production");
-auto profiles = host->listProfiles();
-
-// New (v2.1)
-auto host_env = host->getHostEnvironment();
-// No profile switching - single configuration
-```
+| Feature | v1.x | v2.0 |
+|---------|------|------|
+| Manifest Format | Binary TLV | JSON only |
+| Package Format | Custom binary | Standard tar.gz |
+| Manifest Location | `manifest.nah` or embedded | `nap.json`/`nak.json` at root |
+| Host Config | `host.json` with profiles | `nah.json` single config |
+| CLI Commands | `nah manifest`, `nah status`, `nah profile` | Removed |
+| CMake Target | `package_nap`/`package_nak` | `nah_package` |
+| Migration Path | N/A | **No migration - rebuild required** |
 
 ## Support
 
-For questions about migration, please open an issue on the GitHub repository.
+For questions about migration:
+- Open an issue: https://github.com/rtorr/nah/issues
+- See examples: https://github.com/rtorr/nah/tree/main/examples
+- Read schemas: https://nah.rtorr.com/schemas/

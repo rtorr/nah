@@ -13,6 +13,10 @@
 #include <cstring>
 #include <zlib.h>
 
+#ifndef _WIN32
+#include <sys/stat.h>  // For chmod()
+#endif
+
 namespace nah::cli::commands {
 
 namespace {
@@ -171,9 +175,29 @@ bool extract_tar(const std::vector<uint8_t>& tar_data, const std::string& dest_d
                 mode = 0644;
             }
             
+            // Try to set permissions using std::filesystem
+            std::error_code perm_ec;
             std::filesystem::permissions(file_path,
                 static_cast<std::filesystem::perms>(mode),
-                std::filesystem::perm_options::replace);
+                std::filesystem::perm_options::replace,
+                perm_ec);
+            
+            // Verify permissions were actually applied (some filesystems like Docker's fakeowner ignore them)
+            if (!perm_ec) {
+                auto actual_perms = std::filesystem::status(file_path, perm_ec).permissions();
+                auto expected_perms = static_cast<std::filesystem::perms>(mode);
+                
+                // If permissions don't match (common on Docker Desktop Mac fakeowner mounts),
+                // try direct POSIX chmod as fallback
+                if (perm_ec || (actual_perms != expected_perms)) {
+#ifdef _WIN32
+                    // Windows doesn't support POSIX chmod, just accept filesystem behavior
+#else
+                    // Try POSIX chmod - works on more filesystems than std::filesystem::permissions
+                    chmod(file_path.string().c_str(), static_cast<mode_t>(mode));
+#endif
+                }
+            }
         }
 
         offset += padded_size;

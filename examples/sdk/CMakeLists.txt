@@ -9,7 +9,7 @@
 #   mkdir build && cd build
 #   cmake ..
 #   make
-#   make package_all
+#   make nah_package
 #
 # Output: build/com.example.sdk-1.2.3.nak
 
@@ -110,11 +110,11 @@ add_custom_target(package_nak ALL
     BYPRODUCTS ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak
 )
 
-# Add to global package_all target
-if(NOT TARGET package_all)
-    add_custom_target(package_all)
+# Add to global nah_package target
+if(NOT TARGET nah_package)
+    add_custom_target(nah_package)
 endif()
-add_dependencies(package_all package_nak)
+add_dependencies(nah_package package_nak)
 
-message(STATUS "SDK build configured. Run 'make package_all' to create NAK pack.")
+message(STATUS "SDK build configured. Run 'make nah_package' to create NAK pack.")
 message(STATUS "Package will be: ${NAK_ID}-${NAK_VERSION}.nak")

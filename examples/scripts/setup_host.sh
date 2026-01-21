@@ -61,10 +61,14 @@ fi
 log_info "Creating NAH root structure..."
 mkdir -p "$NAH_ROOT"/{apps,naks,host,registry/{apps,naks}}
 
-# Copy host.json if it exists
-if [ -f "$EXAMPLES_DIR/host/host.json" ]; then
-    cp "$EXAMPLES_DIR/host/host.json" "$NAH_ROOT/host/host.json"
-    log_success "Copied host.json"
+# Copy nah.json (host configuration) if it exists
+if [ -f "$EXAMPLES_DIR/host/nah.json" ]; then
+    cp "$EXAMPLES_DIR/host/nah.json" "$NAH_ROOT/host/nah.json"
+    log_success "Copied nah.json (host configuration)"
+elif [ -f "$EXAMPLES_DIR/host/host.json" ]; then
+    # Backward compatibility - old filename
+    cp "$EXAMPLES_DIR/host/host.json" "$NAH_ROOT/host/nah.json"
+    log_success "Copied host.json (renamed to nah.json)"
 fi
 
 # Install NAKs

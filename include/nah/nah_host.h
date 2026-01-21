@@ -176,11 +176,8 @@ private:
     // Load install record for an app
     std::optional<nah::core::InstallRecord> loadInstallRecord(const std::string& path) const;
 
-    // Load app manifest (JSON or binary)
+    // Load app manifest (JSON)
     std::optional<nah::core::AppDeclaration> loadAppManifest(const std::string& app_dir) const;
-
-    // Parse binary TLV manifest
-    std::optional<std::string> parseBinaryManifest(const std::string& data) const;
 
     std::string root_;
 };
@@ -475,8 +472,8 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
 }
 
 inline std::optional<nah::core::AppDeclaration> NahHost::loadAppManifest(const std::string& app_dir) const {
-    // Try JSON first
-    auto json_content = nah::fs::read_file(app_dir + "/nah.json");
+    // Try nap.json (app manifest at package root)
+    auto json_content = nah::fs::read_file(app_dir + "/nap.json");
     if (json_content) {
         auto result = nah::json::parse_app_declaration(*json_content);
         if (result.ok) {
@@ -484,72 +481,7 @@ inline std::optional<nah::core::AppDeclaration> NahHost::loadAppManifest(const s
         }
     }
 
-    // Try binary manifest
-    auto binary_content = nah::fs::read_file(app_dir + "/manifest.nah");
-    if (binary_content) {
-        auto json_str = parseBinaryManifest(*binary_content);
-        if (json_str) {
-            auto result = nah::json::parse_app_declaration(*json_str);
-            if (result.ok) {
-                return result.value;
-            }
-        }
-    }
-
     return std::nullopt;
-}
-
-inline std::optional<std::string> NahHost::parseBinaryManifest(const std::string& data) const {
-    if (data.size() < 4) return std::nullopt;
-
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.data());
-    size_t len = data.size();
-
-    // Check magic and version
-    if (bytes[0] != 'N' || bytes[1] != 'A' || bytes[2] != 'H' || bytes[3] != 0x02) {
-        return std::nullopt;
-    }
-
-    nlohmann::json manifest;
-    size_t offset = 4;
-
-    while (offset + 3 <= len) {
-        uint8_t field_type = bytes[offset];
-        if (field_type == 0 || field_type > 0x0F) break;
-
-        uint16_t field_len = static_cast<uint16_t>(
-            static_cast<uint16_t>(bytes[offset + 1]) |
-            (static_cast<uint16_t>(bytes[offset + 2]) << 8));
-        offset += 3;
-
-        if (offset + field_len > len) break;
-
-        std::string value(reinterpret_cast<const char*>(&bytes[offset]), field_len);
-        offset += field_len;
-
-        switch (field_type) {
-            case 0x01: manifest["id"] = value; break;
-            case 0x02: manifest["version"] = value; break;
-            case 0x03: manifest["nak_id"] = value; break;
-            case 0x04: manifest["nak_version_req"] = value; break;
-            case 0x05: manifest["entrypoint"] = value; break;
-            case 0x06:
-                if (!manifest.contains("lib_dirs")) {
-                    manifest["lib_dirs"] = nlohmann::json::array();
-                }
-                manifest["lib_dirs"].push_back(value);
-                break;
-            case 0x07:
-                if (!manifest.contains("asset_dirs")) {
-                    manifest["asset_dirs"] = nlohmann::json::array();
-                }
-                manifest["asset_dirs"].push_back(value);
-                break;
-            case 0x0A: manifest["nak_loader"] = value; break;
-        }
-    }
-
-    return manifest.dump();
 }
 
 #endif // NAH_HOST_IMPLEMENTATION

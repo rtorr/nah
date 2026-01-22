@@ -206,7 +206,7 @@ public:
                                          std::filesystem::perms::owner_write);
 
         // Create manifest
-        std::string manifest_path = nah::fs::join_paths(app_dir, "nah.json");
+        std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
         manifest << "  \"id\": \"" << id << "\",\n";
@@ -273,7 +273,7 @@ TEST_CASE("nah init")
         auto result = execute_command(get_nah_executable() + " init --app --id com.test.myapp " + myapp_path);
         CHECK(result.exit_code == 0);
 
-        std::string manifest_path = nah::fs::join_paths(myapp_path, "nah.json");
+        std::string manifest_path = nah::fs::join_paths(myapp_path, "nap.json");
         CHECK(std::filesystem::exists(manifest_path));
 
         // Read and verify the generated manifest
@@ -284,6 +284,34 @@ TEST_CASE("nah init")
                                 std::istreambuf_iterator<char>());
             CHECK(content.find("com.test.myapp") != std::string::npos);
         }
+    }
+
+    SUBCASE("init nak project")
+    {
+        std::string mynak_path = nah::fs::join_paths(test_dir, "mynak");
+        auto result = execute_command(get_nah_executable() + " init --nak --id com.test.mysdk " + mynak_path);
+        CHECK(result.exit_code == 0);
+
+        std::string manifest_path = nah::fs::join_paths(mynak_path, "nak.json");
+        CHECK(std::filesystem::exists(manifest_path));
+
+        std::ifstream manifest_file(manifest_path);
+        if (manifest_file)
+        {
+            std::string content((std::istreambuf_iterator<char>(manifest_file)),
+                                std::istreambuf_iterator<char>());
+            CHECK(content.find("com.test.mysdk") != std::string::npos);
+        }
+    }
+
+    SUBCASE("init host project")
+    {
+        std::string host_path = nah::fs::join_paths(test_dir, "myhost");
+        auto result = execute_command(get_nah_executable() + " init --host " + host_path);
+        CHECK(result.exit_code == 0);
+
+        std::string manifest_path = nah::fs::join_paths(host_path, "nah.json");
+        CHECK(std::filesystem::exists(manifest_path));
     }
 
     // Clean up
@@ -334,4 +362,222 @@ TEST_CASE("nah list")
     //     CHECK(combined.find("com.test.app") != std::string::npos);
     //     CHECK(combined.find("1.0.0") != std::string::npos);
     // }
+}
+
+// Test the show command
+TEST_CASE("nah show")
+{
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    SUBCASE("show with no target - overview mode")
+    {
+        env.createTestApp("com.test.app1", "1.0.0");
+        env.createTestApp("com.test.app2", "2.0.0");
+
+        auto result = execute_command(get_nah_executable() + " show");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        // Should show overview with app count
+        CHECK((combined.find("Apps") != std::string::npos ||
+               combined.find("apps") != std::string::npos));
+    }
+
+    SUBCASE("show non-existent app")
+    {
+        auto result = execute_command(get_nah_executable() + " show com.test.nonexistent");
+        CHECK(result.exit_code != 0);
+        std::string combined = result.output + result.error;
+        CHECK((combined.find("not installed") != std::string::npos ||
+               combined.find("not found") != std::string::npos));
+    }
+
+    SUBCASE("show installed app by id")
+    {
+        env.createTestApp("com.test.showapp", "1.5.0");
+
+        auto result = execute_command(get_nah_executable() + " show com.test.showapp");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("com.test.showapp") != std::string::npos);
+        CHECK(combined.find("1.5.0") != std::string::npos);
+    }
+
+    SUBCASE("show installed app by id@version")
+    {
+        env.createTestApp("com.test.versioned", "2.3.4");
+        env.createTestApp("com.test.versioned", "2.3.5");
+
+        auto result = execute_command(get_nah_executable() + " show com.test.versioned@2.3.4");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("com.test.versioned") != std::string::npos);
+        CHECK(combined.find("2.3.4") != std::string::npos);
+    }
+
+    SUBCASE("show reads nap.json")
+    {
+        env.createTestApp("com.test.naptest", "1.0.0");
+
+        std::string app_dir = nah::fs::join_paths(env.root, "apps", "com.test.naptest-1.0.0");
+        std::string nap_path = nah::fs::join_paths(app_dir, "nap.json");
+
+        CHECK(std::filesystem::exists(nap_path));
+
+        auto result = execute_command(get_nah_executable() + " show com.test.naptest");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("com.test.naptest") != std::string::npos);
+    }
+
+    SUBCASE("show with --trace flag")
+    {
+        env.createTestApp("com.test.traceapp", "1.0.0");
+
+        auto result = execute_command(get_nah_executable() + " show com.test.traceapp --trace");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("com.test.traceapp") != std::string::npos);
+        // Trace output might contain "Trace:" or decision information
+    }
+
+    SUBCASE("show with global --json flag")
+    {
+        env.createTestApp("com.test.jsonapp", "3.2.1");
+
+        // Use global --json flag before the show subcommand
+        auto result = execute_command(get_nah_executable() + " --json show com.test.jsonapp");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        // JSON output should contain curly braces
+        CHECK((combined.find("{") != std::string::npos &&
+               combined.find("}") != std::string::npos));
+    }
+}
+
+// End-to-end lifecycle tests
+TEST_CASE("nah end-to-end workflow")
+{
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    SUBCASE("install -> show -> list lifecycle")
+    {
+        // Create a test app
+        env.createTestApp("com.test.lifecycle", "1.0.0");
+
+        // Test show command works after "install"
+        auto show_result = execute_command(get_nah_executable() + " show com.test.lifecycle");
+        CHECK(show_result.exit_code == 0);
+        std::string show_output = show_result.output + show_result.error;
+        CHECK(show_output.find("com.test.lifecycle") != std::string::npos);
+        CHECK(show_output.find("1.0.0") != std::string::npos);
+
+        // Verify the app appears in list
+        auto list_result = execute_command(get_nah_executable() + " list");
+        CHECK(list_result.exit_code == 0);
+        std::string list_output = list_result.output + list_result.error;
+        CHECK(list_output.find("com.test.lifecycle") != std::string::npos);
+
+        // Note: Full uninstall testing requires actual package installation
+        // which is beyond the scope of these basic integration tests
+    }
+
+    SUBCASE("multiple versions coexist")
+    {
+        env.createTestApp("com.test.multiversion", "1.0.0");
+        env.createTestApp("com.test.multiversion", "1.1.0");
+        env.createTestApp("com.test.multiversion", "2.0.0");
+
+        // List should show all versions
+        auto list_result = execute_command(get_nah_executable() + " list");
+        CHECK(list_result.exit_code == 0);
+        std::string list_output = list_result.output + list_result.error;
+        CHECK(list_output.find("com.test.multiversion") != std::string::npos);
+
+        // Show specific version
+        auto show_v1 = execute_command(get_nah_executable() + " show com.test.multiversion@1.0.0");
+        CHECK(show_v1.exit_code == 0);
+        CHECK((show_v1.output + show_v1.error).find("1.0.0") != std::string::npos);
+
+        auto show_v2 = execute_command(get_nah_executable() + " show com.test.multiversion@2.0.0");
+        CHECK(show_v2.exit_code == 0);
+        CHECK((show_v2.output + show_v2.error).find("2.0.0") != std::string::npos);
+    }
+
+    SUBCASE("show requires nap.json")
+    {
+        std::string app_dir = nah::fs::join_paths(env.root, "apps", "com.test.badmanifest-1.0.0");
+        std::filesystem::create_directories(app_dir);
+
+        std::string old_manifest = nah::fs::join_paths(app_dir, "nah.json");
+        std::ofstream old_file(old_manifest);
+        old_file << R"({"id": "com.test.badmanifest", "version": "1.0.0"})";
+        old_file.close();
+
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps",
+                                                      "com.test.badmanifest@1.0.0.json");
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test-badmanifest\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.badmanifest\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << nah::core::normalize_separators(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto result = execute_command(get_nah_executable() + " show com.test.badmanifest");
+        CHECK(result.exit_code != 0);
+        std::string combined = result.output + result.error;
+        CHECK((combined.find("nap.json") != std::string::npos ||
+               combined.find("manifest") != std::string::npos));
+    }
+}
+
+// Test error handling and edge cases
+TEST_CASE("nah error handling")
+{
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    SUBCASE("show handles missing install record")
+    {
+        auto result = execute_command(get_nah_executable() + " show com.test.ghost@9.9.9");
+        CHECK(result.exit_code != 0);
+        std::string combined = result.output + result.error;
+        CHECK((combined.find("not installed") != std::string::npos ||
+               combined.find("not found") != std::string::npos));
+    }
+
+    SUBCASE("show handles corrupted manifest")
+    {
+        // Create app with corrupted nap.json
+        std::string app_dir = nah::fs::join_paths(env.root, "apps", "com.test.corrupt-1.0.0");
+        std::filesystem::create_directories(app_dir);
+
+        // Write invalid JSON
+        std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
+        std::ofstream manifest(manifest_path);
+        manifest << "{ this is not valid JSON !!!";
+        manifest.close();
+
+        // Create install record
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps",
+                                                      "com.test.corrupt@1.0.0.json");
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test-corrupt\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.corrupt\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << nah::core::normalize_separators(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto result = execute_command(get_nah_executable() + " show com.test.corrupt");
+        CHECK(result.exit_code != 0);
+        std::string combined = result.output + result.error;
+        CHECK((combined.find("Invalid") != std::string::npos ||
+               combined.find("parse") != std::string::npos ||
+               combined.find("error") != std::string::npos));
+    }
 }

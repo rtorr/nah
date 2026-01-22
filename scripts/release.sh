@@ -11,12 +11,13 @@
 #
 # This script:
 #   1. Validates the version format (SemVer 2.0.0)
-#   2. Updates VERSION file
-#   3. Updates CMakeLists.txt
-#   4. Updates conanfile.py
-#   5. Reconfigures CMake (so local builds use new version)
-#   6. Commits changes
-#   7. Creates and pushes a git tag
+#   2. Runs all tests (unit + integration)
+#   3. Updates VERSION file
+#   4. Updates CMakeLists.txt
+#   5. Updates conanfile.py
+#   6. Reconfigures CMake (so local builds use new version)
+#   7. Commits changes
+#   8. Creates and pushes a git tag
 #
 # The tag push triggers GitHub Actions to build and publish the release.
 
@@ -85,6 +86,43 @@ reconfigure_cmake() {
     fi
 }
 
+# Run all tests
+run_tests() {
+    local build_dir="$ROOT_DIR/build"
+    
+    if [[ ! -d "$build_dir" ]]; then
+        error "Build directory not found. Run 'cmake -B build && make' first."
+    fi
+    
+    info "Building project..."
+    if ! make -C "$build_dir" -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) >/dev/null 2>&1; then
+        error "Build failed. Fix build errors before releasing."
+    fi
+    
+    info "Running unit tests..."
+    if [[ -f "$build_dir/tests/unit/nah-tests" ]]; then
+        if ! "$build_dir/tests/unit/nah-tests" --no-colors; then
+            error "Unit tests failed. Fix failing tests before releasing."
+        fi
+        info "✓ Unit tests passed"
+    else
+        warn "Unit test binary not found (skipping)"
+    fi
+    
+    info "Running integration tests..."
+    if [[ -f "$build_dir/tests/integration/integration_tests" ]]; then
+        # Integration tests must run from build directory (they look for ./nah)
+        if ! (cd "$build_dir/tools/nah" && ../../tests/integration/integration_tests --no-colors --quiet); then
+            error "Integration tests failed. Fix failing tests before releasing."
+        fi
+        info "✓ Integration tests passed"
+    else
+        warn "Integration test binary not found (skipping)"
+    fi
+    
+    info "✓ All tests passed"
+}
+
 # Check for uncommitted changes
 check_clean_working_tree() {
     if ! git -C "$ROOT_DIR" diff --quiet HEAD 2>/dev/null; then
@@ -142,6 +180,10 @@ main() {
     validate_version "$new_version"
     check_clean_working_tree
     check_tag_exists "$new_version"
+    
+    # Run tests before making any changes
+    info "Running tests before release..."
+    run_tests
 
     # Confirm
     if [[ "$skip_confirm" != "true" ]]; then

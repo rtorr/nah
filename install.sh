@@ -46,17 +46,27 @@ detect_platform() {
 
 # Get the latest release version
 get_latest_version() {
+    # Try API first
     if command -v curl >/dev/null 2>&1; then
-        VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+        VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
     elif command -v wget >/dev/null 2>&1; then
-        VERSION=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-    else
-        echo "Error: curl or wget is required"
-        exit 1
+        VERSION=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    fi
+
+    # Fallback: scrape releases page if API fails (rate limit)
+    if [ -z "$VERSION" ]; then
+        echo "API rate limited, using fallback method..."
+        if command -v curl >/dev/null 2>&1; then
+            VERSION=$(curl -fsSL "https://github.com/${REPO}/releases/latest" 2>/dev/null | grep -o 'releases/tag/v[0-9.]*' | head -1 | sed 's|releases/tag/||')
+        elif command -v wget >/dev/null 2>&1; then
+            VERSION=$(wget -qO- "https://github.com/${REPO}/releases/latest" 2>/dev/null | grep -o 'releases/tag/v[0-9.]*' | head -1 | sed 's|releases/tag/||')
+        fi
     fi
 
     if [ -z "$VERSION" ]; then
         echo "Error: Could not determine latest version"
+        echo "You can specify a version manually:"
+        echo "  VERSION=v2.0.9 sh -s"
         exit 1
     fi
 }
@@ -101,8 +111,14 @@ install_nah() {
 }
 
 main() {
-    detect_platform
-    get_latest_version
+    # Allow VERSION to be set externally: VERSION=v2.0.9 sh install.sh
+    if [ -z "$VERSION" ]; then
+        detect_platform
+        get_latest_version
+    else
+        detect_platform
+        echo "Using specified version: ${VERSION}"
+    fi
     install_nah
 }
 

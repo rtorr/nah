@@ -874,8 +874,9 @@ struct PolicyViolation {
 
 // Options passed to nah_compose().
 struct CompositionOptions {
-    bool enable_trace = false;  ///< If true, result.trace will be populated
-    std::string now;            ///< Current time (RFC3339) for trust staleness checks
+    bool enable_trace = false;       ///< If true, result.trace will be populated
+    std::string now;                 ///< Current time (RFC3339) for trust staleness checks
+    std::string loader_override;     ///< Override loader selection (empty = use install record)
 };
 
 // ============================================================================
@@ -1758,7 +1759,13 @@ inline CompositionResult nah_compose(
     auto env = compose_environment(app, install, runtime_ptr, host_env, contract, trace_ptr);
     
     // Determine execution binary and arguments
-    const std::string& pinned_loader = install.nak.loader;
+    std::string pinned_loader = install.nak.loader;
+    
+    // Override loader if specified in options
+    if (!options.loader_override.empty()) {
+        pinned_loader = options.loader_override;
+        if (trace_ptr) trace_ptr->decisions.push_back("Loader override requested: " + pinned_loader);
+    }
     
     if (runtime_ptr && runtime_ptr->has_loaders()) {
         std::string effective_loader = pinned_loader;

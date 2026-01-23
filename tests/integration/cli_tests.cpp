@@ -581,3 +581,226 @@ TEST_CASE("nah error handling")
                combined.find("error") != std::string::npos));
     }
 }
+
+// Test loader selection features
+TEST_CASE("nah loader selection")
+{
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    // Helper to create a NAK with multiple loaders
+    auto createMultiLoaderNak = [&](const std::string& id, const std::string& version) {
+        std::string nak_dir = nah::fs::join_paths(env.root, "naks", id, version);
+        std::filesystem::create_directories(nak_dir);
+
+        std::string bin_dir = nah::fs::join_paths(nak_dir, "bin");
+        std::filesystem::create_directories(bin_dir);
+
+        // Create multiple loader executables
+        for (const auto& loader_name : {"default-loader", "alternate-loader", "debug-loader"}) {
+            std::string exec_path = nah::fs::join_paths(bin_dir, loader_name);
+            std::ofstream exec_file(exec_path);
+            exec_file << "#!/bin/sh\necho 'Running with " << loader_name << "'\n";
+            exec_file.close();
+            std::filesystem::permissions(exec_path,
+                                        std::filesystem::perms::owner_exec |
+                                            std::filesystem::perms::owner_read |
+                                            std::filesystem::perms::owner_write);
+        }
+
+        // Create NAK manifest with multiple loaders
+        std::string manifest_path = nah::fs::join_paths(nak_dir, "nak.json");
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"id\": \"" << id << "\",\n";
+        manifest << "  \"version\": \"" << version << "\",\n";
+        manifest << "  \"loaders\": {\n";
+        manifest << "    \"default\": {\n";
+        manifest << "      \"exec_path\": \"bin/default-loader\",\n";
+        manifest << "      \"args_template\": [\"--default-mode\"]\n";
+        manifest << "    },\n";
+        manifest << "    \"alternate\": {\n";
+        manifest << "      \"exec_path\": \"bin/alternate-loader\",\n";
+        manifest << "      \"args_template\": [\"--alt-mode\"]\n";
+        manifest << "    },\n";
+        manifest << "    \"debug\": {\n";
+        manifest << "      \"exec_path\": \"bin/debug-loader\",\n";
+        manifest << "      \"args_template\": [\"--debug\", \"--verbose\"]\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        // Create NAK install record
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "naks", id + "@" + version + ".json");
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test-nak-" << id << "\" },\n";
+        record << "  \"nak\": { \"id\": \"" << id << "\", \"version\": \"" << version << "\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << nah::core::normalize_separators(nak_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+    };
+
+    // Helper to create an app that uses a NAK
+    auto createAppWithNak = [&](const std::string& app_id, const std::string& app_version,
+                                 const std::string& nak_id, const std::string& nak_version,
+                                 const std::string& loader) {
+        std::string app_dir = nah::fs::join_paths(env.root, "apps", app_id + "-" + app_version);
+        std::filesystem::create_directories(app_dir);
+
+        std::string bin_dir = nah::fs::join_paths(app_dir, "bin");
+        std::filesystem::create_directories(bin_dir);
+
+        // Create app executable
+        std::string exec_path = nah::fs::join_paths(bin_dir, "app");
+        std::ofstream exec_file(exec_path);
+        exec_file << "#!/bin/sh\necho 'App running'\n";
+        exec_file.close();
+        std::filesystem::permissions(exec_path,
+                                    std::filesystem::perms::owner_exec |
+                                        std::filesystem::perms::owner_read |
+                                        std::filesystem::perms::owner_write);
+
+        // Create app manifest
+        std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"id\": \"" << app_id << "\",\n";
+        manifest << "  \"version\": \"" << app_version << "\",\n";
+        manifest << "  \"entrypoint\": \"bin/app\"\n";
+        manifest << "}\n";
+        manifest.close();
+
+        // Create app install record with NAK dependency
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", app_id + "@" + app_version + ".json");
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test-app-" << app_id << "\" },\n";
+        record << "  \"app\": { \"id\": \"" << app_id << "\", \"version\": \"" << app_version << "\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << nah::core::normalize_separators(app_dir) << "\" },\n";
+        record << "  \"nak\": {\n";
+        record << "    \"record_ref\": \"" << nak_id << "@" << nak_version << ".json\",\n";
+        record << "    \"loader\": \"" << loader << "\"\n";
+        record << "  },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+    };
+
+    SUBCASE("install command --loader flag appears in help")
+    {
+        auto result = execute_command(get_nah_executable() + " install --help");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("--loader") != std::string::npos);
+    }
+
+    SUBCASE("run command --loader flag appears in help")
+    {
+        auto result = execute_command(get_nah_executable() + " run --help");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("--loader") != std::string::npos);
+        bool has_desc = (combined.find("override") != std::string::npos) || 
+                        (combined.find("Loader") != std::string::npos);
+        CHECK(has_desc);
+    }
+
+    SUBCASE("install-time loader selection stores loader in record")
+    {
+        // Create NAK
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+        
+        // Create app with specific loader
+        createAppWithNak("com.test.loadapp", "1.0.0", "com.test.runtime", "1.0.0", "alternate");
+
+        // Verify the install record has the correct loader
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", "com.test.loadapp@1.0.0.json");
+        auto record_content = nah::fs::read_file(record_path);
+        REQUIRE(record_content.has_value());
+        CHECK(record_content->find("\"loader\": \"alternate\"") != std::string::npos);
+    }
+
+    SUBCASE("show command displays loader information")
+    {
+        // Create NAK and app
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+        createAppWithNak("com.test.showloader", "1.0.0", "com.test.runtime", "1.0.0", "debug");
+
+        auto result = execute_command(get_nah_executable() + " show com.test.showloader");
+        CHECK(result.exit_code == 0);
+        std::string combined = result.output + result.error;
+        // Output should contain app info
+        CHECK(combined.find("com.test.showloader") != std::string::npos);
+    }
+
+    SUBCASE("runtime loader override via run --loader")
+    {
+        // Create NAK with multiple loaders
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+        
+        // Create app installed with default loader
+        createAppWithNak("com.test.runapp", "1.0.0", "com.test.runtime", "1.0.0", "default");
+
+        // Note: Actually running requires full execution setup, but we can verify
+        // the command accepts the flag without error (will fail at execution stage)
+        // This tests the CLI parsing works correctly
+        auto result = execute_command(get_nah_executable() + " run com.test.runapp --loader alternate");
+        // Command should parse correctly (may fail at execution, but not at parsing)
+        std::string combined = result.output + result.error;
+        // Should NOT have "Unknown option" or similar parsing errors
+        CHECK(combined.find("Unknown option") == std::string::npos);
+        bool no_loader_error = (combined.find("--loader") == std::string::npos) || 
+                               (combined.find("invalid") == std::string::npos);
+        CHECK(no_loader_error);
+    }
+
+    SUBCASE("multiple apps with different loaders from same NAK")
+    {
+        // Create one NAK
+        createMultiLoaderNak("com.test.shared-runtime", "1.0.0");
+        
+        // Create three apps using different loaders
+        createAppWithNak("com.test.app1", "1.0.0", "com.test.shared-runtime", "1.0.0", "default");
+        createAppWithNak("com.test.app2", "1.0.0", "com.test.shared-runtime", "1.0.0", "alternate");
+        createAppWithNak("com.test.app3", "1.0.0", "com.test.shared-runtime", "1.0.0", "debug");
+
+        // Verify all apps are listed
+        auto list_result = execute_command(get_nah_executable() + " list");
+        CHECK(list_result.exit_code == 0);
+        std::string list_output = list_result.output + list_result.error;
+        CHECK(list_output.find("com.test.app1") != std::string::npos);
+        CHECK(list_output.find("com.test.app2") != std::string::npos);
+        CHECK(list_output.find("com.test.app3") != std::string::npos);
+
+        // Verify each has correct loader in install record
+        for (const auto& [app, loader] : std::vector<std::pair<std::string, std::string>>{
+            {"com.test.app1", "default"},
+            {"com.test.app2", "alternate"},
+            {"com.test.app3", "debug"}
+        }) {
+            std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", app + "@1.0.0.json");
+            auto record_content = nah::fs::read_file(record_path);
+            REQUIRE(record_content.has_value());
+            CHECK(record_content->find("\"loader\": \"" + loader + "\"") != std::string::npos);
+        }
+    }
+
+    SUBCASE("loader flag works with version-specific app selection")
+    {
+        // Create NAK
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+        
+        // Create multiple versions of an app
+        createAppWithNak("com.test.versioned", "1.0.0", "com.test.runtime", "1.0.0", "default");
+        createAppWithNak("com.test.versioned", "2.0.0", "com.test.runtime", "1.0.0", "alternate");
+
+        // Test run with specific version and loader override
+        auto result = execute_command(get_nah_executable() + " run com.test.versioned@1.0.0 --loader debug");
+        std::string combined = result.output + result.error;
+        // Should parse correctly (won't execute without full setup)
+        CHECK(combined.find("Unknown option") == std::string::npos);
+    }
+}

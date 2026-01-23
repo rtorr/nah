@@ -53,11 +53,14 @@ The generated `nap.json`:
 | `app.identity.id` | Unique identifier (reverse domain notation) | `com.yourcompany.myapp` |
 | `app.identity.version` | Your app's SemVer version | `1.0.0` |
 | `app.execution.entrypoint` | Path to binary/script relative to app root | `bin/myapp` or `index.js` |
+| `app.execution.loader` | Preferred loader from NAK (optional hint) | `"service"` or `"debug"` |
 | `app.identity.nak_id` | NAK your app depends on (optional) | `com.example.sdk` |
 | `app.identity.nak_version_req` | Version requirement (SemVer range) | `>=2.0.0 <3.0.0` |
 | `app.layout.lib_dirs` | Library directories to add to library path | `["lib"]` |
 | `app.layout.asset_dirs` | Asset directories | `["assets"]` |
 | `app.environment` | Environment variables | `{"MY_VAR": "value"}` |
+
+**Note on `app.execution.loader`:** If your NAK provides multiple loaders (e.g., `default`, `service`, `debug`), you can specify which one your app prefers. This is optional and can be overridden at install time (`nah install --loader X`) or runtime (`nah run --loader X`).
 
 The `$schema` field enables validation and IDE autocompletion. See [docs/schemas/README.md](schemas/README.md) for the complete schema documentation.
 
@@ -213,6 +216,34 @@ The NAK's loader executes your bundle using the appropriate runtime.
   }
 }
 ```
+
+### Background Service Example (with loader preference)
+
+If your NAK provides multiple loaders (e.g., CLI vs service modes):
+
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.daemon",
+      "version": "1.0.0",
+      "nak_id": "com.example.runtime",
+      "nak_version_req": "^2.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/service",
+      "loader": "service"
+    }
+  }
+}
+```
+
+**Loader Priority:**
+1. `nah run --loader X` (highest - runtime override)
+2. `nah install --loader X` (install-time pinning)
+3. `app.execution.loader` (app's preference/hint)
+4. NAK's default loader (fallback)
 
 ## Environment Variables
 

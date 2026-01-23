@@ -195,6 +195,7 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             auto& execution = j["execution"];
             app.entrypoint_path = detail::get_string(execution, "entrypoint");
             app.entrypoint_args = detail::get_string_array(execution, "args");
+            app.nak_loader = detail::get_string(execution, "loader");  // Optional loader preference
         } else if (j.contains("entrypoint")) {
             // Legacy format
             if (j["entrypoint"].is_object()) {

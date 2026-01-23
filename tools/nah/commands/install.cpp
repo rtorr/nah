@@ -487,6 +487,12 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
             record.app.nak_id = app_identity["nak_id"].get<std::string>();
             record.app.nak_version_req = app_identity.value("nak_version_req", "");
 
+            // Extract app's loader preference from execution.loader (optional)
+            std::string app_loader_preference;
+            if (manifest["app"].contains("execution") && manifest["app"]["execution"].is_object()) {
+                app_loader_preference = manifest["app"]["execution"].value("loader", "");
+            }
+
             // Try to find and pin NAK
             std::string nak_id = record.app.nak_id;
             auto nak_files = nah::fs::list_directory(paths.registry_naks);
@@ -505,7 +511,16 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                     record.nak.id = nak_id;
                     record.nak.version = nak_version;
                     record.nak.record_ref = basename;  // Store just the basename
-                    record.nak.loader = install_opts.loader.empty() ? "default" : install_opts.loader;
+                    
+                    // Loader priority: CLI flag > App manifest > "default"
+                    if (!install_opts.loader.empty()) {
+                        record.nak.loader = install_opts.loader;
+                    } else if (!app_loader_preference.empty()) {
+                        record.nak.loader = app_loader_preference;
+                    } else {
+                        record.nak.loader = "default";
+                    }
+                    
                     record.nak.selection_reason = "matched_requirement";
                     nak_found = true;
                     break;
@@ -514,15 +529,16 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
             
             if (!nak_found) {
                 print_warning("NAK '" + nak_id + "' not found. App may fail to run until NAK is installed.", opts.json);
-            } else if (!install_opts.loader.empty()) {
-                // Validate loader exists in NAK if specified
+            } else if (!install_opts.loader.empty() || !app_loader_preference.empty()) {
+                // Validate loader exists in NAK if specified (either via CLI or app manifest)
+                std::string selected_loader = !install_opts.loader.empty() ? install_opts.loader : app_loader_preference;
                 std::string nak_record_path = nah::fs::join_paths(paths.registry_naks, record.nak.record_ref);
                 auto nak_content = nah::fs::read_file(nak_record_path);
                 if (nak_content) {
                     auto nak_runtime = nah::json::parse_runtime_descriptor(*nak_content, nak_record_path);
                     if (nak_runtime.ok && nak_runtime.value.has_loaders()) {
-                        if (nak_runtime.value.loaders.find(install_opts.loader) == nak_runtime.value.loaders.end()) {
-                            print_error("Loader '" + install_opts.loader + "' not found in NAK '" + nak_id + "'", opts.json);
+                        if (nak_runtime.value.loaders.find(selected_loader) == nak_runtime.value.loaders.end()) {
+                            print_error("Loader '" + selected_loader + "' not found in NAK '" + nak_id + "'", opts.json);
                             if (!opts.json) {
                                 std::cerr << "Available loaders: ";
                                 bool first = true;

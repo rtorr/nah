@@ -103,6 +103,11 @@
               "description": "Relative path to executable from app root (e.g., bin/myapp)",
               "minLength": 1
             },
+            "loader": {
+              "type": "string",
+              "description": "Preferred loader name from NAK (optional hint, not enforced). Host can override at install time (--loader flag) or runtime. If omitted, uses NAK's default loader.",
+              "minLength": 1
+            },
             "args": {
               "type": "array",
               "description": "Default arguments passed to entrypoint",

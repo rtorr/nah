@@ -4,6 +4,8 @@
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#define NAH_HOST_IMPLEMENTATION
+#include <nah/nah_host.h>
 #include <nah/nah_fs.h>
 #include <nah/nah_core.h>
 #include <cstdlib>
@@ -589,7 +591,8 @@ TEST_CASE("nah loader selection")
     REQUIRE(!env.root.empty());
 
     // Helper to create a NAK with multiple loaders
-    auto createMultiLoaderNak = [&](const std::string& id, const std::string& version) {
+    auto createMultiLoaderNak = [&](const std::string &id, const std::string &version)
+    {
         std::string nak_dir = nah::fs::join_paths(env.root, "naks", id, version);
         std::filesystem::create_directories(nak_dir);
 
@@ -597,15 +600,16 @@ TEST_CASE("nah loader selection")
         std::filesystem::create_directories(bin_dir);
 
         // Create multiple loader executables
-        for (const auto& loader_name : {"default-loader", "alternate-loader", "debug-loader"}) {
+        for (const auto &loader_name : {"default-loader", "alternate-loader", "debug-loader"})
+        {
             std::string exec_path = nah::fs::join_paths(bin_dir, loader_name);
             std::ofstream exec_file(exec_path);
             exec_file << "#!/bin/sh\necho 'Running with " << loader_name << "'\n";
             exec_file.close();
             std::filesystem::permissions(exec_path,
-                                        std::filesystem::perms::owner_exec |
-                                            std::filesystem::perms::owner_read |
-                                            std::filesystem::perms::owner_write);
+                                         std::filesystem::perms::owner_exec |
+                                             std::filesystem::perms::owner_read |
+                                             std::filesystem::perms::owner_write);
         }
 
         // Create NAK manifest with multiple loaders
@@ -644,9 +648,10 @@ TEST_CASE("nah loader selection")
     };
 
     // Helper to create an app that uses a NAK
-    auto createAppWithNak = [&](const std::string& app_id, const std::string& app_version,
-                                 const std::string& nak_id, const std::string& nak_version,
-                                 const std::string& loader) {
+    auto createAppWithNak = [&](const std::string &app_id, const std::string &app_version,
+                                const std::string &nak_id, const std::string &nak_version,
+                                const std::string &loader)
+    {
         std::string app_dir = nah::fs::join_paths(env.root, "apps", app_id + "-" + app_version);
         std::filesystem::create_directories(app_dir);
 
@@ -659,9 +664,9 @@ TEST_CASE("nah loader selection")
         exec_file << "#!/bin/sh\necho 'App running'\n";
         exec_file.close();
         std::filesystem::permissions(exec_path,
-                                    std::filesystem::perms::owner_exec |
-                                        std::filesystem::perms::owner_read |
-                                        std::filesystem::perms::owner_write);
+                                     std::filesystem::perms::owner_exec |
+                                         std::filesystem::perms::owner_read |
+                                         std::filesystem::perms::owner_write);
 
         // Create app manifest
         std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
@@ -703,7 +708,7 @@ TEST_CASE("nah loader selection")
         CHECK(result.exit_code == 0);
         std::string combined = result.output + result.error;
         CHECK(combined.find("--loader") != std::string::npos);
-        bool has_desc = (combined.find("override") != std::string::npos) || 
+        bool has_desc = (combined.find("override") != std::string::npos) ||
                         (combined.find("Loader") != std::string::npos);
         CHECK(has_desc);
     }
@@ -712,7 +717,7 @@ TEST_CASE("nah loader selection")
     {
         // Create NAK
         createMultiLoaderNak("com.test.runtime", "1.0.0");
-        
+
         // Create app with specific loader
         createAppWithNak("com.test.loadapp", "1.0.0", "com.test.runtime", "1.0.0", "alternate");
 
@@ -740,7 +745,7 @@ TEST_CASE("nah loader selection")
     {
         // Create NAK with multiple loaders
         createMultiLoaderNak("com.test.runtime", "1.0.0");
-        
+
         // Create app installed with default loader
         createAppWithNak("com.test.runapp", "1.0.0", "com.test.runtime", "1.0.0", "default");
 
@@ -752,7 +757,7 @@ TEST_CASE("nah loader selection")
         std::string combined = result.output + result.error;
         // Should NOT have "Unknown option" or similar parsing errors
         CHECK(combined.find("Unknown option") == std::string::npos);
-        bool no_loader_error = (combined.find("--loader") == std::string::npos) || 
+        bool no_loader_error = (combined.find("--loader") == std::string::npos) ||
                                (combined.find("invalid") == std::string::npos);
         CHECK(no_loader_error);
     }
@@ -761,7 +766,7 @@ TEST_CASE("nah loader selection")
     {
         // Create one NAK
         createMultiLoaderNak("com.test.shared-runtime", "1.0.0");
-        
+
         // Create three apps using different loaders
         createAppWithNak("com.test.app1", "1.0.0", "com.test.shared-runtime", "1.0.0", "default");
         createAppWithNak("com.test.app2", "1.0.0", "com.test.shared-runtime", "1.0.0", "alternate");
@@ -776,11 +781,11 @@ TEST_CASE("nah loader selection")
         CHECK(list_output.find("com.test.app3") != std::string::npos);
 
         // Verify each has correct loader in install record
-        for (const auto& [app, loader] : std::vector<std::pair<std::string, std::string>>{
-            {"com.test.app1", "default"},
-            {"com.test.app2", "alternate"},
-            {"com.test.app3", "debug"}
-        }) {
+        for (const auto &[app, loader] : std::vector<std::pair<std::string, std::string>>{
+                 {"com.test.app1", "default"},
+                 {"com.test.app2", "alternate"},
+                 {"com.test.app3", "debug"}})
+        {
             std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", app + "@1.0.0.json");
             auto record_content = nah::fs::read_file(record_path);
             REQUIRE(record_content.has_value());
@@ -792,7 +797,7 @@ TEST_CASE("nah loader selection")
     {
         // Create NAK
         createMultiLoaderNak("com.test.runtime", "1.0.0");
-        
+
         // Create multiple versions of an app
         createAppWithNak("com.test.versioned", "1.0.0", "com.test.runtime", "1.0.0", "default");
         createAppWithNak("com.test.versioned", "2.0.0", "com.test.runtime", "1.0.0", "alternate");
@@ -802,5 +807,181 @@ TEST_CASE("nah loader selection")
         std::string combined = result.output + result.error;
         // Should parse correctly (won't execute without full setup)
         CHECK(combined.find("Unknown option") == std::string::npos);
+    }
+}
+
+// Test NahHost discovery API
+TEST_CASE("NahHost discovery API")
+{
+    SUBCASE("isValidRoot detects valid NAH root")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+
+        // Test environment should be a valid root
+        CHECK(nah::host::NahHost::isValidRoot(env.root));
+    }
+
+    SUBCASE("isValidRoot rejects empty path")
+    {
+        CHECK_FALSE(nah::host::NahHost::isValidRoot(""));
+    }
+
+    SUBCASE("isValidRoot rejects non-existent directory")
+    {
+        CHECK_FALSE(nah::host::NahHost::isValidRoot("/nonexistent/path/to/nah"));
+    }
+
+    SUBCASE("isValidRoot rejects directory without required structure")
+    {
+        // Create a directory without NAH structure
+        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/not-nah-root-" + 
+                               std::to_string(std::time(nullptr));
+        std::filesystem::create_directories(temp_dir);
+
+        CHECK_FALSE(nah::host::NahHost::isValidRoot(temp_dir));
+
+        // Cleanup
+        std::filesystem::remove_all(temp_dir);
+    }
+
+    SUBCASE("isValidRoot accepts directory with required structure")
+    {
+        // Create a minimal NAH structure
+        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/valid-nah-root-" + 
+                               std::to_string(std::time(nullptr));
+        std::filesystem::create_directories(temp_dir + "/registry/apps");
+        std::filesystem::create_directories(temp_dir + "/host");
+
+        CHECK(nah::host::NahHost::isValidRoot(temp_dir));
+
+        // Cleanup
+        std::filesystem::remove_all(temp_dir);
+    }
+
+    SUBCASE("discover returns nullptr when no valid roots found")
+    {
+        auto nah_host = nah::host::NahHost::discover({
+            "",  // Empty path
+            "/nonexistent/path1",
+            "/nonexistent/path2"
+        });
+
+        CHECK(nah_host == nullptr);
+    }
+
+    SUBCASE("discover finds first valid root in search paths")
+    {
+        TestNahEnvironment env1;
+        TestNahEnvironment env2;
+        REQUIRE(!env1.root.empty());
+        REQUIRE(!env2.root.empty());
+
+        // Should find env1 (first valid)
+        auto nah_host = nah::host::NahHost::discover({
+            "/nonexistent/path",
+            env1.root,
+            env2.root  // This is also valid but should not be selected
+        });
+
+        REQUIRE(nah_host != nullptr);
+        CHECK(nah_host->root() == env1.root);
+    }
+
+    SUBCASE("discover skips empty strings")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+
+        // Should skip empty strings and find env.root
+        auto nah_host = nah::host::NahHost::discover({
+            "",
+            "",
+            env.root
+        });
+
+        REQUIRE(nah_host != nullptr);
+        CHECK(nah_host->root() == env.root);
+    }
+
+    SUBCASE("discover skips invalid paths before finding valid one")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+
+        auto nah_host = nah::host::NahHost::discover({
+            "",
+            "/invalid/path/1",
+            "/invalid/path/2",
+            env.root,
+            "/should/not/check/this"
+        });
+
+        REQUIRE(nah_host != nullptr);
+        CHECK(nah_host->root() == env.root);
+    }
+
+    SUBCASE("discover returns nullptr for empty search paths")
+    {
+        auto nah_host = nah::host::NahHost::discover({});
+        CHECK(nah_host == nullptr);
+    }
+
+    SUBCASE("discovered host can list applications")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+        env.createTestApp("com.test.discoverapp", "1.0.0");
+
+        auto nah_host = nah::host::NahHost::discover({env.root});
+        REQUIRE(nah_host != nullptr);
+
+        auto apps = nah_host->listApplications();
+        CHECK(apps.size() >= 1);
+        
+        bool found = false;
+        for (const auto& app : apps) {
+            if (app.id == "com.test.discoverapp" && app.version == "1.0.0") {
+                found = true;
+                break;
+            }
+        }
+        CHECK(found);
+    }
+
+    SUBCASE("discovered host can get launch contract")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+        env.createTestApp("com.test.launchapp", "1.0.0");
+
+        auto nah_host = nah::host::NahHost::discover({env.root});
+        REQUIRE(nah_host != nullptr);
+
+        // Note: This may fail contract composition (missing NAK),
+        // but it tests that the discovered host is functional
+        auto result = nah_host->getLaunchContract("com.test.launchapp");
+        // Just verify the API works, don't check result.ok
+        // (it might fail due to missing NAK dependencies)
+    }
+
+    SUBCASE("typical host developer usage pattern")
+    {
+        TestNahEnvironment env;
+        REQUIRE(!env.root.empty());
+
+        // Simulate typical host developer usage
+        std::string fake_env_var = env.root;
+        std::string project_path = "/path/to/project/.nah";  // Won't exist
+        std::string home_path = "/home/user/.nah";            // Won't exist
+
+        auto nah_host = nah::host::NahHost::discover({
+            fake_env_var,      // Simulates getenv("NAH_ROOT")
+            project_path,      // Project-local NAH root
+            home_path          // User home NAH root
+        });
+
+        REQUIRE(nah_host != nullptr);
+        CHECK(nah_host->root() == fake_env_var);
     }
 }

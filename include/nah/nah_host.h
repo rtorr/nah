@@ -88,8 +88,34 @@ public:
     /**
      * Create a NahHost instance for a NAH root directory.
      * If root_path is empty, uses $NAH_ROOT or /nah as default.
+     * Note: Does not validate the root directory structure.
      */
     static std::unique_ptr<NahHost> create(const std::string& root_path = "");
+
+    /**
+     * Discover and create NahHost from multiple candidate paths.
+     * Searches paths in order, returns first valid NAH root found.
+     * 
+     * @param search_paths Candidate paths (empty strings skipped)
+     * @return NahHost instance, or nullptr if no valid root found
+     * 
+     * Example:
+     *   auto host = NahHost::discover({
+     *       std::getenv("NAH_ROOT"),
+     *       "/path/to/project/.nah",
+     *       std::string(std::getenv("HOME")) + "/.nah"
+     *   });
+     */
+    static std::unique_ptr<NahHost> discover(const std::vector<std::string>& search_paths);
+
+    /**
+     * Check if a directory is a valid NAH root.
+     * A valid root must exist and contain the required directory structure.
+     * 
+     * @param path Directory to check
+     * @return true if valid NAH root with required directories
+     */
+    static bool isValidRoot(const std::string& path);
 
     /**
      * Get the NAH root path
@@ -510,6 +536,44 @@ inline std::string NahHost::validateRoot() const {
     }
 
     return "";  // Valid
+}
+
+inline bool NahHost::isValidRoot(const std::string& path) {
+    if (path.empty() || !nah::fs::exists(path)) {
+        return false;
+    }
+
+    // Check required directories that make up a valid NAH root
+    std::vector<std::string> required_dirs = {
+        "/registry/apps",
+        "/host"
+    };
+
+    for (const auto& dir : required_dirs) {
+        std::string full_path = path + dir;
+        if (!nah::fs::exists(full_path)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline std::unique_ptr<NahHost> NahHost::discover(const std::vector<std::string>& search_paths) {
+    for (const auto& path : search_paths) {
+        // Skip empty paths (e.g., from getenv returning nullptr)
+        if (path.empty()) {
+            continue;
+        }
+
+        // Check if this path is a valid NAH root
+        if (isValidRoot(path)) {
+            return std::unique_ptr<NahHost>(new NahHost(path));
+        }
+    }
+
+    // No valid root found
+    return nullptr;
 }
 
 inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const std::string& path) const {

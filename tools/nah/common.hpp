@@ -45,6 +45,9 @@ struct GlobalOptions {
 /**
  * Resolve the NAH root directory.
  * Priority: --root flag > NAH_ROOT env > ~/.nah
+ * 
+ * Note: External hosts should use nah::host::NahHost::discover() from nah_host.h
+ * for production-grade root discovery with validation.
  */
 inline std::string resolve_nah_root(const std::optional<std::string>& override_root) {
     // 1. Explicit override

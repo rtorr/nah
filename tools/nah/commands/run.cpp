@@ -21,6 +21,7 @@ namespace {
 struct RunOptions {
     std::string target;
     std::vector<std::string> args;
+    std::string loader;  // Runtime loader override
 };
 
 int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
@@ -46,7 +47,12 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
     }
 
     // Get the launch contract from NahHost
-    auto result = host->getLaunchContract(app_id, version, opts.trace);
+    nah::core::CompositionOptions comp_opts;
+    comp_opts.enable_trace = opts.trace;
+    if (!run_opts.loader.empty()) {
+        comp_opts.loader_override = run_opts.loader;
+    }
+    auto result = host->getLaunchContract(app_id, version, comp_opts);
 
     if (!result.ok) {
         print_error("Composition failed: " + result.critical_error_context, opts.json);
@@ -133,6 +139,7 @@ void setup_run(CLI::App* app, GlobalOptions& opts) {
 
     app->add_option("target", run_opts.target, "App to run (id or id@version)")->required();
     app->add_option("args", run_opts.args, "Arguments to pass to the app");
+    app->add_option("--loader", run_opts.loader, "Loader to use (overrides install record)");
 
     // Allow -- to separate nah args from app args
     app->allow_extras();

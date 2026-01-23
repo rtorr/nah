@@ -28,6 +28,7 @@ struct InstallOptions {
     bool as_app = false;
     bool as_nak = false;
     bool dry_run = false;
+    std::string loader;  // Loader to use for NAK (empty = auto-select)
 };
 
 enum class SourceType {
@@ -239,17 +240,17 @@ SourceType detect_source_type(const std::string& source) {
     // Directory - check manifest type (names match package extensions)
     if (nah::fs::is_directory(source)) {
         // Try app manifest
-        if (nah::fs::exists(source + "/nap.json")) {
+        if (nah::fs::exists(nah::fs::join_paths(source, "nap.json"))) {
             return SourceType::Directory;
         }
         
         // Try NAK manifest
-        if (nah::fs::exists(source + "/nak.json")) {
+        if (nah::fs::exists(nah::fs::join_paths(source, "nak.json"))) {
             return SourceType::Directory;
         }
         
         // Try host configuration
-        auto host_content = nah::fs::read_file(source + "/nah.json");
+        auto host_content = nah::fs::read_file(nah::fs::join_paths(source, "nah.json"));
         if (host_content) {
             try {
                 auto j = nlohmann::json::parse(*host_content);
@@ -272,15 +273,15 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
     auto paths = get_nah_paths(nah_root);
 
     // Try NAH-specific manifest files (names match package extensions)
-    auto manifest_content = nah::fs::read_file(source_dir + "/nap.json");
+    auto manifest_content = nah::fs::read_file(nah::fs::join_paths(source_dir, "nap.json"));
     std::string manifest_type = "nap";
     
     if (!manifest_content) {
-        manifest_content = nah::fs::read_file(source_dir + "/nak.json");
+        manifest_content = nah::fs::read_file(nah::fs::join_paths(source_dir, "nak.json"));
         manifest_type = "nak";
     }
     if (!manifest_content) {
-        manifest_content = nah::fs::read_file(source_dir + "/nah.json");
+        manifest_content = nah::fs::read_file(nah::fs::join_paths(source_dir, "nah.json"));
         manifest_type = "nah";
     }
     
@@ -356,8 +357,8 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
 
     if (is_nak) {
         // Install as NAK
-        std::string install_dir = nah::fs::absolute_path(paths.naks + "/" + id + "/" + version);
-        std::string record_path = paths.registry_naks + "/" + id + "@" + version + ".json";
+        std::string install_dir = nah::fs::absolute_path(nah::fs::join_paths(nah::fs::join_paths(paths.naks, id), version));
+        std::string record_path = nah::fs::join_paths(paths.registry_naks, id + "@" + version + ".json");
 
         // Check existing
         if (nah::fs::exists(record_path) && !install_opts.force) {
@@ -387,7 +388,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         // Extract lib_dirs from nak.paths.lib_dirs
         if (manifest["nak"].contains("paths") && manifest["nak"]["paths"].contains("lib_dirs")) {
             for (const auto& dir : manifest["nak"]["paths"]["lib_dirs"]) {
-                runtime.paths.lib_dirs.push_back(install_dir + "/" + dir.get<std::string>());
+                runtime.paths.lib_dirs.push_back(nah::fs::join_paths(install_dir, dir.get<std::string>()));
             }
         }
 
@@ -399,7 +400,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                 if (loader_json.contains("exec_path")) {
                     std::string exec_path = loader_json["exec_path"].get<std::string>();
                     if (!std::filesystem::path(exec_path).is_absolute()) {
-                        exec_path = install_dir + "/" + exec_path;
+                        exec_path = nah::fs::join_paths(install_dir, exec_path);
                     }
                     loader.exec_path = exec_path;
                 }
@@ -451,8 +452,8 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         }
     } else {
         // Install as app
-        std::string install_dir = nah::fs::absolute_path(paths.apps + "/" + id + "-" + version);
-        std::string record_path = paths.registry_apps + "/" + id + "@" + version + ".json";
+        std::string install_dir = nah::fs::absolute_path(nah::fs::join_paths(paths.apps, id + "-" + version));
+        std::string record_path = nah::fs::join_paths(paths.registry_apps, id + "@" + version + ".json");
 
         // Check existing
         if (nah::fs::exists(record_path) && !install_opts.force) {
@@ -504,7 +505,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                     record.nak.id = nak_id;
                     record.nak.version = nak_version;
                     record.nak.record_ref = basename;  // Store just the basename
-                    record.nak.loader = "default";  // Will be determined at composition time
+                    record.nak.loader = install_opts.loader.empty() ? "default" : install_opts.loader;
                     record.nak.selection_reason = "matched_requirement";
                     nak_found = true;
                     break;
@@ -513,6 +514,29 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
             
             if (!nak_found) {
                 print_warning("NAK '" + nak_id + "' not found. App may fail to run until NAK is installed.", opts.json);
+            } else if (!install_opts.loader.empty()) {
+                // Validate loader exists in NAK if specified
+                std::string nak_record_path = nah::fs::join_paths(paths.registry_naks, record.nak.record_ref);
+                auto nak_content = nah::fs::read_file(nak_record_path);
+                if (nak_content) {
+                    auto nak_runtime = nah::json::parse_runtime_descriptor(*nak_content, nak_record_path);
+                    if (nak_runtime.ok && nak_runtime.value.has_loaders()) {
+                        if (nak_runtime.value.loaders.find(install_opts.loader) == nak_runtime.value.loaders.end()) {
+                            print_error("Loader '" + install_opts.loader + "' not found in NAK '" + nak_id + "'", opts.json);
+                            if (!opts.json) {
+                                std::cerr << "Available loaders: ";
+                                bool first = true;
+                                for (const auto& [loader_name, _] : nak_runtime.value.loaders) {
+                                    if (!first) std::cerr << ", ";
+                                    std::cerr << loader_name;
+                                    first = false;
+                                }
+                                std::cerr << std::endl;
+                            }
+                            return 1;
+                        }
+                    }
+                }
             }
         }
 
@@ -674,6 +698,7 @@ void setup_install(CLI::App* app, GlobalOptions& opts) {
     app->add_flag("--app", install_opts.as_app, "Force install as app");
     app->add_flag("--nak", install_opts.as_nak, "Force install as NAK");
     app->add_flag("--dry-run", install_opts.dry_run, "Show what would be installed");
+    app->add_option("--loader", install_opts.loader, "Loader to use (for apps with multiple NAK loaders)");
 
     app->callback([&opts]() {
         std::exit(cmd_install(opts, install_opts));

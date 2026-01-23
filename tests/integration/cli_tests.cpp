@@ -835,7 +835,7 @@ TEST_CASE("NahHost discovery API")
     SUBCASE("isValidRoot rejects directory without required structure")
     {
         // Create a directory without NAH structure
-        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/not-nah-root-" + 
+        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/not-nah-root-" +
                                std::to_string(std::time(nullptr));
         std::filesystem::create_directories(temp_dir);
 
@@ -848,7 +848,7 @@ TEST_CASE("NahHost discovery API")
     SUBCASE("isValidRoot accepts directory with required structure")
     {
         // Create a minimal NAH structure
-        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/valid-nah-root-" + 
+        std::string temp_dir = std::filesystem::temp_directory_path().string() + "/valid-nah-root-" +
                                std::to_string(std::time(nullptr));
         std::filesystem::create_directories(temp_dir + "/registry/apps");
         std::filesystem::create_directories(temp_dir + "/host");
@@ -861,11 +861,9 @@ TEST_CASE("NahHost discovery API")
 
     SUBCASE("discover returns nullptr when no valid roots found")
     {
-        auto nah_host = nah::host::NahHost::discover({
-            "",  // Empty path
-            "/nonexistent/path1",
-            "/nonexistent/path2"
-        });
+        auto nah_host = nah::host::NahHost::discover({"", // Empty path
+                                                      "/nonexistent/path1",
+                                                      "/nonexistent/path2"});
 
         CHECK(nah_host == nullptr);
     }
@@ -881,7 +879,7 @@ TEST_CASE("NahHost discovery API")
         auto nah_host = nah::host::NahHost::discover({
             "/nonexistent/path",
             env1.root,
-            env2.root  // This is also valid but should not be selected
+            env2.root // This is also valid but should not be selected
         });
 
         REQUIRE(nah_host != nullptr);
@@ -894,11 +892,9 @@ TEST_CASE("NahHost discovery API")
         REQUIRE(!env.root.empty());
 
         // Should skip empty strings and find env.root
-        auto nah_host = nah::host::NahHost::discover({
-            "",
-            "",
-            env.root
-        });
+        auto nah_host = nah::host::NahHost::discover({"",
+                                                      "",
+                                                      env.root});
 
         REQUIRE(nah_host != nullptr);
         CHECK(nah_host->root() == env.root);
@@ -909,13 +905,11 @@ TEST_CASE("NahHost discovery API")
         TestNahEnvironment env;
         REQUIRE(!env.root.empty());
 
-        auto nah_host = nah::host::NahHost::discover({
-            "",
-            "/invalid/path/1",
-            "/invalid/path/2",
-            env.root,
-            "/should/not/check/this"
-        });
+        auto nah_host = nah::host::NahHost::discover({"",
+                                                      "/invalid/path/1",
+                                                      "/invalid/path/2",
+                                                      env.root,
+                                                      "/should/not/check/this"});
 
         REQUIRE(nah_host != nullptr);
         CHECK(nah_host->root() == env.root);
@@ -938,10 +932,12 @@ TEST_CASE("NahHost discovery API")
 
         auto apps = nah_host->listApplications();
         CHECK(apps.size() >= 1);
-        
+
         bool found = false;
-        for (const auto& app : apps) {
-            if (app.id == "com.test.discoverapp" && app.version == "1.0.0") {
+        for (const auto &app : apps)
+        {
+            if (app.id == "com.test.discoverapp" && app.version == "1.0.0")
+            {
                 found = true;
                 break;
             }
@@ -972,16 +968,294 @@ TEST_CASE("NahHost discovery API")
 
         // Simulate typical host developer usage
         std::string fake_env_var = env.root;
-        std::string project_path = "/path/to/project/.nah";  // Won't exist
-        std::string home_path = "/home/user/.nah";            // Won't exist
+        std::string project_path = "/path/to/project/.nah"; // Won't exist
+        std::string home_path = "/home/user/.nah";          // Won't exist
 
         auto nah_host = nah::host::NahHost::discover({
-            fake_env_var,      // Simulates getenv("NAH_ROOT")
-            project_path,      // Project-local NAH root
-            home_path          // User home NAH root
+            fake_env_var, // Simulates getenv("NAH_ROOT")
+            project_path, // Project-local NAH root
+            home_path     // User home NAH root
         });
 
         REQUIRE(nah_host != nullptr);
         CHECK(nah_host->root() == fake_env_var);
+    }
+}
+
+// Test app loader preference from manifest
+TEST_CASE("app loader preference from manifest")
+{
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    // Helper to create NAK with multiple loaders
+    auto createMultiLoaderNak = [&](const std::string& id, const std::string& version) {
+        std::string nak_dir = nah::fs::join_paths(env.root, "naks", id, version);
+        std::filesystem::create_directories(nak_dir);
+
+        std::string bin_dir = nah::fs::join_paths(nak_dir, "bin");
+        std::filesystem::create_directories(bin_dir);
+
+        // Create loader executables
+        for (const auto& loader_name : {"default-loader", "service-loader", "debug-loader"}) {
+            std::string exec_path = nah::fs::join_paths(bin_dir, loader_name);
+            std::ofstream exec_file(exec_path);
+            exec_file << "#!/bin/sh\necho 'Running'\n";
+            exec_file.close();
+            std::filesystem::permissions(exec_path,
+                                        std::filesystem::perms::owner_exec |
+                                            std::filesystem::perms::owner_read |
+                                            std::filesystem::perms::owner_write);
+        }
+
+        // Create NAK manifest
+        std::string manifest_path = nah::fs::join_paths(nak_dir, "nak.json");
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"nak\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"" << id << "\",\n";
+        manifest << "      \"version\": \"" << version << "\"\n";
+        manifest << "    },\n";
+        manifest << "    \"loaders\": {\n";
+        manifest << "      \"default\": { \"exec_path\": \"bin/default-loader\" },\n";
+        manifest << "      \"service\": { \"exec_path\": \"bin/service-loader\" },\n";
+        manifest << "      \"debug\": { \"exec_path\": \"bin/debug-loader\" }\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        // Create NAK install record
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "naks", id + "@" + version + ".json");
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"nak\": { \"id\": \"" << id << "\", \"version\": \"" << version << "\" },\n";
+        record << "  \"paths\": { \"root\": \"" << nah::core::normalize_separators(nak_dir) << "\" },\n";
+        record << "  \"loaders\": {\n";
+        record << "    \"default\": { \"exec_path\": \"bin/default-loader\" },\n";
+        record << "    \"service\": { \"exec_path\": \"bin/service-loader\" },\n";
+        record << "    \"debug\": { \"exec_path\": \"bin/debug-loader\" }\n";
+        record << "  }\n";
+        record << "}\n";
+        record.close();
+    };
+
+    SUBCASE("app without loader preference uses default")
+    {
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+
+        // Create app manifest WITHOUT execution.loader
+        std::string app_dir = env.root + "/test-app-no-loader";
+        std::filesystem::create_directories(app_dir + "/bin");
+        
+        std::string manifest_path = app_dir + "/nap.json";
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"com.test.noloader\",\n";
+        manifest << "      \"version\": \"1.0.0\",\n";
+        manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+        manifest << "      \"nak_version_req\": \"^1.0.0\"\n";
+        manifest << "    },\n";
+        manifest << "    \"execution\": {\n";
+        manifest << "      \"entrypoint\": \"bin/app\"\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        // Create dummy executable
+        std::ofstream exec_file(app_dir + "/bin/app");
+        exec_file << "#!/bin/sh\n";
+        exec_file.close();
+
+        // Install without --loader flag
+        auto result = execute_command(get_nah_executable() + " --root " + env.root + " install " + app_dir);
+        CHECK(result.exit_code == 0);
+
+        // Verify install record uses "default" loader
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", "com.test.noloader@1.0.0.json");
+        auto record_content = nah::fs::read_file(record_path);
+        REQUIRE(record_content.has_value());
+        CHECK(record_content->find("\"loader\": \"default\"") != std::string::npos);
+    }
+
+    SUBCASE("app with loader preference in manifest uses that loader")
+    {
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+
+        // Create app manifest WITH execution.loader = "service"
+        std::string app_dir = env.root + "/test-app-with-loader";
+        std::filesystem::create_directories(app_dir + "/bin");
+        
+        std::string manifest_path = app_dir + "/nap.json";
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"com.test.withloader\",\n";
+        manifest << "      \"version\": \"1.0.0\",\n";
+        manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+        manifest << "      \"nak_version_req\": \"^1.0.0\"\n";
+        manifest << "    },\n";
+        manifest << "    \"execution\": {\n";
+        manifest << "      \"entrypoint\": \"bin/app\",\n";
+        manifest << "      \"loader\": \"service\"\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        // Create dummy executable
+        std::ofstream exec_file(app_dir + "/bin/app");
+        exec_file << "#!/bin/sh\n";
+        exec_file.close();
+
+        // Install without --loader flag (should use manifest preference)
+        auto result = execute_command(get_nah_executable() + " --root " + env.root + " install " + app_dir);
+        CHECK(result.exit_code == 0);
+
+        // Verify install record uses "service" loader from manifest
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", "com.test.withloader@1.0.0.json");
+        auto record_content = nah::fs::read_file(record_path);
+        REQUIRE(record_content.has_value());
+        CHECK(record_content->find("\"loader\": \"service\"") != std::string::npos);
+    }
+
+    SUBCASE("CLI --loader flag overrides manifest preference")
+    {
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+
+        // Create app with manifest preference = "service"
+        std::string app_dir = env.root + "/test-app-override";
+        std::filesystem::create_directories(app_dir + "/bin");
+        
+        std::string manifest_path = app_dir + "/nap.json";
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"com.test.override\",\n";
+        manifest << "      \"version\": \"1.0.0\",\n";
+        manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+        manifest << "      \"nak_version_req\": \"^1.0.0\"\n";
+        manifest << "    },\n";
+        manifest << "    \"execution\": {\n";
+        manifest << "      \"entrypoint\": \"bin/app\",\n";
+        manifest << "      \"loader\": \"service\"\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        std::ofstream exec_file(app_dir + "/bin/app");
+        exec_file << "#!/bin/sh\n";
+        exec_file.close();
+
+        // Install WITH --loader debug (should override manifest)
+        auto result = execute_command(get_nah_executable() + " --root " + env.root + " install " + app_dir + " --loader debug");
+        CHECK(result.exit_code == 0);
+
+        // Verify install record uses "debug" loader (CLI override)
+        std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", "com.test.override@1.0.0.json");
+        auto record_content = nah::fs::read_file(record_path);
+        REQUIRE(record_content.has_value());
+        CHECK(record_content->find("\"loader\": \"debug\"") != std::string::npos);
+    }
+
+    SUBCASE("invalid loader in manifest is rejected")
+    {
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+
+        // Create app with invalid loader preference
+        std::string app_dir = env.root + "/test-app-invalid";
+        std::filesystem::create_directories(app_dir + "/bin");
+        
+        std::string manifest_path = app_dir + "/nap.json";
+        std::ofstream manifest(manifest_path);
+        manifest << "{\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\n";
+        manifest << "      \"id\": \"com.test.invalid\",\n";
+        manifest << "      \"version\": \"1.0.0\",\n";
+        manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+        manifest << "      \"nak_version_req\": \"^1.0.0\"\n";
+        manifest << "    },\n";
+        manifest << "    \"execution\": {\n";
+        manifest << "      \"entrypoint\": \"bin/app\",\n";
+        manifest << "      \"loader\": \"nonexistent\"\n";
+        manifest << "    }\n";
+        manifest << "  }\n";
+        manifest << "}\n";
+        manifest.close();
+
+        std::ofstream exec_file(app_dir + "/bin/app");
+        exec_file << "#!/bin/sh\n";
+        exec_file.close();
+
+        // Install should fail
+        auto result = execute_command(get_nah_executable() + " --root " + env.root + " install " + app_dir);
+        CHECK(result.exit_code != 0);
+        std::string combined = result.output + result.error;
+        CHECK(combined.find("not found") != std::string::npos);
+    }
+
+    SUBCASE("loader priority: CLI > manifest > default")
+    {
+        createMultiLoaderNak("com.test.runtime", "1.0.0");
+
+        // Test all three priority levels
+        for (const auto& [test_name, cli_flag, manifest_loader, expected_loader] : std::vector<std::tuple<std::string, std::string, std::string, std::string>>{
+            {"cli_overrides_all", "--loader debug", "service", "debug"},
+            {"manifest_used_when_no_cli", "", "service", "service"},
+            {"default_when_neither", "", "", "default"}
+        }) {
+            std::string app_id = "com.test.priority." + test_name;
+            std::string app_dir = env.root + "/test-priority-" + test_name;
+            std::filesystem::create_directories(app_dir + "/bin");
+            
+            std::string manifest_path = app_dir + "/nap.json";
+            std::ofstream manifest(manifest_path);
+            manifest << "{\n";
+            manifest << "  \"app\": {\n";
+            manifest << "    \"identity\": {\n";
+            manifest << "      \"id\": \"" << app_id << "\",\n";
+            manifest << "      \"version\": \"1.0.0\",\n";
+            manifest << "      \"nak_id\": \"com.test.runtime\",\n";
+            manifest << "      \"nak_version_req\": \"^1.0.0\"\n";
+            manifest << "    },\n";
+            manifest << "    \"execution\": {\n";
+            manifest << "      \"entrypoint\": \"bin/app\"";
+            
+            if (!manifest_loader.empty()) {
+                manifest << ",\n      \"loader\": \"" << manifest_loader << "\"";
+            }
+            manifest << "\n    }\n";
+            manifest << "  }\n";
+            manifest << "}\n";
+            manifest.close();
+
+            std::ofstream exec_file(app_dir + "/bin/app");
+            exec_file << "#!/bin/sh\n";
+            exec_file.close();
+
+            std::string install_cmd = get_nah_executable() + " --root " + env.root + " install " + app_dir;
+            if (!cli_flag.empty()) {
+                install_cmd += " " + cli_flag;
+            }
+
+            auto result = execute_command(install_cmd);
+            CHECK(result.exit_code == 0);
+
+            // Verify correct loader was selected
+            std::string record_path = nah::fs::join_paths(env.root, "registry", "apps", app_id + "@1.0.0.json");
+            auto record_content = nah::fs::read_file(record_path);
+            REQUIRE(record_content.has_value());
+            CHECK(record_content->find("\"loader\": \"" + expected_loader + "\"") != std::string::npos);
+        }
     }
 }

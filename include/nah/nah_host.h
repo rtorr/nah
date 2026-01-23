@@ -128,6 +128,18 @@ public:
         bool enable_trace = false) const;
 
     /**
+     * Get launch contract for an application with options
+     * @param app_id Application identifier
+     * @param version Optional specific version (empty = latest)
+     * @param options Composition options (trace, loader override, etc.)
+     * @return Composition result containing the launch contract
+     */
+    nah::core::CompositionResult getLaunchContract(
+        const std::string& app_id,
+        const std::string& version,
+        const nah::core::CompositionOptions& options) const;
+
+    /**
      * Execute an application directly (compose and run)
      * @param app_id Application identifier
      * @param version Optional specific version (empty = latest)
@@ -356,6 +368,51 @@ inline nah::core::CompositionResult NahHost::getLaunchContract(
     opts.enable_trace = enable_trace;
 
     return nah::core::nah_compose(*app_decl, host_env, *record, inventory, opts);
+}
+
+inline nah::core::CompositionResult NahHost::getLaunchContract(
+    const std::string& app_id,
+    const std::string& version,
+    const nah::core::CompositionOptions& options) const {
+
+    // Find the application
+    auto app_info = findApplication(app_id, version);
+    if (!app_info) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "Application not found: " + app_id;
+        return result;
+    }
+
+    // Load install record
+    auto record = loadInstallRecord(app_info->record_path);
+    if (!record) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::INSTALL_RECORD_INVALID;
+        result.critical_error_context = "Failed to load install record";
+        return result;
+    }
+
+    // Load app manifest
+    auto app_decl = loadAppManifest(app_info->install_root);
+    if (!app_decl) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "Failed to load app manifest";
+        return result;
+    }
+
+    // Load host environment
+    auto host_env = getHostEnvironment();
+
+    // Get inventory
+    auto inventory = getInventory();
+
+    // Use provided options (including loader_override)
+    return nah::core::nah_compose(*app_decl, host_env, *record, inventory, options);
 }
 
 inline int NahHost::executeApplication(

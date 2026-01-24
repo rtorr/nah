@@ -29,7 +29,7 @@ The application's declaration of identity and requirements.
 * Entrypoint: path to binary relative to app root
 * Layout: lib dirs, asset dirs
 * Environment defaults
-* Metadata (description, author, license, homepage)
+* Metadata (description, author, license, homepage, and custom fields)
 * Asset exports
 
 **Does not contain:**
@@ -73,6 +73,60 @@ All apps use a JSON manifest at the root of the package:
 ```
 
 The `$schema` field enables validation and IDE autocompletion. See [docs/schemas/README.md](schemas/README.md) for the complete schema documentation.
+
+### Custom Metadata
+
+The metadata field supports custom fields beyond the standard ones. NAH passes these through uninterpreted, allowing hosts to access app-specific information without NAH needing to understand the format:
+
+```json
+{
+  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.platform",
+      "version": "1.0.0",
+      "nak_id": "com.example.sdk",
+      "nak_version_req": ">=2.0.0 <3.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/platform"
+    }
+  },
+  "metadata": {
+    "description": "Platform with sub-components",
+    "author": "Platform Team",
+    "sub_apps": [
+      {
+        "id": "screen-app-1",
+        "type": "screen",
+        "loader": "loader_a",
+        "entry": "screens/app1"
+      },
+      {
+        "id": "background-service",
+        "type": "service",
+        "loader": "loader_b",
+        "entry": "services/worker"
+      }
+    ],
+    "capabilities": ["audio", "network"]
+  }
+}
+```
+
+Hosts can access this metadata via the NAH API:
+
+```cpp
+auto host = nah::host::NahHost::create("/nah");
+auto app = host->findApplication("com.example.platform");
+auto metadata = nlohmann::json::parse(app->metadata_json);
+
+for (auto& sub_app : metadata["sub_apps"]) {
+    std::cout << sub_app["id"] << " (" << sub_app["type"] << ")\n";
+}
+```
+
+This maintains NAH's separation principle: the host interprets metadata based on its needs, while NAH provides the mechanism to transport it.
 
 ## NAK (Native App Kit)
 

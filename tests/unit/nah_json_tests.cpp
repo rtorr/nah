@@ -89,6 +89,55 @@ TEST_CASE("parse_app_declaration") {
         CHECK(result.value.permissions_network[0] == "connect:*");
     }
 
+    SUBCASE("app with metadata fields") {
+        std::string json = R"({
+            "id": "com.test.app",
+            "version": "1.0.0",
+            "entrypoint": "bin/app",
+            "metadata": {
+                "description": "Test application",
+                "author": "Test Author",
+                "license": "MIT",
+                "homepage": "https://example.com"
+            }
+        })";
+
+        auto result = nah::json::parse_app_declaration(json);
+        REQUIRE(result.ok);
+        CHECK(result.value.description == "Test application");
+        CHECK(result.value.author == "Test Author");
+        CHECK(result.value.license == "MIT");
+        CHECK(result.value.homepage == "https://example.com");
+    }
+
+    SUBCASE("app with custom metadata fields") {
+        std::string json = R"({
+            "app": {
+                "identity": {
+                    "id": "com.test.app",
+                    "version": "1.0.0"
+                },
+                "execution": {
+                    "entrypoint": "bin/app"
+                },
+                "metadata": {
+                    "description": "Test app",
+                    "custom_field": "custom_value",
+                    "sub_apps": [
+                        {"id": "app1", "type": "screen"},
+                        {"id": "app2", "type": "service"}
+                    ],
+                    "capabilities": ["audio", "network"]
+                }
+            }
+        })";
+
+        auto result = nah::json::parse_app_declaration(json);
+        REQUIRE(result.ok);
+        CHECK(result.value.id == "com.test.app");
+        CHECK(result.value.description == "Test app");
+    }
+
     SUBCASE("invalid JSON") {
         std::string json = "not valid json";
         auto result = nah::json::parse_app_declaration(json);
@@ -98,7 +147,7 @@ TEST_CASE("parse_app_declaration") {
     SUBCASE("missing required fields") {
         std::string json = R"({
             "id": "com.test.app"
-        })";  // Missing version and entrypoint
+        })";
 
         auto result = nah::json::parse_app_declaration(json);
         CHECK(!result.ok);

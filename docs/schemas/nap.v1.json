@@ -210,8 +210,8 @@
         },
         "metadata": {
           "type": "object",
-          "description": "Optional metadata about the application",
-          "additionalProperties": false,
+          "description": "Optional metadata about the application (supports custom fields that NAH passes through uninterpreted)",
+          "additionalProperties": true,
           "properties": {
             "description": {
               "type": "string",

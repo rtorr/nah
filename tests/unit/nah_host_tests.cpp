@@ -711,3 +711,226 @@ TEST_CASE("NahHost with multiple versions") {
         CHECK(!host->isApplicationInstalled("multi.version.app", "3.0.0"));
     }
 }
+
+TEST_CASE("NahHost app metadata") {
+    TestNahEnvironment env;
+    REQUIRE(!env.root.empty());
+
+    SUBCASE("app without custom metadata returns standard fields") {
+        env.installTestApp("com.test.basic", "1.0.0");
+        
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto apps = host->listApplications();
+        REQUIRE(apps.size() == 1);
+        CHECK(apps[0].metadata_json == "{}");
+    }
+
+    SUBCASE("app with standard metadata fields") {
+        std::string app_dir = env.root + "/apps/com.test.meta-1.0.0";
+        std::filesystem::create_directories(app_dir);
+
+        std::ofstream manifest(app_dir + "/nap.json");
+        manifest << R"({
+            "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+            "app": {
+                "identity": {
+                    "id": "com.test.meta",
+                    "version": "1.0.0"
+                },
+                "execution": {
+                    "entrypoint": "bin/app"
+                },
+                "metadata": {
+                    "description": "Test application with metadata",
+                    "author": "Test Author",
+                    "license": "MIT",
+                    "homepage": "https://example.com"
+                }
+            }
+        })";
+        manifest.close();
+
+        std::string record_path = env.root + "/registry/apps/com.test.meta@1.0.0.json";
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.meta\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto apps = host->listApplications();
+        REQUIRE(apps.size() == 1);
+        
+        auto meta = nah::json::json::parse(apps[0].metadata_json);
+        CHECK(meta["description"] == "Test application with metadata");
+        CHECK(meta["author"] == "Test Author");
+        CHECK(meta["license"] == "MIT");
+        CHECK(meta["homepage"] == "https://example.com");
+    }
+
+    SUBCASE("app with custom metadata fields") {
+        std::string app_dir = env.root + "/apps/com.test.custom-1.0.0";
+        std::filesystem::create_directories(app_dir);
+
+        std::ofstream manifest(app_dir + "/nap.json");
+        manifest << R"({
+            "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+            "app": {
+                "identity": {
+                    "id": "com.test.custom",
+                    "version": "1.0.0"
+                },
+                "execution": {
+                    "entrypoint": "bin/app"
+                },
+                "metadata": {
+                    "description": "App with sub-components",
+                    "sub_apps": [
+                        {
+                            "id": "screen-app-1",
+                            "type": "screen",
+                            "loader": "loader_a",
+                            "entry": "screens/app1"
+                        },
+                        {
+                            "id": "background-service",
+                            "type": "service",
+                            "loader": "loader_b",
+                            "entry": "services/worker"
+                        }
+                    ],
+                    "capabilities": ["audio", "network"],
+                    "custom_field": "custom_value"
+                }
+            }
+        })";
+        manifest.close();
+
+        std::string record_path = env.root + "/registry/apps/com.test.custom@1.0.0.json";
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.custom\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto apps = host->listApplications();
+        REQUIRE(apps.size() == 1);
+        
+        auto meta = nah::json::json::parse(apps[0].metadata_json);
+        CHECK(meta["description"] == "App with sub-components");
+        CHECK(meta["custom_field"] == "custom_value");
+        CHECK(meta.contains("sub_apps"));
+        CHECK(meta["sub_apps"].is_array());
+        CHECK(meta["sub_apps"].size() == 2);
+        CHECK(meta["sub_apps"][0]["id"] == "screen-app-1");
+        CHECK(meta["sub_apps"][0]["type"] == "screen");
+        CHECK(meta["sub_apps"][0]["loader"] == "loader_a");
+        CHECK(meta["sub_apps"][1]["id"] == "background-service");
+        CHECK(meta["sub_apps"][1]["type"] == "service");
+        CHECK(meta.contains("capabilities"));
+        CHECK(meta["capabilities"].is_array());
+        CHECK(meta["capabilities"].size() == 2);
+    }
+
+    SUBCASE("findApplication also returns metadata") {
+        std::string app_dir = env.root + "/apps/com.test.find-1.0.0";
+        std::filesystem::create_directories(app_dir);
+
+        std::ofstream manifest(app_dir + "/nap.json");
+        manifest << R"({
+            "app": {
+                "identity": {
+                    "id": "com.test.find",
+                    "version": "1.0.0"
+                },
+                "execution": {
+                    "entrypoint": "bin/app"
+                },
+                "metadata": {
+                    "custom": "data"
+                }
+            }
+        })";
+        manifest.close();
+
+        std::string record_path = env.root + "/registry/apps/com.test.find@1.0.0.json";
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.find\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto app = host->findApplication("com.test.find");
+        REQUIRE(app.has_value());
+        
+        auto meta = nah::json::json::parse(app->metadata_json);
+        CHECK(meta["custom"] == "data");
+    }
+
+    SUBCASE("malformed manifest returns empty metadata") {
+        std::string app_dir = env.root + "/apps/com.test.bad-1.0.0";
+        std::filesystem::create_directories(app_dir);
+
+        std::ofstream manifest(app_dir + "/nap.json");
+        manifest << "{ invalid json";
+        manifest.close();
+
+        std::string record_path = env.root + "/registry/apps/com.test.bad@1.0.0.json";
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.bad\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto apps = host->listApplications();
+        REQUIRE(apps.size() == 1);
+        CHECK(apps[0].metadata_json == "{}");
+    }
+
+    SUBCASE("missing manifest file returns empty metadata") {
+        std::string app_dir = env.root + "/apps/com.test.missing-1.0.0";
+        std::filesystem::create_directories(app_dir);
+
+        std::string record_path = env.root + "/registry/apps/com.test.missing@1.0.0.json";
+        std::ofstream record(record_path);
+        record << "{\n";
+        record << "  \"install\": { \"instance_id\": \"test\" },\n";
+        record << "  \"app\": { \"id\": \"com.test.missing\", \"version\": \"1.0.0\" },\n";
+        record << "  \"paths\": { \"install_root\": \"" << json_escape_path(app_dir) << "\" },\n";
+        record << "  \"trust\": { \"state\": \"unknown\" }\n";
+        record << "}\n";
+        record.close();
+
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        
+        auto apps = host->listApplications();
+        REQUIRE(apps.size() == 1);
+        CHECK(apps[0].metadata_json == "{}");
+    }
+}

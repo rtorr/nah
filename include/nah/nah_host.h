@@ -50,15 +50,13 @@ inline std::string safe_getenv(const char* name) {
 // App Info
 // ============================================================================
 
-/**
- * Application metadata for installed apps
- */
 struct AppInfo {
     std::string id;
     std::string version;
     std::string instance_id;
     std::string install_root;
     std::string record_path;
+    std::string metadata_json;
 };
 
 // ============================================================================
@@ -217,6 +215,8 @@ private:
     // Load app manifest (JSON)
     std::optional<nah::core::AppDeclaration> loadAppManifest(const std::string& app_dir) const;
 
+    std::string extractMetadataJson(const std::string& app_dir) const;
+
     std::string root_;
 };
 
@@ -281,7 +281,6 @@ inline std::vector<AppInfo> NahHost::listApplications() const {
 
     auto files = nah::fs::list_directory(apps_dir);
     for (const auto& entry : files) {
-        // list_directory returns full paths, so use entry directly
         if (entry.size() > 5 && entry.substr(entry.size() - 5) == ".json") {
             auto record = loadInstallRecord(entry);
             if (record) {
@@ -291,6 +290,7 @@ inline std::vector<AppInfo> NahHost::listApplications() const {
                 info.instance_id = record->install.instance_id;
                 info.install_root = record->paths.install_root;
                 info.record_path = entry;
+                info.metadata_json = extractMetadataJson(record->paths.install_root);
                 apps.push_back(info);
             }
         }
@@ -595,7 +595,6 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
 }
 
 inline std::optional<nah::core::AppDeclaration> NahHost::loadAppManifest(const std::string& app_dir) const {
-    // Try nap.json (app manifest at package root)
     auto json_content = nah::fs::read_file(app_dir + "/nap.json");
     if (json_content) {
         auto result = nah::json::parse_app_declaration(*json_content);
@@ -605,6 +604,28 @@ inline std::optional<nah::core::AppDeclaration> NahHost::loadAppManifest(const s
     }
 
     return std::nullopt;
+}
+
+inline std::string NahHost::extractMetadataJson(const std::string& app_dir) const {
+    auto json_content = nah::fs::read_file(app_dir + "/nap.json");
+    if (!json_content) {
+        return "{}";
+    }
+
+    try {
+        auto j = nah::json::json::parse(*json_content);
+        
+        if (j.contains("app") && j["app"].is_object()) {
+            j = j["app"];
+        }
+        
+        if (j.contains("metadata") && j["metadata"].is_object()) {
+            return j["metadata"].dump();
+        }
+    } catch (...) {
+    }
+
+    return "{}";
 }
 
 #endif // NAH_HOST_IMPLEMENTATION

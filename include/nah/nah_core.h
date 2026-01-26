@@ -459,6 +459,45 @@ struct CompositionTrace {
 };
 
 // ============================================================================
+// COMPONENT DECLARATION
+// ============================================================================
+
+/// A component is a launchable feature within an application.
+///
+/// Components allow a single app package to provide multiple entry points
+/// (e.g., editor, viewer, debugger) with independent loader selection.
+///
+/// Example:
+///
+///     ComponentDecl editor;
+///     editor.id = "editor";
+///     editor.name = "Document Editor";
+///     editor.entrypoint = "bin/editor";
+///     editor.uri_pattern = "com.docproc.suite://editor/*";
+///     editor.loader = "default";  // Optional: use specific NAK loader
+///     editor.standalone = true;
+///     editor.hidden = false;
+///
+struct ComponentDecl {
+    std::string id;            ///< Component identifier (unique within app)
+    std::string name;          ///< Human-readable name
+    std::string description;   ///< Optional description
+    std::string icon;          ///< Relative path to icon (optional)
+    std::string entrypoint;    ///< Relative path to executable/script
+    std::string uri_pattern;   ///< URI pattern this component handles
+    std::string loader;        ///< Optional: specific NAK loader name
+    bool standalone = true;    ///< Can be launched independently
+    bool hidden = false;       ///< Hide from host UI
+    
+    // Per-component overrides (extend app-level settings)
+    EnvMap environment;                       ///< Component-specific environment
+    std::vector<std::string> permissions_filesystem;  ///< Component-specific perms
+    std::vector<std::string> permissions_network;     ///< Component-specific perms
+    
+    std::unordered_map<std::string, std::string> metadata;  ///< Arbitrary metadata
+};
+
+// ============================================================================
 // APP DECLARATION
 // ============================================================================
 
@@ -530,6 +569,9 @@ struct AppDeclaration {
     std::string author;
     std::string license;
     std::string homepage;
+    
+    // Optional: Components provided by this application
+    std::vector<ComponentDecl> components;
 };
 
 // ============================================================================
@@ -755,6 +797,75 @@ struct AssetExport {
     std::string path;  ///< Absolute path on disk
     std::string type;  ///< MIME type (optional)
 };
+
+// ============================================================================
+// COMPONENT URI
+// ============================================================================
+
+/// Parsed component URI.
+///
+/// Format: <app-id>://<component-path>[?<query>][#<fragment>]
+///
+/// Example:
+///     com.devtools://editor/open?file=doc.txt#line-42
+///
+struct ComponentURI {
+    bool valid = false;             ///< Parse succeeded
+    std::string raw_uri;            ///< Original URI
+    std::string app_id;             ///< Application ID (scheme)
+    std::string component_path;     ///< Path after ://
+    std::string query;              ///< Query string (without ?)
+    std::string fragment;           ///< Fragment (without #)
+};
+
+/// Parse a component URI.
+///
+/// Format: <app-id>://<component-path>[?<query>][#<fragment>]
+///
+/// Examples:
+///     com.suite://editor                    → app_id="com.suite", component_path="editor"
+///     com.suite://editor/open               → component_path="editor/open"
+///     com.suite://editor?file=doc.txt       → query="file=doc.txt"
+///     com.suite://editor#section-3          → fragment="section-3"
+///
+inline ComponentURI parse_component_uri(const std::string& uri) {
+    ComponentURI result;
+    result.raw_uri = uri;
+    
+    // Find scheme separator
+    size_t scheme_end = uri.find("://");
+    if (scheme_end == std::string::npos) {
+        return result;  // Invalid
+    }
+    
+    // Extract app_id (scheme)
+    result.app_id = uri.substr(0, scheme_end);
+    if (result.app_id.empty()) {
+        return result;
+    }
+    
+    std::string rest = uri.substr(scheme_end + 3);
+    
+    // Extract fragment (if present)
+    size_t fragment_pos = rest.find('#');
+    if (fragment_pos != std::string::npos) {
+        result.fragment = rest.substr(fragment_pos + 1);
+        rest = rest.substr(0, fragment_pos);
+    }
+    
+    // Extract query (if present)
+    size_t query_pos = rest.find('?');
+    if (query_pos != std::string::npos) {
+        result.query = rest.substr(query_pos + 1);
+        rest = rest.substr(0, query_pos);
+    }
+    
+    // Remaining is component_path
+    result.component_path = rest;
+    result.valid = true;
+    
+    return result;
+}
 
 // ============================================================================
 // CAPABILITY USAGE

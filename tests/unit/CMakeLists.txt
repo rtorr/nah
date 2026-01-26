@@ -5,6 +5,7 @@ add_executable(nah-tests
     nah_fs_tests.cpp
     nah_host_tests.cpp
     nah_semver_tests.cpp
+    nah_components_tests.cpp
 )
 
 target_link_libraries(nah-tests PRIVATE doctest::doctest nlohmann_json::nlohmann_json)

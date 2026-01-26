@@ -1,0 +1,52 @@
+{
+  "$schema": "../../docs/schemas/nap.v1.json",
+  "app": {
+    "identity": {
+      "id": "com.example.suite",
+      "version": "1.0.0"
+    },
+    "execution": {
+      "entrypoint": "bin/launcher"
+    },
+    "layout": {
+      "lib_dirs": ["lib"],
+      "asset_dirs": ["assets"]
+    },
+    "metadata": {
+      "description": "Multi-component suite demonstrating component architecture",
+      "author": "NAH Examples",
+      "license": "Apache-2.0"
+    },
+    "components": {
+      "provides": [
+        {
+          "id": "editor",
+          "name": "Document Editor",
+          "description": "Edit text documents",
+          "entrypoint": "bin/editor",
+          "uri_pattern": "com.example.suite://editor/*",
+          "standalone": true,
+          "hidden": false
+        },
+        {
+          "id": "viewer",
+          "name": "Document Viewer",
+          "description": "View documents in read-only mode",
+          "entrypoint": "bin/viewer",
+          "uri_pattern": "com.example.suite://viewer/*",
+          "standalone": true,
+          "hidden": false
+        },
+        {
+          "id": "converter",
+          "name": "Format Converter",
+          "description": "Convert between document formats",
+          "entrypoint": "bin/converter",
+          "uri_pattern": "com.example.suite://converter/*",
+          "standalone": false,
+          "hidden": true
+        }
+      ]
+    }
+  }
+}

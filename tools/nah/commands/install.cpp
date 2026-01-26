@@ -383,12 +383,14 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         nah::core::RuntimeDescriptor runtime;
         runtime.nak.id = id;
         runtime.nak.version = version;
-        runtime.paths.root = install_dir;
+        // Store path RELATIVE to NAH root for portability and sandbox support
+        runtime.paths.root = "naks/" + id + "/" + version;
 
         // Extract lib_dirs from nak.paths.lib_dirs
         if (manifest["nak"].contains("paths") && manifest["nak"]["paths"].contains("lib_dirs")) {
             for (const auto& dir : manifest["nak"]["paths"]["lib_dirs"]) {
-                runtime.paths.lib_dirs.push_back(nah::fs::join_paths(install_dir, dir.get<std::string>()));
+                // Store lib_dirs relative to NAK root (they're relative in manifest)
+                runtime.paths.lib_dirs.push_back(dir.get<std::string>());
             }
         }
 
@@ -399,9 +401,8 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                 
                 if (loader_json.contains("exec_path")) {
                     std::string exec_path = loader_json["exec_path"].get<std::string>();
-                    if (!std::filesystem::path(exec_path).is_absolute()) {
-                        exec_path = nah::fs::join_paths(install_dir, exec_path);
-                    }
+                    // Keep exec_path relative if it's relative in manifest
+                    // NAH will resolve at composition time
                     loader.exec_path = exec_path;
                 }
                 if (loader_json.contains("args_template")) {
@@ -479,7 +480,8 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         record.install.instance_id = generate_uuid();
         record.app.id = id;
         record.app.version = version;
-        record.paths.install_root = install_dir;
+        // Store path RELATIVE to NAH root for portability and sandbox support
+        record.paths.install_root = "apps/" + id + "-" + version;
 
         // Handle NAK dependency (for app manifests)
         if (is_app && manifest["app"]["identity"].contains("nak_id")) {

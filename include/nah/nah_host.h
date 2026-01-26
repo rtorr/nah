@@ -550,6 +550,26 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
                 auto result = nah::json::parse_runtime_descriptor(*runtime_content, entry);
                 if (result.ok) {
                     result.value.source_path = entry;
+                    
+                    // Resolve relative paths to absolute (for sandbox/portability support)
+                    if (!result.value.paths.root.empty() && !nah::fs::is_absolute_path(result.value.paths.root)) {
+                        result.value.paths.root = nah::fs::absolute_path(root_ + "/" + result.value.paths.root);
+                    }
+                    
+                    // Resolve relative lib_dirs
+                    for (auto& lib_dir : result.value.paths.lib_dirs) {
+                        if (!lib_dir.empty() && !nah::fs::is_absolute_path(lib_dir)) {
+                            lib_dir = nah::fs::absolute_path(result.value.paths.root + "/" + lib_dir);
+                        }
+                    }
+                    
+                    // Resolve relative loader exec_paths
+                    for (auto& [name, loader] : result.value.loaders) {
+                        if (!loader.exec_path.empty() && !nah::fs::is_absolute_path(loader.exec_path)) {
+                            loader.exec_path = nah::fs::absolute_path(result.value.paths.root + "/" + loader.exec_path);
+                        }
+                    }
+                    
                     inventory.runtimes[record_ref] = result.value;
                 }
             }

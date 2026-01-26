@@ -231,6 +231,94 @@
               "format": "uri"
             }
           }
+        },
+        "components": {
+          "type": "object",
+          "description": "Components provided by this application (multi-component apps)",
+          "additionalProperties": false,
+          "properties": {
+            "provides": {
+              "type": "array",
+              "description": "List of components this application provides",
+              "items": {
+                "type": "object",
+                "required": ["id", "entrypoint", "uri_pattern"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Component identifier (unique within app)",
+                    "pattern": "^[a-zA-Z0-9._-]+$",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Human-readable name"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Component description"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "description": "Relative path to icon"
+                  },
+                  "entrypoint": {
+                    "type": "string",
+                    "description": "Relative path to executable/module/script",
+                    "minLength": 1
+                  },
+                  "uri_pattern": {
+                    "type": "string",
+                    "description": "URI pattern (format: <app-id>://<path>[/*])",
+                    "minLength": 1
+                  },
+                  "loader": {
+                    "type": "string",
+                    "description": "Named loader from NAK (optional)",
+                    "minLength": 1
+                  },
+                  "standalone": {
+                    "type": "boolean",
+                    "description": "Can be launched independently",
+                    "default": true
+                  },
+                  "hidden": {
+                    "type": "boolean",
+                    "description": "Hide from host UI",
+                    "default": false
+                  },
+                  "environment": {
+                    "type": "object",
+                    "description": "Component-specific environment variables",
+                    "additionalProperties": {
+                      "$ref": "#/definitions/envValue"
+                    }
+                  },
+                  "permissions": {
+                    "type": "object",
+                    "description": "Component-specific permissions",
+                    "additionalProperties": false,
+                    "properties": {
+                      "filesystem": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                      },
+                      "network": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                      }
+                    }
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Arbitrary metadata",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

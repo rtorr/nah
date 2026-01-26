@@ -254,6 +254,48 @@
           }
         }
       }
+    },
+    "components": {
+      "type": "array",
+      "description": "Components provided by this app (cached from manifest for fast lookup)",
+      "items": {
+        "type": "object",
+        "required": ["id", "entrypoint", "uri_pattern"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Component identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name"
+          },
+          "entrypoint": {
+            "type": "string",
+            "description": "Relative path to component executable"
+          },
+          "uri_pattern": {
+            "type": "string",
+            "description": "URI pattern this component handles"
+          },
+          "loader": {
+            "type": "string",
+            "description": "Pinned loader for this component"
+          },
+          "standalone": {
+            "type": "boolean",
+            "description": "Can be launched independently",
+            "default": true
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Hide from host UI",
+            "default": false
+          }
+        }
+      },
+      "default": []
     }
   }
 }

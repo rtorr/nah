@@ -139,6 +139,46 @@ inline core::LoaderConfig parse_loader_config(const json& j) {
 }
 
 // ============================================================================
+// COMPONENT PARSING
+// ============================================================================
+
+inline core::ComponentDecl parse_component(const json& j) {
+    core::ComponentDecl comp;
+    
+    comp.id = detail::get_string(j, "id");
+    comp.name = detail::get_string(j, "name");
+    comp.description = detail::get_string(j, "description");
+    comp.icon = detail::get_string(j, "icon");
+    comp.entrypoint = detail::get_string(j, "entrypoint");
+    comp.uri_pattern = detail::get_string(j, "uri_pattern");
+    comp.loader = detail::get_string(j, "loader");
+    comp.standalone = detail::get_bool(j, "standalone", true);
+    comp.hidden = detail::get_bool(j, "hidden", false);
+    
+    // Component-specific environment
+    if (j.contains("environment") && j["environment"].is_object()) {
+        comp.environment = parse_env_map(j["environment"]);
+    }
+    
+    // Component-specific permissions
+    if (j.contains("permissions") && j["permissions"].is_object()) {
+        comp.permissions_filesystem = detail::get_string_array(j["permissions"], "filesystem");
+        comp.permissions_network = detail::get_string_array(j["permissions"], "network");
+    }
+    
+    // Metadata
+    if (j.contains("metadata") && j["metadata"].is_object()) {
+        for (auto& [key, value] : j["metadata"].items()) {
+            if (value.is_string()) {
+                comp.metadata[key] = value.get<std::string>();
+            }
+        }
+    }
+    
+    return comp;
+}
+
+// ============================================================================
 // APP DECLARATION PARSING
 // ============================================================================
 
@@ -273,6 +313,16 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             app.author = detail::get_string(j, "author");
             app.license = detail::get_string(j, "license");
             app.homepage = detail::get_string(j, "homepage");
+        }
+        
+        // Components (new in component architecture)
+        if (j.contains("components") && j["components"].is_object()) {
+            const auto& comps = j["components"];
+            if (comps.contains("provides") && comps["provides"].is_array()) {
+                for (const auto& comp_json : comps["provides"]) {
+                    app.components.push_back(parse_component(comp_json));
+                }
+            }
         }
         
         result.ok = true;

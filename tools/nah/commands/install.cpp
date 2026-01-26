@@ -384,7 +384,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         runtime.nak.id = id;
         runtime.nak.version = version;
         // Store path RELATIVE to NAH root for portability and sandbox support
-        runtime.paths.root = "naks/" + id + "/" + version;
+        runtime.paths.root = nah::fs::join_paths("naks", id, version);
 
         // Extract lib_dirs from nak.paths.lib_dirs
         if (manifest["nak"].contains("paths") && manifest["nak"]["paths"].contains("lib_dirs")) {
@@ -481,7 +481,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         record.app.id = id;
         record.app.version = version;
         // Store path RELATIVE to NAH root for portability and sandbox support
-        record.paths.install_root = "apps/" + id + "-" + version;
+        record.paths.install_root = nah::fs::join_paths("apps", id + "-" + version);
 
         // Handle NAK dependency (for app manifests)
         if (is_app && manifest["app"]["identity"].contains("nak_id")) {
@@ -606,7 +606,7 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
                     comp_json["hidden"] = comp.value("hidden", false);
                     
                     // Validate component entrypoint exists
-                    std::string comp_entry = install_dir + "/" + comp.value("entrypoint", "");
+                    std::string comp_entry = nah::fs::join_paths(install_dir, comp.value("entrypoint", ""));
                     namespace fs = std::filesystem;
                     if (!fs::exists(comp_entry)) {
                         print_error("Component '" + comp.value("id", "") + 

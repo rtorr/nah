@@ -206,6 +206,47 @@ public:
      */
     std::string validateRoot() const;
 
+    // ========================================================================
+    // Component API
+    // ========================================================================
+
+    /**
+     * Compose launch contract for a component via URI
+     * @param uri Component URI (e.g., "com.example.suite://editor/open?file=doc.txt")
+     * @param referrer_uri URI of calling component (optional, for context)
+     * @return Composition result containing launch contract
+     */
+    nah::core::CompositionResult composeComponentLaunch(
+        const std::string& uri,
+        const std::string& referrer_uri = "") const;
+    
+    /**
+     * Execute a component via URI
+     * @param uri Component URI
+     * @param referrer_uri URI of calling component (optional)
+     * @param args Additional arguments
+     * @param output_handler Optional callback for output
+     * @return Exit code
+     */
+    int launchComponent(
+        const std::string& uri,
+        const std::string& referrer_uri = "",
+        const std::vector<std::string>& args = {},
+        std::function<void(const std::string&)> output_handler = nullptr) const;
+    
+    /**
+     * Check if a component URI can be handled
+     * @param uri Component URI
+     * @return true if a component can handle this URI
+     */
+    bool canHandleComponentUri(const std::string& uri) const;
+    
+    /**
+     * List all components across all installed applications
+     * @return Vector of (app_id, component) pairs
+     */
+    std::vector<std::pair<std::string, nah::core::ComponentDecl>> listAllComponents() const;
+
 private:
     explicit NahHost(std::string root) : root_(std::move(root)) {}
 
@@ -626,6 +667,223 @@ inline std::string NahHost::extractMetadataJson(const std::string& app_dir) cons
     }
 
     return "{}";
+}
+
+// ============================================================================
+// Component Implementation
+// ============================================================================
+
+// Helper: Match URI against pattern
+inline bool matches_uri_pattern(const std::string& pattern, const std::string& uri) {
+    auto pattern_parsed = nah::core::parse_component_uri(pattern);
+    auto uri_parsed = nah::core::parse_component_uri(uri);
+    
+    if (!pattern_parsed.valid || !uri_parsed.valid) {
+        return false;
+    }
+    
+    // App IDs must match
+    if (pattern_parsed.app_id != uri_parsed.app_id) {
+        return false;
+    }
+    
+    // Check if pattern ends with wildcard
+    if (pattern_parsed.component_path.size() >= 2 &&
+        pattern_parsed.component_path.substr(pattern_parsed.component_path.size() - 2) == "/*") {
+        // Prefix match
+        std::string prefix = pattern_parsed.component_path.substr(
+            0, pattern_parsed.component_path.size() - 2
+        );
+        return uri_parsed.component_path.substr(0, prefix.size()) == prefix;
+    } else {
+        // Exact match
+        return pattern_parsed.component_path == uri_parsed.component_path;
+    }
+}
+
+inline nah::core::CompositionResult NahHost::composeComponentLaunch(
+    const std::string& uri,
+    const std::string& referrer_uri) const {
+    
+    // 1. Parse URI
+    auto parsed = nah::core::parse_component_uri(uri);
+    if (!parsed.valid) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "Invalid component URI: " + uri;
+        return result;
+    }
+    
+    // 2. Find application
+    auto app_info = findApplication(parsed.app_id);
+    if (!app_info) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "Application not found: " + parsed.app_id;
+        return result;
+    }
+    
+    // 3. Load app manifest to get components
+    auto app_decl = loadAppManifest(app_info->install_root);
+    if (!app_decl) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "Failed to load app manifest";
+        return result;
+    }
+    
+    // 4. Match component by URI pattern
+    nah::core::ComponentDecl* matched_component = nullptr;
+    for (auto& comp : app_decl->components) {
+        if (matches_uri_pattern(comp.uri_pattern, uri)) {
+            matched_component = &comp;
+            break;  // First match wins
+        }
+    }
+    
+    if (!matched_component) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
+        result.critical_error_context = "No component matches URI: " + uri;
+        return result;
+    }
+    
+    // 5. Create modified app declaration with component entrypoint
+    //    We reuse nah_compose by creating a temporary AppDeclaration
+    //    with the component's entrypoint
+    nah::core::AppDeclaration component_app = *app_decl;
+    component_app.entrypoint_path = matched_component->entrypoint;
+    
+    // Override loader if component specifies one
+    if (!matched_component->loader.empty()) {
+        component_app.nak_loader = matched_component->loader;
+    }
+    
+    // Merge component-specific environment
+    for (const auto& [key, value] : matched_component->environment) {
+        // Convert to KEY=value format
+        component_app.env_vars.push_back(key + "=" + value.value);
+    }
+    
+    // Merge component-specific permissions
+    component_app.permissions_filesystem.insert(
+        component_app.permissions_filesystem.end(),
+        matched_component->permissions_filesystem.begin(),
+        matched_component->permissions_filesystem.end()
+    );
+    component_app.permissions_network.insert(
+        component_app.permissions_network.end(),
+        matched_component->permissions_network.begin(),
+        matched_component->permissions_network.end()
+    );
+    
+    // 6. Get install record (need for nah_compose)
+    auto install_record = loadInstallRecord(app_info->record_path);
+    if (!install_record) {
+        nah::core::CompositionResult result;
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::INSTALL_RECORD_INVALID;
+        result.critical_error_context = "Failed to load install record";
+        return result;
+    }
+    
+    // Override pinned loader if component specifies one
+    if (!matched_component->loader.empty()) {
+        install_record->nak.loader = matched_component->loader;
+    }
+    
+    // 7. Get host environment and inventory
+    auto host_env = getHostEnvironment();
+    auto inventory = getInventory();
+    
+    // 8. Compose using the standard nah_compose function
+    nah::core::CompositionOptions comp_opts;
+    auto result = nah::core::nah_compose(component_app, host_env, *install_record, inventory, comp_opts);
+    
+    if (!result.ok) {
+        return result;
+    }
+    
+    // 9. Inject component-specific environment variables
+    result.contract.environment["NAH_COMPONENT_ID"] = matched_component->id;
+    result.contract.environment["NAH_COMPONENT_URI"] = uri;
+    result.contract.environment["NAH_COMPONENT_PATH"] = parsed.component_path;
+    
+    if (!parsed.query.empty()) {
+        result.contract.environment["NAH_COMPONENT_QUERY"] = parsed.query;
+    }
+    if (!parsed.fragment.empty()) {
+        result.contract.environment["NAH_COMPONENT_FRAGMENT"] = parsed.fragment;
+    }
+    if (!referrer_uri.empty()) {
+        result.contract.environment["NAH_COMPONENT_REFERRER"] = referrer_uri;
+    }
+    
+    return result;
+}
+
+inline int NahHost::launchComponent(
+    const std::string& uri,
+    const std::string& referrer_uri,
+    const std::vector<std::string>& args,
+    std::function<void(const std::string&)> output_handler) const {
+    
+    auto result = composeComponentLaunch(uri, referrer_uri);
+    if (!result.ok) {
+        if (output_handler) {
+            output_handler("Error: " + result.critical_error_context);
+        }
+        return 1;
+    }
+    
+    return executeContract(result.contract, args, output_handler);
+}
+
+inline bool NahHost::canHandleComponentUri(const std::string& uri) const {
+    auto parsed = nah::core::parse_component_uri(uri);
+    if (!parsed.valid) {
+        return false;
+    }
+    
+    auto app_info = findApplication(parsed.app_id);
+    if (!app_info) {
+        return false;
+    }
+    
+    auto app_decl = loadAppManifest(app_info->install_root);
+    if (!app_decl || app_decl->components.empty()) {
+        return false;
+    }
+    
+    // Check if any component matches
+    for (const auto& comp : app_decl->components) {
+        if (matches_uri_pattern(comp.uri_pattern, uri)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+inline std::vector<std::pair<std::string, nah::core::ComponentDecl>> 
+NahHost::listAllComponents() const {
+    std::vector<std::pair<std::string, nah::core::ComponentDecl>> result;
+    
+    auto apps = listApplications();
+    for (const auto& app : apps) {
+        auto manifest = loadAppManifest(app.install_root);
+        if (manifest) {
+            for (const auto& comp : manifest->components) {
+                result.push_back({app.id, comp});
+            }
+        }
+    }
+    
+    return result;
 }
 
 #endif // NAH_HOST_IMPLEMENTATION

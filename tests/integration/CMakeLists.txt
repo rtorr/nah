@@ -1,5 +1,6 @@
 add_executable(integration_tests
     cli_tests.cpp
+    component_tests.cpp
 )
 
 target_include_directories(integration_tests PRIVATE

@@ -582,6 +582,42 @@ int install_from_directory(const GlobalOptions& opts, const InstallOptions& inst
         if (!record.app.nak_version_req.empty()) {
             install_record["app"]["nak_version_req"] = record.app.nak_version_req;
         }
+        
+        // Store component metadata (for fast lookup without parsing manifest)
+        if (is_app && manifest["app"].contains("components") && 
+            manifest["app"]["components"].is_object()) {
+            auto& comps = manifest["app"]["components"];
+            if (comps.contains("provides") && comps["provides"].is_array()) {
+                nlohmann::json components_array = nlohmann::json::array();
+                for (const auto& comp : comps["provides"]) {
+                    nlohmann::json comp_json;
+                    comp_json["id"] = comp.value("id", "");
+                    if (comp.contains("name")) {
+                        comp_json["name"] = comp["name"];
+                    }
+                    comp_json["entrypoint"] = comp.value("entrypoint", "");
+                    comp_json["uri_pattern"] = comp.value("uri_pattern", "");
+                    if (comp.contains("loader")) {
+                        comp_json["loader"] = comp["loader"];
+                    }
+                    comp_json["standalone"] = comp.value("standalone", true);
+                    comp_json["hidden"] = comp.value("hidden", false);
+                    
+                    // Validate component entrypoint exists
+                    std::string comp_entry = install_dir + "/" + comp.value("entrypoint", "");
+                    namespace fs = std::filesystem;
+                    if (!fs::exists(comp_entry)) {
+                        print_error("Component '" + comp.value("id", "") + 
+                                  "' entrypoint not found: " + comp.value("entrypoint", ""), 
+                                  opts.json);
+                        return 1;
+                    }
+                    
+                    components_array.push_back(comp_json);
+                }
+                install_record["components"] = components_array;
+            }
+        }
 
         // Pinned NAK
         if (!record.nak.id.empty()) {

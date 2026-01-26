@@ -553,20 +553,20 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
                     
                     // Resolve relative paths to absolute (for sandbox/portability support)
                     if (!result.value.paths.root.empty() && !nah::fs::is_absolute_path(result.value.paths.root)) {
-                        result.value.paths.root = nah::fs::absolute_path(root_ + "/" + result.value.paths.root);
+                        result.value.paths.root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.root));
                     }
                     
                     // Resolve relative lib_dirs
                     for (auto& lib_dir : result.value.paths.lib_dirs) {
                         if (!lib_dir.empty() && !nah::fs::is_absolute_path(lib_dir)) {
-                            lib_dir = nah::fs::absolute_path(result.value.paths.root + "/" + lib_dir);
+                            lib_dir = nah::fs::absolute_path(nah::fs::join_paths(result.value.paths.root, lib_dir));
                         }
                     }
                     
                     // Resolve relative loader exec_paths
                     for (auto& [name, loader] : result.value.loaders) {
                         if (!loader.exec_path.empty() && !nah::fs::is_absolute_path(loader.exec_path)) {
-                            loader.exec_path = nah::fs::absolute_path(result.value.paths.root + "/" + loader.exec_path);
+                            loader.exec_path = nah::fs::absolute_path(nah::fs::join_paths(result.value.paths.root, loader.exec_path));
                         }
                     }
                     
@@ -647,7 +647,7 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
     if (result.ok) {
         // Ensure absolute paths (portable check for both Unix and Windows)
         if (!result.value.paths.install_root.empty() && !nah::fs::is_absolute_path(result.value.paths.install_root)) {
-            result.value.paths.install_root = nah::fs::absolute_path(root_ + "/" + result.value.paths.install_root);
+            result.value.paths.install_root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.install_root));
         }
         return result.value;
     }

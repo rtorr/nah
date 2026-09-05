@@ -61,72 +61,18 @@ All apps use a JSON manifest at the root of the package:
     },
     "environment": {
       "MY_VAR": "default_value"
+    },
+    "metadata": {
+      "description": "Example application",
+      "author": "Your Name",
+      "license": "MIT",
+      "homepage": "https://example.com"
     }
-  },
-  "metadata": {
-    "description": "Example application",
-    "author": "Your Name",
-    "license": "MIT",
-    "homepage": "https://example.com"
   }
 }
 ```
 
 The `$schema` field enables validation and IDE autocompletion. See [docs/schemas/README.md](schemas/README.md) for the complete schema documentation.
-
-### Custom Metadata
-
-The metadata field supports custom fields beyond the standard ones. NAH passes these through uninterpreted, allowing hosts to access app-specific information without NAH needing to understand the format:
-
-```json
-{
-  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
-  "app": {
-    "identity": {
-      "id": "com.example.platform",
-      "version": "1.0.0",
-      "nak_id": "com.example.sdk",
-      "nak_version_req": ">=2.0.0 <3.0.0"
-    },
-    "execution": {
-      "entrypoint": "bin/platform"
-    }
-  },
-  "metadata": {
-    "description": "Platform with sub-components",
-    "author": "Platform Team",
-    "sub_apps": [
-      {
-        "id": "screen-app-1",
-        "type": "screen",
-        "loader": "loader_a",
-        "entry": "screens/app1"
-      },
-      {
-        "id": "background-service",
-        "type": "service",
-        "loader": "loader_b",
-        "entry": "services/worker"
-      }
-    ],
-    "capabilities": ["audio", "network"]
-  }
-}
-```
-
-Hosts can access this metadata via the NAH API:
-
-```cpp
-auto host = nah::host::NahHost::create("/nah");
-auto app = host->findApplication("com.example.platform");
-auto metadata = nlohmann::json::parse(app->metadata_json);
-
-for (auto& sub_app : metadata["sub_apps"]) {
-    std::cout << sub_app["id"] << " (" << sub_app["type"] << ")\n";
-}
-```
-
-This maintains NAH's separation principle: the host interprets metadata based on its needs, while NAH provides the mechanism to transport it.
 
 ## NAK (Native App Kit)
 
@@ -162,18 +108,18 @@ Example `nak.json`:
       "id": "com.example.sdk",
       "version": "2.1.0"
     },
-    "layout": {
+    "paths": {
       "resource_root": "resources",
       "lib_dirs": ["lib"]
     },
     "environment": {
       "SDK_VERSION": "2.1.0"
+    },
+    "metadata": {
+      "description": "Example SDK",
+      "author": "Vendor Name",
+      "license": "MIT"
     }
-  },
-  "metadata": {
-    "description": "Example SDK",
-    "author": "Vendor Name",
-    "license": "Apache-2.0"
   }
 }
 ```
@@ -184,9 +130,11 @@ A NAK may include a loader binary that wraps app execution:
 
 ```json
 {
-  "loader": {
-    "exec_path": "bin/sdk-loader",
-    "args_template": ["--app", "{NAH_APP_ENTRY}"]
+  "loaders": {
+    "default": {
+      "exec_path": "bin/sdk-loader",
+      "args_template": ["--app", "{NAH_APP_ENTRY}"]
+    }
   }
 }
 ```
@@ -300,7 +248,7 @@ The final output of NAH composition.
 * `trust`: state, source, evaluation timestamp
 * `warnings`: any issues encountered during composition
 
-The contract is deterministic: given the same inputs (manifest, install records, profile), NAH produces the same contract.
+The contract is deterministic: given the same manifest, install records, host environment, and options, NAH produces the same contract.
 
 ### Viewing Details
 

@@ -31,6 +31,12 @@ namespace {
 #endif
 }
 
+TEST_CASE("component wildcard requires a path boundary") {
+    CHECK(nah::host::matches_uri_pattern("com.example://open/*", "com.example://open/file"));
+    CHECK_FALSE(nah::host::matches_uri_pattern("com.example://open/*", "com.example://openly"));
+    CHECK_FALSE(nah::host::matches_uri_pattern("com.example://open/*", "com.example://open"));
+}
+
 inline void safe_setenv(const char* name, const char* value) {
 #ifdef _WIN32
     _putenv_s(name, value);
@@ -718,10 +724,10 @@ TEST_CASE("NahHost app metadata") {
 
     SUBCASE("app without custom metadata returns standard fields") {
         env.installTestApp("com.test.basic", "1.0.0");
-        
+
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto apps = host->listApplications();
         REQUIRE(apps.size() == 1);
         CHECK(apps[0].metadata_json == "{}");
@@ -764,10 +770,10 @@ TEST_CASE("NahHost app metadata") {
 
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto apps = host->listApplications();
         REQUIRE(apps.size() == 1);
-        
+
         auto meta = nah::json::json::parse(apps[0].metadata_json);
         CHECK(meta["description"] == "Test application with metadata");
         CHECK(meta["author"] == "Test Author");
@@ -825,10 +831,10 @@ TEST_CASE("NahHost app metadata") {
 
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto apps = host->listApplications();
         REQUIRE(apps.size() == 1);
-        
+
         auto meta = nah::json::json::parse(apps[0].metadata_json);
         CHECK(meta["description"] == "App with sub-components");
         CHECK(meta["custom_field"] == "custom_value");
@@ -878,10 +884,10 @@ TEST_CASE("NahHost app metadata") {
 
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto app = host->findApplication("com.test.find");
         REQUIRE(app.has_value());
-        
+
         auto meta = nah::json::json::parse(app->metadata_json);
         CHECK(meta["custom"] == "data");
     }
@@ -906,7 +912,7 @@ TEST_CASE("NahHost app metadata") {
 
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto apps = host->listApplications();
         REQUIRE(apps.size() == 1);
         CHECK(apps[0].metadata_json == "{}");
@@ -928,7 +934,7 @@ TEST_CASE("NahHost app metadata") {
 
         auto host = nah::host::NahHost::create(env.root);
         REQUIRE(host != nullptr);
-        
+
         auto apps = host->listApplications();
         REQUIRE(apps.size() == 1);
         CHECK(apps[0].metadata_json == "{}");

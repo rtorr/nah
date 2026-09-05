@@ -23,6 +23,7 @@
 #include <optional>
 #include <functional>
 #include <algorithm>
+#include <filesystem>
 
 namespace nah {
 namespace host {
@@ -43,6 +44,32 @@ inline std::string safe_getenv(const char* name) {
     const char* val = std::getenv(name);
     return val ? val : "";
 #endif
+}
+
+inline std::optional<std::filesystem::path> canonical_boundary_path(const std::string& path) {
+    std::error_code ec;
+    auto absolute = std::filesystem::absolute(std::filesystem::path(path), ec);
+    if (ec) return std::nullopt;
+    auto canonical = std::filesystem::weakly_canonical(absolute, ec);
+    if (ec) return std::nullopt;
+    return canonical.lexically_normal();
+}
+
+inline std::optional<std::string> resolve_within(const std::string& root,
+                                                 const std::string& candidate) {
+    if (root.empty() || candidate.empty()) return std::nullopt;
+    const auto normalized_root = canonical_boundary_path(root);
+    const auto normalized_candidate = canonical_boundary_path(candidate);
+    if (!normalized_root || !normalized_candidate) return std::nullopt;
+
+    auto root_it = normalized_root->begin();
+    auto candidate_it = normalized_candidate->begin();
+    for (; root_it != normalized_root->end(); ++root_it, ++candidate_it) {
+        if (candidate_it == normalized_candidate->end() || *root_it != *candidate_it) {
+            return std::nullopt;
+        }
+    }
+    return normalized_candidate->string();
 }
 } // namespace detail
 
@@ -93,10 +120,10 @@ public:
     /**
      * Discover and create NahHost from multiple candidate paths.
      * Searches paths in order, returns first valid NAH root found.
-     * 
+     *
      * @param search_paths Candidate paths (empty strings skipped)
      * @return NahHost instance, or nullptr if no valid root found
-     * 
+     *
      * Example:
      *   auto host = NahHost::discover({
      *       std::getenv("NAH_ROOT"),
@@ -109,7 +136,7 @@ public:
     /**
      * Check if a directory is a valid NAH root.
      * A valid root must exist and contain the required directory structure.
-     * 
+     *
      * @param path Directory to check
      * @return true if valid NAH root with required directories
      */
@@ -219,7 +246,7 @@ public:
     nah::core::CompositionResult composeComponentLaunch(
         const std::string& uri,
         const std::string& referrer_uri = "") const;
-    
+
     /**
      * Execute a component via URI
      * @param uri Component URI
@@ -233,14 +260,14 @@ public:
         const std::string& referrer_uri = "",
         const std::vector<std::string>& args = {},
         std::function<void(const std::string&)> output_handler = nullptr) const;
-    
+
     /**
      * Check if a component URI can be handled
      * @param uri Component URI
      * @return true if a component can handle this URI
      */
     bool canHandleComponentUri(const std::string& uri) const;
-    
+
     /**
      * List all components across all installed applications
      * @return Vector of (app_id, component) pairs
@@ -501,12 +528,13 @@ inline int NahHost::executeApplication(
 
 inline int NahHost::executeContract(
     const nah::core::LaunchContract& contract,
-    const std::vector<std::string>& /* args */,
+    const std::vector<std::string>& args,
     std::function<void(const std::string&)> output_handler) const {
 
-    // Use nah::exec::execute which takes the contract directly
-    // Note: args parameter reserved for future use (appending to contract arguments)
-    auto exec_result = nah::exec::execute(contract);
+    auto effective_contract = contract;
+    effective_contract.execution.arguments.insert(
+        effective_contract.execution.arguments.end(), args.begin(), args.end());
+    auto exec_result = nah::exec::execute(effective_contract);
 
     if (!exec_result.ok) {
         if (output_handler) {
@@ -550,26 +578,43 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
                 auto result = nah::json::parse_runtime_descriptor(*runtime_content, entry);
                 if (result.ok) {
                     result.value.source_path = entry;
-                    
+
                     // Resolve relative paths to absolute (for sandbox/portability support)
                     if (!result.value.paths.root.empty() && !nah::fs::is_absolute_path(result.value.paths.root)) {
                         result.value.paths.root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.root));
                     }
-                    
+                    const auto runtime_root = detail::resolve_within(root_, result.value.paths.root);
+                    if (!runtime_root) {
+                        continue;
+                    }
+                    result.value.paths.root = *runtime_root;
+
                     // Resolve relative lib_dirs
                     for (auto& lib_dir : result.value.paths.lib_dirs) {
                         if (!lib_dir.empty() && !nah::fs::is_absolute_path(lib_dir)) {
                             lib_dir = nah::fs::absolute_path(nah::fs::join_paths(result.value.paths.root, lib_dir));
                         }
+                        const auto resolved = detail::resolve_within(result.value.paths.root, lib_dir);
+                        if (!resolved) {
+                            lib_dir.clear();
+                        } else {
+                            lib_dir = *resolved;
+                        }
                     }
-                    
+
                     // Resolve relative loader exec_paths
                     for (auto& [name, loader] : result.value.loaders) {
                         if (!loader.exec_path.empty() && !nah::fs::is_absolute_path(loader.exec_path)) {
                             loader.exec_path = nah::fs::absolute_path(nah::fs::join_paths(result.value.paths.root, loader.exec_path));
                         }
+                        const auto resolved = detail::resolve_within(result.value.paths.root, loader.exec_path);
+                        if (!resolved) {
+                            loader.exec_path.clear();
+                        } else {
+                            loader.exec_path = *resolved;
+                        }
                     }
-                    
+
                     inventory.runtimes[record_ref] = result.value;
                 }
             }
@@ -649,6 +694,11 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
         if (!result.value.paths.install_root.empty() && !nah::fs::is_absolute_path(result.value.paths.install_root)) {
             result.value.paths.install_root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.install_root));
         }
+        const auto install_root = detail::resolve_within(root_, result.value.paths.install_root);
+        if (!install_root) {
+            return std::nullopt;
+        }
+        result.value.paths.install_root = *install_root;
         return result.value;
     }
 
@@ -675,11 +725,11 @@ inline std::string NahHost::extractMetadataJson(const std::string& app_dir) cons
 
     try {
         auto j = nah::json::json::parse(*json_content);
-        
+
         if (j.contains("app") && j["app"].is_object()) {
             j = j["app"];
         }
-        
+
         if (j.contains("metadata") && j["metadata"].is_object()) {
             return j["metadata"].dump();
         }
@@ -697,16 +747,16 @@ inline std::string NahHost::extractMetadataJson(const std::string& app_dir) cons
 inline bool matches_uri_pattern(const std::string& pattern, const std::string& uri) {
     auto pattern_parsed = nah::core::parse_component_uri(pattern);
     auto uri_parsed = nah::core::parse_component_uri(uri);
-    
+
     if (!pattern_parsed.valid || !uri_parsed.valid) {
         return false;
     }
-    
+
     // App IDs must match
     if (pattern_parsed.app_id != uri_parsed.app_id) {
         return false;
     }
-    
+
     // Check if pattern ends with wildcard
     if (pattern_parsed.component_path.size() >= 2 &&
         pattern_parsed.component_path.substr(pattern_parsed.component_path.size() - 2) == "/*") {
@@ -714,7 +764,9 @@ inline bool matches_uri_pattern(const std::string& pattern, const std::string& u
         std::string prefix = pattern_parsed.component_path.substr(
             0, pattern_parsed.component_path.size() - 2
         );
-        return uri_parsed.component_path.substr(0, prefix.size()) == prefix;
+        return uri_parsed.component_path.size() > prefix.size() &&
+               uri_parsed.component_path.compare(0, prefix.size(), prefix) == 0 &&
+               uri_parsed.component_path[prefix.size()] == '/';
     } else {
         // Exact match
         return pattern_parsed.component_path == uri_parsed.component_path;
@@ -724,7 +776,7 @@ inline bool matches_uri_pattern(const std::string& pattern, const std::string& u
 inline nah::core::CompositionResult NahHost::composeComponentLaunch(
     const std::string& uri,
     const std::string& referrer_uri) const {
-    
+
     // 1. Parse URI
     auto parsed = nah::core::parse_component_uri(uri);
     if (!parsed.valid) {
@@ -734,7 +786,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         result.critical_error_context = "Invalid component URI: " + uri;
         return result;
     }
-    
+
     // 2. Find application
     auto app_info = findApplication(parsed.app_id);
     if (!app_info) {
@@ -744,7 +796,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         result.critical_error_context = "Application not found: " + parsed.app_id;
         return result;
     }
-    
+
     // 3. Load app manifest to get components
     auto app_decl = loadAppManifest(app_info->install_root);
     if (!app_decl) {
@@ -754,7 +806,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         result.critical_error_context = "Failed to load app manifest";
         return result;
     }
-    
+
     // 4. Match component by URI pattern
     nah::core::ComponentDecl* matched_component = nullptr;
     for (auto& comp : app_decl->components) {
@@ -763,7 +815,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
             break;  // First match wins
         }
     }
-    
+
     if (!matched_component) {
         nah::core::CompositionResult result;
         result.ok = false;
@@ -771,24 +823,24 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         result.critical_error_context = "No component matches URI: " + uri;
         return result;
     }
-    
+
     // 5. Create modified app declaration with component entrypoint
     //    We reuse nah_compose by creating a temporary AppDeclaration
     //    with the component's entrypoint
     nah::core::AppDeclaration component_app = *app_decl;
     component_app.entrypoint_path = matched_component->entrypoint;
-    
+
     // Override loader if component specifies one
     if (!matched_component->loader.empty()) {
         component_app.nak_loader = matched_component->loader;
     }
-    
+
     // Merge component-specific environment
     for (const auto& [key, value] : matched_component->environment) {
         // Convert to KEY=value format
         component_app.env_vars.push_back(key + "=" + value.value);
     }
-    
+
     // Merge component-specific permissions
     component_app.permissions_filesystem.insert(
         component_app.permissions_filesystem.end(),
@@ -800,7 +852,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         matched_component->permissions_network.begin(),
         matched_component->permissions_network.end()
     );
-    
+
     // 6. Get install record (need for nah_compose)
     auto install_record = loadInstallRecord(app_info->record_path);
     if (!install_record) {
@@ -810,29 +862,29 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
         result.critical_error_context = "Failed to load install record";
         return result;
     }
-    
+
     // Override pinned loader if component specifies one
     if (!matched_component->loader.empty()) {
         install_record->nak.loader = matched_component->loader;
     }
-    
+
     // 7. Get host environment and inventory
     auto host_env = getHostEnvironment();
     auto inventory = getInventory();
-    
+
     // 8. Compose using the standard nah_compose function
     nah::core::CompositionOptions comp_opts;
     auto result = nah::core::nah_compose(component_app, host_env, *install_record, inventory, comp_opts);
-    
+
     if (!result.ok) {
         return result;
     }
-    
+
     // 9. Inject component-specific environment variables
     result.contract.environment["NAH_COMPONENT_ID"] = matched_component->id;
     result.contract.environment["NAH_COMPONENT_URI"] = uri;
     result.contract.environment["NAH_COMPONENT_PATH"] = parsed.component_path;
-    
+
     if (!parsed.query.empty()) {
         result.contract.environment["NAH_COMPONENT_QUERY"] = parsed.query;
     }
@@ -842,7 +894,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
     if (!referrer_uri.empty()) {
         result.contract.environment["NAH_COMPONENT_REFERRER"] = referrer_uri;
     }
-    
+
     return result;
 }
 
@@ -851,7 +903,7 @@ inline int NahHost::launchComponent(
     const std::string& referrer_uri,
     const std::vector<std::string>& args,
     std::function<void(const std::string&)> output_handler) const {
-    
+
     auto result = composeComponentLaunch(uri, referrer_uri);
     if (!result.ok) {
         if (output_handler) {
@@ -859,7 +911,7 @@ inline int NahHost::launchComponent(
         }
         return 1;
     }
-    
+
     return executeContract(result.contract, args, output_handler);
 }
 
@@ -868,31 +920,31 @@ inline bool NahHost::canHandleComponentUri(const std::string& uri) const {
     if (!parsed.valid) {
         return false;
     }
-    
+
     auto app_info = findApplication(parsed.app_id);
     if (!app_info) {
         return false;
     }
-    
+
     auto app_decl = loadAppManifest(app_info->install_root);
     if (!app_decl || app_decl->components.empty()) {
         return false;
     }
-    
+
     // Check if any component matches
     for (const auto& comp : app_decl->components) {
         if (matches_uri_pattern(comp.uri_pattern, uri)) {
             return true;
         }
     }
-    
+
     return false;
 }
 
-inline std::vector<std::pair<std::string, nah::core::ComponentDecl>> 
+inline std::vector<std::pair<std::string, nah::core::ComponentDecl>>
 NahHost::listAllComponents() const {
     std::vector<std::pair<std::string, nah::core::ComponentDecl>> result;
-    
+
     auto apps = listApplications();
     for (const auto& app : apps) {
         auto manifest = loadAppManifest(app.install_root);
@@ -902,7 +954,7 @@ NahHost::listAllComponents() const {
             }
         }
     }
-    
+
     return result;
 }
 

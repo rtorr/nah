@@ -17,8 +17,9 @@ def get_version():
 class NahConan(ConanFile):
     name = "nah"
     version = get_version()
+    package_type = "header-library"
     license = "MIT"
-    author = "Ryan Torr"
+    author = "rtorr <rtorruellas@gmail.com>"
     url = "https://github.com/rtorr/nah"
     description = "Native Application Host - deterministic launch contracts for native applications"
     topics = (
@@ -52,7 +53,7 @@ class NahConan(ConanFile):
 
     def requirements(self):
         # Required for the header-only library
-        self.requires("nlohmann_json/3.11.3")
+        self.requires("nlohmann_json/3.11.3", transitive_headers=True)
 
         # Required for tools (CLI)
         if self.options.build_tools:
@@ -133,10 +134,11 @@ class NahConan(ConanFile):
 
         # Headers
         self.cpp_info.includedirs = ["include"]
+        self.cpp_info.requires = ["nlohmann_json::nlohmann_json"]
 
         # Requires C++17
         self.cpp_info.cxxflags = []
-        self.cpp_info.set_property("cmake_target_name", "nah::core")
+        self.cpp_info.set_property("cmake_target_name", "NAH::nah")
 
         # Define NAH_CORE for consuming packages
         self.cpp_info.defines = []

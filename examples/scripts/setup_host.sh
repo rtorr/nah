@@ -53,6 +53,10 @@ echo ""
 
 # Clean if requested
 if [ "${CLEAN_ROOT:-0}" = "1" ] && [ -d "$NAH_ROOT" ]; then
+    if [ -z "$NAH_ROOT" ] || [ "$NAH_ROOT" = "/" ]; then
+        log_error "Refusing to clean an unsafe root"
+        exit 1
+    fi
     log_info "Cleaning existing NAH root..."
     rm -rf "$NAH_ROOT"
 fi
@@ -61,14 +65,10 @@ fi
 log_info "Creating NAH root structure..."
 mkdir -p "$NAH_ROOT"/{apps,naks,host,registry/{apps,naks}}
 
-# Copy nah.json (host configuration) if it exists
+# The runtime reads its host environment from host/host.json.
 if [ -f "$EXAMPLES_DIR/host/nah.json" ]; then
-    cp "$EXAMPLES_DIR/host/nah.json" "$NAH_ROOT/host/nah.json"
-    log_success "Copied nah.json (host configuration)"
-elif [ -f "$EXAMPLES_DIR/host/host.json" ]; then
-    # Backward compatibility - old filename
-    cp "$EXAMPLES_DIR/host/host.json" "$NAH_ROOT/host/nah.json"
-    log_success "Copied host.json (renamed to nah.json)"
+    cp "$EXAMPLES_DIR/host/nah.json" "$NAH_ROOT/host/host.json"
+    log_success "Installed host environment"
 fi
 
 # Install NAKs

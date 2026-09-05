@@ -31,6 +31,15 @@ namespace nah::cli::commands
 
             std::string target_dir = init_opts.dir;
 
+            const int selected_types = static_cast<int>(init_opts.as_app) +
+                                       static_cast<int>(init_opts.as_nak) +
+                                       static_cast<int>(init_opts.as_host);
+            if (selected_types > 1)
+            {
+                print_error("Choose only one of --app, --nak, or --host", opts.json);
+                return 1;
+            }
+
             // Determine type
             std::string type = "app"; // Default
             if (init_opts.as_nak)
@@ -49,6 +58,11 @@ namespace nah::cli::commands
                     dirname = dir_path.parent_path().filename().string();
                 }
                 id = "com.example." + dirname;
+            }
+            if (type != "host" && !is_valid_package_id(id))
+            {
+                print_error("Package id may contain only letters, digits, '.', '_', and '-'", opts.json);
+                return 1;
             }
 
             // Determine manifest filename based on type
@@ -81,12 +95,13 @@ namespace nah::cli::commands
 
             if (type == "app")
             {
-                manifest["id"] = id;
-                manifest["version"] = "0.1.0";
-                manifest["entrypoint_path"] = "bin/app";
+                manifest["$schema"] = "https://nah.rtorr.com/schemas/nap.v1.json";
+                manifest["app"]["identity"]["id"] = id;
+                manifest["app"]["identity"]["version"] = "0.1.0";
+                manifest["app"]["execution"]["entrypoint"] = "bin/app";
                 if (!init_opts.name.empty())
                 {
-                    manifest["name"] = init_opts.name;
+                    manifest["app"]["metadata"]["name"] = init_opts.name;
                 }
 
                 // Create bin directory with placeholder
@@ -100,12 +115,13 @@ namespace nah::cli::commands
             }
             else if (type == "nak")
             {
-                manifest["id"] = id;
-                manifest["version"] = "0.1.0";
-                manifest["lib_dirs"] = nlohmann::json::array({"lib"});
+                manifest["$schema"] = "https://nah.rtorr.com/schemas/nak.v1.json";
+                manifest["nak"]["identity"]["id"] = id;
+                manifest["nak"]["identity"]["version"] = "0.1.0";
+                manifest["nak"]["paths"]["lib_dirs"] = nlohmann::json::array({"lib"});
                 if (!init_opts.name.empty())
                 {
-                    manifest["name"] = init_opts.name;
+                    manifest["nak"]["metadata"]["name"] = init_opts.name;
                 }
 
                 // Create lib directory
@@ -113,7 +129,9 @@ namespace nah::cli::commands
             }
             else if (type == "host")
             {
-                manifest["root"] = "./nah_root";
+                manifest["$schema"] = "https://nah.rtorr.com/schemas/nah.v1.json";
+                manifest["host"]["root"] = "./nah_root";
+                manifest["host"]["environment"] = nlohmann::json::object();
                 manifest["install"] = nlohmann::json::array();
 
                 // Create host directory with empty host.json
@@ -148,18 +166,17 @@ namespace nah::cli::commands
                 std::cout << "Next steps:" << std::endl;
                 if (type == "app")
                 {
-                    std::cout << "  nah run .              # Run from source (dev mode)" << std::endl;
-                    std::cout << "  nah pack .             # Create .nap package" << std::endl;
-                    std::cout << "  nah install .          # Pack and install" << std::endl;
+                    std::cout << "  nah pack .             # Create a .nap package" << std::endl;
+                    std::cout << "  nah install .          # Install the app directory" << std::endl;
                 }
                 else if (type == "nak")
                 {
-                    std::cout << "  nah pack .             # Create .nak package" << std::endl;
-                    std::cout << "  nah install .          # Pack and install" << std::endl;
+                    std::cout << "  nah pack .             # Create a .nak package" << std::endl;
+                    std::cout << "  nah install .          # Install the NAK directory" << std::endl;
                 }
                 else
                 {
-                    std::cout << "  nah host install .     # Set up NAH root" << std::endl;
+                    std::cout << "  Copy host/host.json into an existing NAH root." << std::endl;
                 }
             }
 

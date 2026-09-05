@@ -1,14 +1,14 @@
 /*
  * NAH Overrides - Override Parsing and Application
- * 
- * This file provides helpers for parsing and applying NAH_OVERRIDE_* 
+ *
+ * This file provides helpers for parsing and applying NAH_OVERRIDE_*
  * environment variables. It uses nlohmann/json for JSON parsing.
- * 
+ *
  * Include this header if you want automatic override handling.
  * Otherwise, implement override parsing yourself and modify the
  * CompositionResult.contract.environment after calling nah_compose().
- * 
- * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef NAH_OVERRIDES_H
@@ -61,38 +61,38 @@ struct EnvOverrideParseResult {
 
 /**
  * Parse NAH_OVERRIDE_ENVIRONMENT from process environment.
- * 
+ *
  * @return Parse result with values or error
  */
 inline EnvOverrideParseResult parse_env_override() {
     EnvOverrideParseResult result;
-    
+
     std::string env_val = detail::safe_getenv("NAH_OVERRIDE_ENVIRONMENT");
     if (env_val.empty()) {
         return result;  // Not present
     }
-    
+
     result.present = true;
-    
+
     // Validate JSON first (no exceptions)
     if (!json::accept(env_val)) {
         result.error = "invalid JSON";
         return result;
     }
-    
+
     // Parse with noexcept overload
     auto j = json::parse(env_val, nullptr, false);
-    
+
     if (j.is_discarded()) {
         result.error = "JSON parse failed";
         return result;
     }
-    
+
     if (!j.is_object()) {
         result.error = "expected object";
         return result;
     }
-    
+
     for (auto& [key, val] : j.items()) {
         if (!val.is_string()) {
             result.error = "value for '" + key + "' must be string";
@@ -100,14 +100,14 @@ inline EnvOverrideParseResult parse_env_override() {
         }
         result.values[key] = val.get<std::string>();
     }
-    
+
     result.ok = true;
     return result;
 }
 
 /**
  * Parse NAH_OVERRIDE_ENVIRONMENT from a provided map (e.g., from N-API).
- * 
+ *
  * @param process_env Map containing environment variables
  * @return Parse result with values or error
  */
@@ -115,35 +115,35 @@ inline EnvOverrideParseResult parse_env_override(
     const std::unordered_map<std::string, std::string>& process_env)
 {
     EnvOverrideParseResult result;
-    
+
     auto it = process_env.find("NAH_OVERRIDE_ENVIRONMENT");
     if (it == process_env.end()) {
         return result;  // Not present
     }
-    
+
     result.present = true;
-    
+
     const std::string& env_val = it->second;
-    
+
     // Validate JSON first (no exceptions)
     if (!json::accept(env_val)) {
         result.error = "invalid JSON";
         return result;
     }
-    
+
     // Parse with noexcept overload
     auto j = json::parse(env_val, nullptr, false);
-    
+
     if (j.is_discarded()) {
         result.error = "JSON parse failed";
         return result;
     }
-    
+
     if (!j.is_object()) {
         result.error = "expected object";
         return result;
     }
-    
+
     for (auto& [key, val] : j.items()) {
         if (!val.is_string()) {
             result.error = "value for '" + key + "' must be string";
@@ -151,7 +151,7 @@ inline EnvOverrideParseResult parse_env_override(
         }
         result.values[key] = val.get<std::string>();
     }
-    
+
     result.ok = true;
     return result;
 }
@@ -184,15 +184,15 @@ inline bool is_key_allowed(const std::string& key, const HostEnvironment& host_e
 
 /**
  * Apply environment overrides to a composition result.
- * 
+ *
  * This function:
  * 1. Parses NAH_OVERRIDE_ENVIRONMENT from process_env
  * 2. Checks if permitted by host environment policy
  * 3. Merges into contract.environment if permitted
  * 4. Emits warnings on parse errors or denied overrides
- * 
+ *
  * Call this after nah_compose() to apply overrides.
- * 
+ *
  * @param result Composition result to modify
  * @param host_env Host environment with override policy
  * @param process_env Process environment map
@@ -205,13 +205,13 @@ inline void apply_overrides(
     if (!result.ok) {
         return;  // Don't apply overrides to failed compositions
     }
-    
+
     auto parsed = parse_env_override(process_env);
-    
+
     if (!parsed.present) {
         return;  // No override to apply
     }
-    
+
     if (!parsed.ok) {
         // Parse failure
         result.warnings.push_back({
@@ -226,7 +226,7 @@ inline void apply_overrides(
         });
         return;
     }
-    
+
     // Check global override permission
     if (!host_env.overrides.allow_env_overrides) {
         result.warnings.push_back({
@@ -241,7 +241,7 @@ inline void apply_overrides(
         });
         return;
     }
-    
+
     // Apply overrides, checking per-key permissions
     for (const auto& [key, value] : parsed.values) {
         if (is_key_allowed(key, host_env)) {
@@ -263,9 +263,9 @@ inline void apply_overrides(
 
 /**
  * Apply environment overrides using actual process environment.
- * 
+ *
  * Convenience overload that reads from std::getenv().
- * 
+ *
  * @param result Composition result to modify
  * @param host_env Host environment with override policy
  */
@@ -274,13 +274,13 @@ inline void apply_overrides(CompositionResult& result, const HostEnvironment& ho
     if (!result.ok) {
         return;
     }
-    
+
     auto parsed = parse_env_override();
-    
+
     if (!parsed.present) {
         return;
     }
-    
+
     if (!parsed.ok) {
         result.warnings.push_back({
             warning_to_string(Warning::override_invalid),
@@ -294,7 +294,7 @@ inline void apply_overrides(CompositionResult& result, const HostEnvironment& ho
         });
         return;
     }
-    
+
     if (!host_env.overrides.allow_env_overrides) {
         result.warnings.push_back({
             warning_to_string(Warning::override_denied),
@@ -308,7 +308,7 @@ inline void apply_overrides(CompositionResult& result, const HostEnvironment& ho
         });
         return;
     }
-    
+
     for (const auto& [key, value] : parsed.values) {
         if (is_key_allowed(key, host_env)) {
             result.contract.environment[key] = value;

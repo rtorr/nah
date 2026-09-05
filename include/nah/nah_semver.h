@@ -1,22 +1,22 @@
 /**
  * NAH Semver - Semantic Versioning 2.0.0 Support
- * 
+ *
  * Header-only implementation providing:
  * - Version parsing and comparison
  * - Version range parsing (>=, <, ^, ~, etc.)
  * - Range satisfaction checking
- * 
+ *
  * Usage:
  *   #include <nah/nah_semver.h>
- *   
+ *
  *   auto version = nah::semver::parse_version("1.2.3");
  *   auto range = nah::semver::parse_range(">=1.0.0 <2.0.0");
- *   
+ *
  *   if (version && range && nah::semver::satisfies(*version, *range)) {
  *       // Version satisfies the range
  *   }
- * 
- * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef NAH_SEMVER_H
@@ -42,7 +42,7 @@ namespace semver {
 
 /**
  * Semantic version (MAJOR.MINOR.PATCH[-prerelease][+build])
- * 
+ *
  * Implements SemVer 2.0.0 comparison rules:
  * - Major.minor.patch compared numerically
  * - Prerelease versions have lower precedence than normal
@@ -67,8 +67,8 @@ public:
     const std::string& build() const { return build_; }
 
     std::string str() const {
-        std::string s = std::to_string(major_) + "." + 
-                        std::to_string(minor_) + "." + 
+        std::string s = std::to_string(major_) + "." +
+                        std::to_string(minor_) + "." +
                         std::to_string(patch_);
         if (!prerelease_.empty()) s += "-" + prerelease_;
         if (!build_.empty()) s += "+" + build_;
@@ -77,7 +77,7 @@ public:
 
     // Comparison operators (SemVer 2.0.0 precedence rules)
     bool operator==(const Version& o) const {
-        return major_ == o.major_ && minor_ == o.minor_ && 
+        return major_ == o.major_ && minor_ == o.minor_ &&
                patch_ == o.patch_ && prerelease_ == o.prerelease_;
     }
     bool operator!=(const Version& o) const { return !(*this == o); }
@@ -351,19 +351,19 @@ inline std::optional<ComparatorSet> expand_tilde(const std::string& version_str)
     return set;
 }
 
-// Parse X-range: 1.x, 1.2.x, * 
+// Parse X-range: 1.x, 1.2.x, *
 inline std::optional<ComparatorSet> expand_x_range(const std::string& str) {
     std::string s = trim(str);
-    
+
     // * or x means any version
     if (s == "*" || s == "x" || s == "X") {
         return ComparatorSet{}; // Empty set = match anything
     }
-    
+
     // Check for x/X in version
     auto parts = split(s, ".");
     if (parts.empty()) return std::nullopt;
-    
+
     try {
         if (parts.size() == 1 || (parts.size() >= 2 && (parts[1] == "x" || parts[1] == "X" || parts[1] == "*"))) {
             // 1.x or 1.* -> >=1.0.0 <2.0.0
@@ -373,7 +373,7 @@ inline std::optional<ComparatorSet> expand_x_range(const std::string& str) {
             set.push_back({Comparator::Lt, Version(major + 1, 0, 0)});
             return set;
         }
-        
+
         if (parts.size() >= 3 && (parts[2] == "x" || parts[2] == "X" || parts[2] == "*")) {
             // 1.2.x or 1.2.* -> >=1.2.0 <1.3.0
             uint64_t major = std::stoull(parts[0]);
@@ -386,17 +386,17 @@ inline std::optional<ComparatorSet> expand_x_range(const std::string& str) {
     } catch (...) {
         return std::nullopt;
     }
-    
+
     return std::nullopt;
 }
 
 inline std::optional<Constraint> parse_constraint(const std::string& str) {
     std::string s = trim(str);
     if (s.empty()) return std::nullopt;
-    
+
     Comparator op = Comparator::Eq;
     std::string version_str;
-    
+
     if (s.rfind(">=", 0) == 0) {
         op = Comparator::Ge;
         version_str = s.substr(2);
@@ -416,10 +416,10 @@ inline std::optional<Constraint> parse_constraint(const std::string& str) {
         op = Comparator::Eq;
         version_str = s;
     }
-    
+
     version_str = trim(version_str);
     if (version_str.empty()) return std::nullopt;
-    
+
     auto version = parse_version_impl(version_str);
     if (!version) return std::nullopt;
     return Constraint{op, *version};
@@ -428,28 +428,28 @@ inline std::optional<Constraint> parse_constraint(const std::string& str) {
 inline std::optional<ComparatorSet> parse_comparator_set(const std::string& str) {
     std::string s = trim(str);
     if (s.empty()) return ComparatorSet{}; // Empty = match all
-    
+
     // Check for caret range
     if (s[0] == '^') {
         return expand_caret(s.substr(1));
     }
-    
+
     // Check for tilde range
     if (s[0] == '~') {
         return expand_tilde(s.substr(1));
     }
-    
+
     // Check for X-range
-    if (s.find('x') != std::string::npos || s.find('X') != std::string::npos || 
+    if (s.find('x') != std::string::npos || s.find('X') != std::string::npos ||
         s.find('*') != std::string::npos || s == "*") {
         auto expanded = expand_x_range(s);
         if (expanded) return expanded;
     }
-    
+
     // Parse as space-separated constraints
     auto tokens = tokenize(s);
     if (tokens.empty()) return ComparatorSet{};
-    
+
     ComparatorSet set;
     for (const auto& token : tokens) {
         // Handle caret/tilde within compound ranges
@@ -478,7 +478,7 @@ inline std::optional<ComparatorSet> parse_comparator_set(const std::string& str)
 
 inline std::optional<Version> VersionRange::min_version() const {
     std::optional<Version> min;
-    
+
     for (const auto& set : sets) {
         for (const auto& constraint : set) {
             if (constraint.op == Comparator::Ge || constraint.op == Comparator::Eq ||
@@ -489,7 +489,7 @@ inline std::optional<Version> VersionRange::min_version() const {
             }
         }
     }
-    
+
     return min;
 }
 
@@ -510,17 +510,17 @@ inline std::optional<Version> parse_version(const std::string& str) {
 inline std::optional<VersionRange> parse_range(const std::string& str) {
     std::string s = detail::trim(str);
     if (s.empty()) return std::nullopt;
-    
+
     // Split by || for OR
     auto or_parts = detail::split(s, "||");
-    
+
     VersionRange range;
     for (const auto& part : or_parts) {
         auto set = detail::parse_comparator_set(detail::trim(part));
         if (!set) return std::nullopt;
         range.sets.push_back(*set);
     }
-    
+
     if (range.sets.empty()) return std::nullopt;
     return range;
 }
@@ -544,7 +544,7 @@ inline bool satisfies(const Version& version, const Constraint& constraint) {
 inline bool satisfies(const Version& version, const ComparatorSet& set) {
     // Empty set matches everything
     if (set.empty()) return true;
-    
+
     // All constraints in a set must be satisfied (AND)
     for (const auto& constraint : set) {
         if (!satisfies(version, constraint)) {
@@ -557,7 +557,7 @@ inline bool satisfies(const Version& version, const ComparatorSet& set) {
 inline bool satisfies(const Version& version, const VersionRange& range) {
     // Empty range matches nothing
     if (range.sets.empty()) return false;
-    
+
     // Any set in the range must be satisfied (OR)
     for (const auto& set : range.sets) {
         if (satisfies(version, set)) {
@@ -572,7 +572,7 @@ inline std::optional<Version> select_best(
     const VersionRange& range)
 {
     std::optional<Version> best;
-    
+
     for (const auto& v : versions) {
         if (satisfies(v, range)) {
             if (!best || v > *best) {
@@ -580,7 +580,7 @@ inline std::optional<Version> select_best(
             }
         }
     }
-    
+
     return best;
 }
 
@@ -590,14 +590,14 @@ inline std::optional<Version> select_best(
 
 /**
  * Select the best matching NAK from inventory for a given requirement.
- * 
+ *
  * This is used at install time to determine which NAK version to pin.
- * 
+ *
  * @param inventory Available NAK runtimes (from RuntimeInventory.runtimes)
  * @param nak_id Required NAK ID (e.g., "lua", "node")
  * @param version_req Version requirement string (e.g., ">=5.4.0", "^20.0.0")
  * @return Selection result with best matching version or error
- * 
+ *
  * Example:
  *   // inventory maps "lua@5.4.6.json" -> RuntimeDescriptor{nak.id="lua", nak.version="5.4.6"}
  *   auto result = select_nak_for_install(inventory, "lua", ">=5.4.0");
@@ -619,7 +619,7 @@ struct NakSelectionResult {
 
 /**
  * Select best NAK from a map of record_ref -> (id, version) pairs.
- * 
+ *
  * @tparam RuntimeMap Map type with .first=record_ref, .second having .nak.id and .nak.version
  */
 template<typename RuntimeMap>
@@ -630,50 +630,50 @@ inline NakSelectionResult select_nak_from_inventory(
 {
     NakSelectionResult result;
     result.nak_id = nak_id;
-    
+
     // Parse version requirement
     auto range = parse_range(version_req);
     if (!range) {
         result.error = "Invalid version requirement: " + version_req;
         return result;
     }
-    
+
     // Find all matching versions
     std::vector<std::pair<Version, std::string>> matches; // (version, record_ref)
-    
+
     for (const auto& [record_ref, runtime] : runtimes) {
         // Check if this runtime matches the NAK ID
         if (runtime.nak.id != nak_id) {
             continue;
         }
-        
+
         // Parse the runtime version
         auto version = parse_version(runtime.nak.version);
         if (!version) {
             continue; // Skip invalid versions
         }
-        
+
         // Check if it satisfies the requirement
         if (satisfies(*version, *range)) {
             matches.push_back({*version, record_ref});
             result.candidates.push_back(runtime.nak.version);
         }
     }
-    
+
     if (matches.empty()) {
         result.error = "No NAK found matching " + nak_id + " " + version_req;
         return result;
     }
-    
+
     // Select the highest matching version
     auto best = std::max_element(matches.begin(), matches.end(),
         [](const auto& a, const auto& b) { return a.first < b.first; });
-    
+
     result.found = true;
     result.nak_version = best->first.str();
     result.record_ref = best->second;
     result.selection_reason = "highest_matching_version";
-    
+
     return result;
 }
 

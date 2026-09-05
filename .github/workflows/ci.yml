@@ -12,9 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             name: Linux
-          - os: macos-latest
+          - os: macos-15-intel
             name: macOS
           - os: windows-latest
             name: Windows
@@ -28,22 +28,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install ninja
-
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -51,14 +35,14 @@ jobs:
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         run: |
-          cmake -B build -G Ninja \
+          cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DNAH_ENABLE_TESTS=ON \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNAH_ENABLE_TESTS=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
       - name: Build
         run: cmake --build build
@@ -80,9 +64,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             name: Linux
-          - os: macos-latest
+          - os: macos-15-intel
             name: macOS
 
     name: Conan (${{ matrix.name }})
@@ -114,9 +98,5 @@ jobs:
 
       - name: Check formatting
         run: |
-          # Check for common issues
-          echo "Checking for trailing whitespace..."
-          ! grep -rn '[[:blank:]]$' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/ || echo "Warning: trailing whitespace found"
-
-          echo "Checking for tabs..."
-          ! grep -rn $'\t' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/ || echo "Warning: tabs found"
+          ! grep -rn '[[:blank:]]$' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/
+          ! grep -rn $'\t' --include='*.cpp' --include='*.hpp' --include='*.h' include/ tools/ tests/

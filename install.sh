@@ -75,6 +75,7 @@ get_latest_version() {
 install_nah() {
     ARCHIVE="nah-${PLATFORM}.tar.gz"
     URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+    CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/SHA256SUMS"
 
     echo "Installing NAH ${VERSION} for ${PLATFORM}..."
 
@@ -86,8 +87,28 @@ install_nah() {
     echo "Downloading ${URL}..."
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$URL" -o "${TMP_DIR}/${ARCHIVE}"
+        curl -fsSL "$CHECKSUM_URL" -o "${TMP_DIR}/SHA256SUMS"
     else
         wget -q "$URL" -O "${TMP_DIR}/${ARCHIVE}"
+        wget -q "$CHECKSUM_URL" -O "${TMP_DIR}/SHA256SUMS"
+    fi
+
+    EXPECTED=$(grep "${ARCHIVE}$" "${TMP_DIR}/SHA256SUMS" | awk '{print $1}')
+    if [ -z "$EXPECTED" ]; then
+        echo "Error: Release checksum is missing for ${ARCHIVE}"
+        exit 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL=$(sha256sum "${TMP_DIR}/${ARCHIVE}" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL=$(shasum -a 256 "${TMP_DIR}/${ARCHIVE}" | awk '{print $1}')
+    else
+        echo "Error: sha256sum or shasum is required"
+        exit 1
+    fi
+    if [ "$ACTUAL" != "$EXPECTED" ]; then
+        echo "Error: Checksum verification failed"
+        exit 1
     fi
 
     # Extract
@@ -104,10 +125,7 @@ install_nah() {
 
     chmod +x "$INSTALL_DIR/nah"
 
-    echo ""
-    echo "NAH ${VERSION} installed successfully!"
-    echo ""
-    echo "Run 'nah --help' to get started."
+    echo "NAH ${VERSION} installed. Run 'nah --help' to get started."
 }
 
 main() {

@@ -25,10 +25,11 @@ function Get-LatestVersion {
 
 function Install-Nah {
     $platform = Get-Platform
-    $version = Get-LatestVersion
+    $version = if ($env:VERSION) { $env:VERSION } else { Get-LatestVersion }
 
     $archive = "nah-$platform.zip"
     $url = "https://github.com/$Repo/releases/download/$version/$archive"
+    $checksumUrl = "https://github.com/$Repo/releases/download/$version/SHA256SUMS"
 
     Write-Host "Installing NAH $version for $platform..."
 
@@ -38,16 +39,25 @@ function Install-Nah {
     }
 
     # Download
-    $tempFile = Join-Path $env:TEMP $archive
+    $tempRoot = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    $tempFile = Join-Path $tempRoot $archive
+    $checksumFile = Join-Path $tempRoot "SHA256SUMS"
     Write-Host "Downloading $url..."
     Invoke-WebRequest -Uri $url -OutFile $tempFile
+    Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumFile
+    $line = Get-Content $checksumFile | Where-Object { $_ -match [regex]::Escape($archive) + '$' } | Select-Object -First 1
+    if (!$line) { throw "Release checksum is missing for $archive" }
+    $expected = ($line -split '\s+')[0].ToLowerInvariant()
+    $actual = (Get-FileHash -Algorithm SHA256 $tempFile).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { throw "Checksum verification failed" }
 
     # Extract
     Write-Host "Extracting..."
     Expand-Archive -Path $tempFile -DestinationPath $InstallDir -Force
 
     # Cleanup
-    Remove-Item $tempFile -Force
+    Remove-Item $tempRoot -Recurse -Force
 
     # Add to PATH if not already there
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -57,10 +67,7 @@ function Install-Nah {
         $env:Path = "$env:Path;$InstallDir"
     }
 
-    Write-Host ""
-    Write-Host "NAH $version installed successfully!"
-    Write-Host ""
-    Write-Host "Restart your terminal, then run 'nah --help' to get started."
+    Write-Host "NAH $version installed. Restart your terminal, then run 'nah --help'."
 }
 
 Install-Nah

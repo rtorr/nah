@@ -29,12 +29,12 @@ This directory contains JSON Schema definitions for NAH manifest and record form
 
 - **`app-record.v1.json`** - App Install Record
   - Host-owned record of an installed app instance
-  - Created by `nah app install`, stored in `<nah_root>/registry/apps/`
+  - Created by `nah install`, stored in `<nah_root>/registry/apps/`
   - URL: `https://nah.rtorr.com/schemas/app-record.v1.json`
 
 - **`nak-record.v1.json`** - NAK Install Record
   - Host-owned record of an installed NAK instance
-  - Created by `nah nak install`, stored in `<nah_root>/registry/naks/`
+  - Created by `nah install`, stored in `<nah_root>/registry/naks/`
   - URL: `https://nah.rtorr.com/schemas/nak-record.v1.json`
 
 ## Usage
@@ -120,4 +120,3 @@ Implementations **must** ignore unknown keys to support forward compatibility.
 For complete normative specification of these formats, see:
 - [`SPEC.md`](../../SPEC.md) - Complete NAH specification
 - [`UNIFIED_JSON_ANALYSIS.md`](../../UNIFIED_JSON_ANALYSIS.md) - Design analysis and rationale
-

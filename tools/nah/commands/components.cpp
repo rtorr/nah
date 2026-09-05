@@ -20,25 +20,25 @@ struct ComponentsOptions {
 
 int cmd_components(const GlobalOptions& opts, const ComponentsOptions& comp_opts) {
     init_warning_collector(opts.json, opts.quiet);
-    
+
     std::string nah_root = resolve_nah_root(
         opts.root.empty() ? std::nullopt : std::make_optional(opts.root));
-    
+
     auto host = nah::host::NahHost::create(nah_root);
     if (!host) {
         print_error("Failed to initialize NAH host", opts.json);
         return 1;
     }
-    
+
     auto all_components = host->listAllComponents();
-    
+
     if (all_components.empty()) {
         if (!opts.json && !opts.quiet) {
             std::cout << "No components found\n";
         }
         return 0;
     }
-    
+
     // Filter by app if specified
     std::vector<std::pair<std::string, nah::core::ComponentDecl>> filtered;
     if (!comp_opts.app_filter.empty()) {
@@ -50,7 +50,7 @@ int cmd_components(const GlobalOptions& opts, const ComponentsOptions& comp_opts
     } else {
         filtered = all_components;
     }
-    
+
     if (opts.json) {
         // JSON output
         nlohmann::json output = nlohmann::json::array();
@@ -76,7 +76,7 @@ int cmd_components(const GlobalOptions& opts, const ComponentsOptions& comp_opts
                 std::cout << "\n" << app_id << ":\n";
                 current_app = app_id;
             }
-            
+
             std::cout << "  " << comp.id;
             if (!comp.name.empty()) {
                 std::cout << " (" << comp.name << ")";
@@ -89,19 +89,19 @@ int cmd_components(const GlobalOptions& opts, const ComponentsOptions& comp_opts
             }
         }
     }
-    
+
     return 0;
 }
 
 } // namespace
 
 void register_components_command(CLI::App& app, GlobalOptions& opts) {
-    ComponentsOptions comp_opts;
-    
+    static ComponentsOptions comp_opts;
+
     auto cmd = app.add_subcommand("components", "List all components");
     cmd->add_option("--app", comp_opts.app_filter, "Filter by app ID");
-    
-    cmd->callback([&]() {
+
+    cmd->callback([&opts]() {
         std::exit(cmd_components(opts, comp_opts));
     });
 }

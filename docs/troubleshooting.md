@@ -28,7 +28,7 @@ hint: Initialize a new NAH root with: nah init root /nah
 **Cause:** NAH looks for a root directory but none exists or was specified.
 
 **Solutions:**
-1. Create a new host: `nah init host /path/to/nah`
+1. Create a host scaffold: `nah init --host /path/to/project`
 2. Specify an existing root: `nah --root /existing/nah list`
 3. Set the environment variable: `export NAH_ROOT=/path/to/nah`
 4. Run from within a directory containing `host/` or `.nah/`

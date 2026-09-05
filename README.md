@@ -1,132 +1,79 @@
-# NAH - Native Application Host
+# NAH
 
 [![CI](https://github.com/rtorr/nah/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorr/nah/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-API-blue)](https://nah.rtorr.com/)
 
-NAH is a launch contract system for native applications.
+NAH composes native application metadata into an explicit launch contract: executable, arguments, environment, library paths, runtime selection, and trust state. It can inspect that contract or execute it.
 
-When you deploy a native application, someone must figure out how to launch it: which binary, what library paths, which environment variables, what SDK version. This information typically lives in documentation that drifts, install scripts that diverge, or tribal knowledge that doesn't scale.
+The project intentionally covers local, filesystem-backed packages. It does not fetch packages, resolve remote registries, verify signatures, or enforce declared permissions. Those are host or distribution-system responsibilities.
 
-NAH eliminates this by making applications self-describing. Apps declare what they need. SDKs declare what they provide. Hosts declare policy. NAH composes these into a launch contract - the exact parameters needed to run the application.
+## Quick start
 
-## Example
-
-```bash
-# Install packages
-nah install vendor-sdk-2.1.0.nak
-nah install myapp-1.0.0.nap
-
-# List installed packages
-nah list
-```
-
-```
-Apps:
-  com.example.myapp@1.0.0 (nak: com.vendor.sdk)
-
-NAKs:
-  com.vendor.sdk@2.1.0
-```
+Build with CMake 3.21+ and a C++17 compiler:
 
 ```bash
-# Run an application
-nah run com.example.myapp
+cmake -S . -B build -DNAH_ENABLE_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-The contract is deterministic. Same inputs, same output. Auditable before execution.
-
-## CLI
-
-```
-nah install <source>      Install app (.nap) or NAK (.nak)
-nah uninstall <id>        Remove a package
-nah list                  List installed packages
-nah run <id>              Run an installed application
-nah pack <dir>            Create a package from directory
-nah show <id>             Show installed package details
-nah init <type> <dir>     Create new project (app, nak, host)
-```
-
-## Installation
-
-**macOS / Linux:**
+Create and run a standalone app:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtorr/nah/main/install.sh | sh
+build/tools/nah/nah init --app --id com.example.hello hello
+build/tools/nah/nah pack hello --output hello.nap
+build/tools/nah/nah --root ./nah-root install hello.nap
+build/tools/nah/nah --root ./nah-root show com.example.hello
+build/tools/nah/nah --root ./nah-root run com.example.hello
+build/tools/nah/nah --root ./nah-root uninstall com.example.hello
 ```
 
-**Windows (PowerShell):**
+Global options such as `--root` precede the subcommand.
 
-```powershell
-irm https://raw.githubusercontent.com/rtorr/nah/main/install.ps1 | iex
-```
+## Package model
 
-**Manual installation:**
+- `.nap` is a gzip-compressed tar archive containing one app and `nap.json`.
+- `.nak` is the same archive format for one local runtime or SDK and `nak.json`.
+- An app may be standalone or request a NAK with a semantic-version range.
+- Installation records pin the highest installed matching NAK version.
+- Packages reject links, special files, path traversal, invalid identities, and oversized content.
 
-Download the appropriate binary from [Releases](https://github.com/rtorr/nah/releases) and add it to your PATH.
+Run `nah <command> --help` for the CLI contract. Manifest schemas live in [`docs/schemas`](docs/schemas), and [`SPEC.md`](SPEC.md) defines composition semantics.
 
-## Library Integration
+## Library
 
-NAH v2.0 is a **header-only library**, making integration simple:
+The public headers require C++17. `NAH::core` is dependency-free composition logic; `NAH::nah` exposes the complete API and depends on nlohmann/json.
 
 ```cmake
 include(FetchContent)
 FetchContent_Declare(nah
     GIT_REPOSITORY https://github.com/rtorr/nah.git
-    GIT_TAG v2.0.0
+    GIT_TAG v2.0.16
 )
 FetchContent_MakeAvailable(nah)
-
-# Link to the interface library
-target_link_libraries(your_target PRIVATE NAH::nah)
+target_link_libraries(my_host PRIVATE NAH::nah)
 ```
 
 ```cpp
 #define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 
-auto host = nah::host::NahHost::create();
-auto result = host->getLaunchContract("com.example.app");
+auto host = nah::host::NahHost::create("./nah-root");
+auto result = host->getLaunchContract("com.example.hello");
 if (result.ok) {
-    nah::exec::exec_replace(result.contract);
+    return host->executeContract(result.contract);
 }
 ```
 
-`nah.h` includes everything. For finer control, include individual headers:
+Installed CMake packages provide the same `NAH::core` and `NAH::nah` targets.
 
-| Header | Description |
-| ------ | ----------- |
-| `nah/nah_core.h` | Pure composition engine (no I/O, no dependencies) |
-| `nah/nah_json.h` | JSON parsing (requires nlohmann/json) |
-| `nah/nah_fs.h` | Filesystem operations |
-| `nah/nah_exec.h` | Process execution |
-| `nah/nah_overrides.h` | NAH\_OVERRIDE\_\* handling |
-| `nah/nah_host.h` | High-level NahHost class |
+## Support
 
-See [Library Headers](docs/README.md#library-headers) for detailed documentation.
+CI covers Linux, macOS, and Windows on x64. Other architectures are best effort until their release jobs are continuously exercised.
 
-## Platform Support
+- [CLI reference](docs/cli.md)
+- [Concepts](docs/concepts.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Contributing](CONTRIBUTING.md)
 
-| Platform           | Status                           |
-| ------------------ | -------------------------------- |
-| Linux (x64, arm64) | Supported                        |
-| macOS (x64, arm64) | Supported                        |
-| Windows            | Code exists, not actively tested |
-| Android            | Planned for future release       |
-
-## Documentation
-
-* [How It Works](docs/how-it-works.md) - Internals of the launch contract system
-* [Concepts](docs/concepts.md) - Core terminology: manifests, NAKs, profiles, contracts
-* [Getting Started: Host](docs/getting-started-host.md) - Set up a host and deploy applications
-* [Getting Started: NAK](docs/getting-started-nak.md) - Package an SDK for distribution
-* [Getting Started: App](docs/getting-started-app.md) - Build an application with a manifest
-* [CLI Reference](docs/cli.md) - Command-line interface documentation
-* [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
-* [Specification](SPEC.md) - Normative specification
-* [Migration Guide](MIGRATION.md) - Migrating to v2.0
-* [Contributing](CONTRIBUTING.md) - Development setup and releasing
-
-## License
-
-MIT
+MIT licensed. See [LICENSE](LICENSE).

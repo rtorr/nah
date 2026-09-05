@@ -1,2 +1,4 @@
 add_subdirectory(unit)
-add_subdirectory(integration)
+if(NAH_ENABLE_TOOLS)
+    add_subdirectory(integration)
+endif()

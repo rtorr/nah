@@ -9,7 +9,6 @@ class NahTestConan(ConanFile):
 
     def requirements(self):
         self.requires(self.tested_reference_str)
-        self.requires("nlohmann_json/3.11.3")
 
     def layout(self):
         cmake_layout(self)

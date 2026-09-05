@@ -34,12 +34,12 @@ endif()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake)
 
-# Common compile options (only for main project to avoid polluting parent)
+# Warning flags are applied only to NAH-owned targets.
 if(NAH_ENABLE_WARNINGS AND NAH_MAIN_PROJECT)
     if(MSVC)
-        add_compile_options(/W4 /permissive- /wd4324)
+        set(NAH_WARNING_FLAGS /W4 /permissive- /wd4324)
     else()
-        add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
+        set(NAH_WARNING_FLAGS -Wall -Wextra -Wconversion -Wsign-conversion)
     endif()
 endif()
 
@@ -51,12 +51,24 @@ endif()
 
 # Header-only library (the core NAH API)
 add_library(nah_core INTERFACE)
+add_library(NAH::core ALIAS nah_core)
+set_target_properties(nah_core PROPERTIES EXPORT_NAME core)
 target_include_directories(nah_core INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 target_compile_features(nah_core INTERFACE cxx_std_17)
-target_link_libraries(nah_core INTERFACE nlohmann_json::nlohmann_json)
+
+add_library(nah_headers INTERFACE)
+add_library(NAH::nah ALIAS nah_headers)
+set_target_properties(nah_headers PROPERTIES EXPORT_NAME nah)
+get_target_property(NAH_NLOHMANN_INCLUDE_DIRS nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(nah_headers INTERFACE
+    $<BUILD_INTERFACE:${NAH_NLOHMANN_INCLUDE_DIRS}>
+)
+target_link_libraries(nah_headers INTERFACE
+    nah_core
+)
 
 if(NAH_ENABLE_TOOLS)
     add_subdirectory(tools)
@@ -70,6 +82,7 @@ endif()
 # Installation
 if(NAH_INSTALL)
     include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
 
     # Install CLI tool
     if(NAH_ENABLE_TOOLS)
@@ -83,4 +96,30 @@ if(NAH_INSTALL)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.h"
     )
+
+    install(TARGETS nah_core nah_headers
+        EXPORT NAHTargets
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+    install(EXPORT NAHTargets
+        FILE NAHTargets.cmake
+        NAMESPACE NAH::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NAH
+    )
+    configure_package_config_file(
+        cmake/NAHConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/NAHConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NAH
+    )
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/NAHConfigVersion.cmake
+        VERSION ${NAH_VERSION_CMAKE}
+        COMPATIBILITY SameMajorVersion
+    )
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/NAHConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/NAHConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NAH
+    )
+    install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/nah)
 endif()

@@ -111,25 +111,31 @@
           },
           "default": {}
         },
-        "loader": {
+        "loaders": {
           "type": "object",
-          "description": "NAK loader configuration (optional)",
-          "additionalProperties": false,
-          "properties": {
-            "exec_path": {
-              "type": "string",
-              "description": "Relative path to loader executable from NAK root",
-              "minLength": 1
-            },
-            "args_template": {
-              "type": "array",
-              "description": "Argument template for loader (supports {NAH_APP_ROOT}, {NAH_NAK_ROOT}, {NAH_APP_ENTRY}, {NAH_APP_ID} placeholders)",
-              "items": {
-                "type": "string"
+          "description": "Named loader configurations",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["exec_path"],
+            "additionalProperties": false,
+            "properties": {
+              "exec_path": {
+                "type": "string",
+                "description": "Relative path to a packaged loader executable",
+                "minLength": 1
               },
-              "default": []
+              "args_template": {
+                "type": "array",
+                "items": {"type": "string"},
+                "default": []
+              }
             }
           }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Informational package metadata",
+          "additionalProperties": {"type": "string"}
         },
         "execution": {
           "type": "object",

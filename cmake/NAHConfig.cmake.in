@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(nlohmann_json 3.11.3)
+include("${CMAKE_CURRENT_LIST_DIR}/NAHTargets.cmake")
+set_property(TARGET NAH::nah APPEND PROPERTY
+    INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)

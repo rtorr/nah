@@ -49,6 +49,7 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
     // Get the launch contract from NahHost
     nah::core::CompositionOptions comp_opts;
     comp_opts.enable_trace = opts.trace;
+    comp_opts.now = nah::core::get_current_timestamp();
     if (!run_opts.loader.empty()) {
         comp_opts.loader_override = run_opts.loader;
     }

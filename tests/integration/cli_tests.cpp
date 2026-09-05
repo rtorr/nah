@@ -1048,7 +1048,7 @@ TEST_CASE("app loader preference from manifest")
         // Create app manifest WITHOUT execution.loader
         std::string app_dir = env.root + "/test-app-no-loader";
         std::filesystem::create_directories(app_dir + "/bin");
-        
+
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
@@ -1090,7 +1090,7 @@ TEST_CASE("app loader preference from manifest")
         // Create app manifest WITH execution.loader = "service"
         std::string app_dir = env.root + "/test-app-with-loader";
         std::filesystem::create_directories(app_dir + "/bin");
-        
+
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
@@ -1133,7 +1133,7 @@ TEST_CASE("app loader preference from manifest")
         // Create app with manifest preference = "service"
         std::string app_dir = env.root + "/test-app-override";
         std::filesystem::create_directories(app_dir + "/bin");
-        
+
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
@@ -1174,7 +1174,7 @@ TEST_CASE("app loader preference from manifest")
         // Create app with invalid loader preference
         std::string app_dir = env.root + "/test-app-invalid";
         std::filesystem::create_directories(app_dir + "/bin");
-        
+
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
@@ -1217,7 +1217,7 @@ TEST_CASE("app loader preference from manifest")
             std::string app_id = "com.test.priority." + test_name;
             std::string app_dir = env.root + "/test-priority-" + test_name;
             std::filesystem::create_directories(app_dir + "/bin");
-            
+
             std::string manifest_path = app_dir + "/nap.json";
             std::ofstream manifest(manifest_path);
             manifest << "{\n";
@@ -1230,7 +1230,7 @@ TEST_CASE("app loader preference from manifest")
             manifest << "    },\n";
             manifest << "    \"execution\": {\n";
             manifest << "      \"entrypoint\": \"bin/app\"";
-            
+
             if (!manifest_loader.empty()) {
                 manifest << ",\n      \"loader\": \"" << manifest_loader << "\"";
             }

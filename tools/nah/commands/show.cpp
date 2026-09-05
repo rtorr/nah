@@ -75,31 +75,8 @@ namespace nah::cli::commands
             auto parsed = parse_target(show_opts.target);
 
             // Find the app install record (files named: id@version.json)
-            std::string record_path;
-            if (parsed.version)
-            {
-                record_path = paths.registry_apps + "/" + parsed.id + "@" + *parsed.version + ".json";
-            }
-            else
-            {
-                // Find any version
-                auto files = nah::fs::list_directory(paths.registry_apps);
-                for (const auto &filepath : files)
-                {
-                    // Extract filename from full path
-                    std::string f = filepath;
-                    size_t last_slash = filepath.rfind('/');
-                    if (last_slash != std::string::npos)
-                    {
-                        f = filepath.substr(last_slash + 1);
-                    }
-                    if (f.find(parsed.id + "@") == 0 && f.size() > 5 && f.substr(f.size() - 5) == ".json")
-                    {
-                        record_path = filepath;
-                        break;
-                    }
-                }
-            }
+            auto found_record = find_record(paths.registry_apps, parsed);
+            std::string record_path = found_record ? found_record->string() : "";
 
             if (record_path.empty() || !nah::fs::exists(record_path))
             {
@@ -123,7 +100,14 @@ namespace nah::cli::commands
             }
 
             // Load app manifest from install directory
-            std::string app_dir = install_result.value.paths.install_root;
+            auto resolved_app_dir = resolve_record_path(nah_root, install_result.value.paths.install_root);
+            if (!resolved_app_dir)
+            {
+                print_error("Install record path escapes the NAH root", opts.json);
+                return 1;
+            }
+            std::string app_dir = *resolved_app_dir;
+            install_result.value.paths.install_root = app_dir;
             auto manifest_content = nah::fs::read_file(app_dir + "/nap.json");
 
             if (!manifest_content)
@@ -148,6 +132,7 @@ namespace nah::cli::commands
             // Compose the contract
             nah::core::CompositionOptions compose_opts;
             compose_opts.enable_trace = opts.trace || show_opts.trace_flag;
+            compose_opts.now = nah::core::get_current_timestamp();
             auto result = nah::core::nah_compose(
                 app_result.value,
                 host_env,

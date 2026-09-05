@@ -11,6 +11,8 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
+#include <regex>
 
 namespace nah::cli {
 
@@ -45,7 +47,7 @@ struct GlobalOptions {
 /**
  * Resolve the NAH root directory.
  * Priority: --root flag > NAH_ROOT env > ~/.nah
- * 
+ *
  * Note: External hosts should use nah::host::NahHost::discover() from nah_host.h
  * for production-grade root discovery with validation.
  */
@@ -54,25 +56,25 @@ inline std::string resolve_nah_root(const std::optional<std::string>& override_r
     if (override_root && !override_root->empty()) {
         return *override_root;
     }
-    
+
     // 2. Environment variable
     std::string env_root = safe_getenv("NAH_ROOT");
     if (!env_root.empty()) {
         return env_root;
     }
-    
+
     // 3. Default: ~/.nah
     std::string home = safe_getenv("HOME");
     if (!home.empty()) {
         return home + "/.nah";
     }
-    
+
     // Fallback for Windows
     std::string userprofile = safe_getenv("USERPROFILE");
     if (!userprofile.empty()) {
         return userprofile + "/.nah";
     }
-    
+
     return ".nah";
 }
 
@@ -103,6 +105,56 @@ inline NahPaths get_nah_paths(const std::string& nah_root) {
     return paths;
 }
 
+inline bool is_valid_package_id(const std::string& value) {
+    static const std::regex pattern(R"(^[A-Za-z0-9][A-Za-z0-9._-]*$)");
+    return value.size() <= 255 && std::regex_match(value, pattern);
+}
+
+inline bool is_valid_version(const std::string& value) {
+    return value.size() <= 128 && nah::semver::parse_version(value).has_value();
+}
+
+inline std::optional<std::filesystem::path> canonical_boundary_path(
+    const std::filesystem::path& path) {
+    std::error_code ec;
+    auto absolute = std::filesystem::absolute(path, ec);
+    if (ec) return std::nullopt;
+    auto canonical = std::filesystem::weakly_canonical(absolute, ec);
+    if (ec) return std::nullopt;
+    return canonical.lexically_normal();
+}
+
+inline bool is_path_within(const std::filesystem::path& root,
+                           const std::filesystem::path& candidate) {
+    const auto normalized_root = canonical_boundary_path(root);
+    const auto normalized_candidate = canonical_boundary_path(candidate);
+    if (!normalized_root || !normalized_candidate) return false;
+
+    auto root_it = normalized_root->begin();
+    auto candidate_it = normalized_candidate->begin();
+    for (; root_it != normalized_root->end(); ++root_it, ++candidate_it) {
+        if (candidate_it == normalized_candidate->end() || *root_it != *candidate_it) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline std::optional<std::string> resolve_record_path(const std::string& nah_root,
+                                                      const std::string& stored_path) {
+    if (stored_path.empty()) return std::nullopt;
+    std::filesystem::path candidate(stored_path);
+    if (!candidate.is_absolute()) candidate = std::filesystem::path(nah_root) / candidate;
+    const auto normalized_root = canonical_boundary_path(nah_root);
+    const auto normalized_candidate = canonical_boundary_path(candidate);
+    if (!normalized_root || !normalized_candidate ||
+        !is_path_within(*normalized_root, *normalized_candidate) ||
+        *normalized_candidate == *normalized_root) {
+        return std::nullopt;
+    }
+    return nah::core::normalize_separators(normalized_candidate->string());
+}
+
 /**
  * Warning collector for accumulating warnings during command execution.
  * In JSON mode, warnings are collected and output at the end.
@@ -112,7 +164,7 @@ struct WarningCollector {
     std::vector<std::string> warnings;
     bool json_mode = false;
     bool quiet = false;
-    
+
     void add(const std::string& msg) {
         if (json_mode) {
             warnings.push_back(msg);
@@ -120,10 +172,10 @@ struct WarningCollector {
             std::cerr << "Warning: " << msg << std::endl;
         }
     }
-    
+
     void clear() { warnings.clear(); }
     bool empty() const { return warnings.empty(); }
-    
+
     nlohmann::json to_json() const {
         return nlohmann::json(warnings);
     }
@@ -194,18 +246,18 @@ inline void init_warning_collector(bool json_mode, bool quiet) {
 inline nah::core::HostEnvironment load_host_environment(const std::string& nah_root) {
     auto paths = get_nah_paths(nah_root);
     std::string host_json_path = paths.host + "/host.json";
-    
+
     auto content = nah::fs::read_file(host_json_path);
     if (!content) {
         // Return empty environment
         return nah::core::HostEnvironment{};
     }
-    
+
     auto result = nah::json::parse_host_environment(*content, host_json_path);
     if (!result.ok) {
         return nah::core::HostEnvironment{};
     }
-    
+
     return result.value;
 }
 
@@ -214,7 +266,24 @@ inline nah::core::HostEnvironment load_host_environment(const std::string& nah_r
  */
 inline nah::core::RuntimeInventory load_inventory(const std::string& nah_root) {
     auto paths = get_nah_paths(nah_root);
-    return nah::fs::load_inventory_from_directory(paths.registry_naks);
+    auto inventory = nah::fs::load_inventory_from_directory(paths.registry_naks);
+    for (auto& [_, runtime] : inventory.runtimes) {
+        auto root = resolve_record_path(nah_root, runtime.paths.root);
+        if (!root) {
+            runtime.paths.root.clear();
+            continue;
+        }
+        runtime.paths.root = *root;
+        for (auto& path : runtime.paths.lib_dirs) {
+            if (!std::filesystem::path(path).is_absolute()) path = (std::filesystem::path(*root) / path).lexically_normal().string();
+            if (!is_path_within(*root, path)) path.clear();
+        }
+        for (auto& [__, loader] : runtime.loaders) {
+            if (!std::filesystem::path(loader.exec_path).is_absolute()) loader.exec_path = (std::filesystem::path(*root) / loader.exec_path).lexically_normal().string();
+            if (!is_path_within(*root, loader.exec_path)) loader.exec_path.clear();
+        }
+    }
+    return inventory;
 }
 
 /**
@@ -228,7 +297,7 @@ struct ParsedTarget {
 
 inline ParsedTarget parse_target(const std::string& target) {
     ParsedTarget result;
-    
+
     auto at_pos = target.rfind('@');
     if (at_pos != std::string::npos && at_pos > 0) {
         result.id = target.substr(0, at_pos);
@@ -236,8 +305,32 @@ inline ParsedTarget parse_target(const std::string& target) {
     } else {
         result.id = target;
     }
-    
+
     return result;
+}
+
+inline std::optional<std::filesystem::path> find_record(
+    const std::string& registry_dir, const ParsedTarget& target) {
+    if (!is_valid_package_id(target.id) || (target.version && !is_valid_version(*target.version))) {
+        return std::nullopt;
+    }
+    if (target.version) {
+        auto path = std::filesystem::path(registry_dir) /
+                    (target.id + "@" + *target.version + ".json");
+        if (std::filesystem::is_regular_file(path)) return path;
+        return std::nullopt;
+    }
+    std::optional<std::pair<nah::semver::Version, std::filesystem::path>> best;
+    for (const auto& path_string : nah::fs::list_directory(registry_dir)) {
+        const std::filesystem::path path(path_string);
+        const auto filename = path.filename().string();
+        const auto prefix = target.id + "@";
+        if (filename.compare(0, prefix.size(), prefix) != 0 || filename.size() < 5 ||
+            filename.compare(filename.size() - 5, 5, ".json") != 0) continue;
+        auto version = nah::semver::parse_version(filename.substr(prefix.size(), filename.size() - prefix.size() - 5));
+        if (version && (!best || best->first < *version)) best = std::pair{*version, path};
+    }
+    return best ? std::optional(best->second) : std::nullopt;
 }
 
 /**
@@ -245,7 +338,7 @@ inline ParsedTarget parse_target(const std::string& target) {
  */
 inline bool ensure_nah_structure(const std::string& nah_root) {
     auto paths = get_nah_paths(nah_root);
-    
+
     return nah::fs::create_directories(paths.apps) &&
            nah::fs::create_directories(paths.naks) &&
            nah::fs::create_directories(paths.host) &&

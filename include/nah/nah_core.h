@@ -1,6 +1,6 @@
 /*
  * NAH Core - Header-Only Library
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT
  *
  * ============================================================================
  * WHAT IS NAH?
@@ -128,7 +128,7 @@ constexpr size_t MAX_ENV_VARS = 1024;
 /// Maximum library paths - prevents resource exhaustion
 constexpr size_t MAX_LIBRARY_PATHS = 256;
 
-/// Maximum arguments - prevents resource exhaustion  
+/// Maximum arguments - prevents resource exhaustion
 constexpr size_t MAX_ARGUMENTS = 1024;
 
 // ============================================================================
@@ -137,7 +137,7 @@ constexpr size_t MAX_ARGUMENTS = 1024;
 
 /**
  * Environment variable operation type.
- * 
+ *
  * The environment algebra supports four operations:
  * - Set: Replace or set a value (default)
  * - Prepend: Add to the front with separator
@@ -173,7 +173,7 @@ inline std::optional<EnvOp> parse_env_op(const std::string& s) {
 
 /**
  * Environment variable value with operation.
- * 
+ *
  * Supports the environment algebra: set, prepend, append, unset.
  * Default separator for prepend/append is ":" (Unix-style).
  */
@@ -181,15 +181,15 @@ struct EnvValue {
     EnvOp op = EnvOp::Set;
     std::string value;
     std::string separator = ":";
-    
+
     EnvValue() = default;
     EnvValue(const char* v) : op(EnvOp::Set), value(v) {}
     EnvValue(const std::string& v) : op(EnvOp::Set), value(v) {}
     EnvValue(EnvOp o, const std::string& v, const std::string& sep = ":")
         : op(o), value(v), separator(sep) {}
-    
+
     bool is_simple() const { return op == EnvOp::Set; }
-    
+
     // Comparison operators
     bool operator==(const std::string& other) const { return value == other; }
     bool operator==(const char* other) const { return value == other; }
@@ -208,7 +208,7 @@ using EnvMap = std::unordered_map<std::string, EnvValue>;
 
 /**
  * Trust verification state.
- * 
+ *
  * - Verified: Cryptographic verification succeeded
  * - Unverified: No verification was performed
  * - Failed: Verification was attempted but failed
@@ -241,7 +241,7 @@ inline std::optional<TrustState> parse_trust_state(const std::string& s) {
 
 /**
  * Trust information for an installed artifact.
- * 
+ *
  * Contains verification state, timestamps, and optional details.
  * Timestamps use RFC3339 format (e.g., "2025-01-18T12:00:00Z").
  */
@@ -260,7 +260,7 @@ struct TrustInfo {
 
 /**
  * Warning types that can be emitted during composition.
- * 
+ *
  * Warnings are non-fatal issues that may indicate problems.
  * Each warning can be configured with an action: warn, ignore, or error.
  */
@@ -353,7 +353,7 @@ struct WarningObject {
     std::string key;     ///< Warning identifier (lowercase_snake_case)
     std::string action;  ///< Action taken: "warn" or "error"
     std::unordered_map<std::string, std::string> fields;  ///< Additional context
-    
+
     bool operator==(const WarningObject& other) const {
         return key == other.key && action == other.action && fields == other.fields;
     }
@@ -365,7 +365,7 @@ struct WarningObject {
 
 /**
  * Critical errors that halt composition.
- * 
+ *
  * Unlike warnings, critical errors cannot be ignored and always
  * result in composition failure.
  */
@@ -403,7 +403,7 @@ inline std::optional<CriticalError> parse_critical_error(const std::string& s) {
 
 /**
  * Source kind constants for tracing.
- * 
+ *
  * Valid values: host, nak_record, manifest, install_record,
  * process_env, overrides_file, standard, nah_standard
  */
@@ -423,7 +423,7 @@ namespace trace_source {
 
 /**
  * A single contribution to a traced value.
- * 
+ *
  * Records where a value came from, its precedence, and whether it was used.
  */
 struct TraceContribution {
@@ -437,7 +437,7 @@ struct TraceContribution {
 
 /**
  * Full trace entry for a single value.
- * 
+ *
  * Contains the final resolved value and history of all contributions.
  */
 struct TraceEntry {
@@ -488,12 +488,12 @@ struct ComponentDecl {
     std::string loader;        ///< Optional: specific NAK loader name
     bool standalone = true;    ///< Can be launched independently
     bool hidden = false;       ///< Hide from host UI
-    
+
     // Per-component overrides (extend app-level settings)
     EnvMap environment;                       ///< Component-specific environment
     std::vector<std::string> permissions_filesystem;  ///< Component-specific perms
     std::vector<std::string> permissions_network;     ///< Component-specific perms
-    
+
     std::unordered_map<std::string, std::string> metadata;  ///< Arbitrary metadata
 };
 
@@ -537,39 +537,39 @@ struct AppDeclaration {
     // Required: App identity
     std::string id;       ///< Unique identifier (e.g., "com.example.app")
     std::string version;  ///< Semantic version (e.g., "1.2.3")
-    
+
     // Required: What to run
     std::string entrypoint_path;  ///< Relative path to main binary or script
-    
+
     // Optional: Runtime requirements (leave nak_id empty for standalone binaries)
     std::string nak_id;          ///< Runtime identifier (e.g., "lua", "node", "python")
     std::string nak_version_req; ///< Version constraint (e.g., ">=5.4.0", "^20.0.0")
     std::string nak_loader;      ///< Specific loader if runtime has multiple
-    
+
     // Optional: Arguments passed after the entrypoint
     std::vector<std::string> entrypoint_args;
-    
+
     // Optional: Environment variables (lowest precedence, fill-only)
     // Format: "KEY=value" - only set if not already defined by host/runtime
     std::vector<std::string> env_vars;
-    
+
     // Optional: Library search paths (relative to app root)
     std::vector<std::string> lib_dirs;
-    
+
     // Optional: Asset directories and exports
     std::vector<std::string> asset_dirs;
     std::vector<AssetExportDecl> asset_exports;
-    
+
     // Optional: Permission requests
     std::vector<std::string> permissions_filesystem;  ///< e.g., "read:./data"
     std::vector<std::string> permissions_network;     ///< e.g., "connect:https://*"
-    
+
     // Optional: Metadata (informational only, does not affect composition)
     std::string description;
     std::string author;
     std::string license;
     std::string homepage;
-    
+
     // Optional: Components provided by this application
     std::vector<ComponentDecl> components;
 };
@@ -595,17 +595,17 @@ struct AppDeclaration {
 //
 struct HostEnvironment {
     EnvMap vars;  ///< Environment variables to inject
-    
+
     struct {
         std::vector<std::string> library_prepend;  ///< Library paths to prepend
         std::vector<std::string> library_append;   ///< Library paths to append
     } paths;
-    
+
     struct {
         bool allow_env_overrides = true;  ///< Allow NAH_OVERRIDE_ENVIRONMENT
         std::vector<std::string> allowed_env_keys;  ///< If non-empty, only these keys can be overridden
     } overrides;
-    
+
     std::string source_path;  ///< For tracing (e.g., "/nah/host/host.json")
 };
 
@@ -653,34 +653,34 @@ struct RuntimeDescriptor {
         std::string id;       ///< Runtime identifier (e.g., "lua", "node")
         std::string version;  ///< Version string (e.g., "5.4.6")
     } nak;
-    
+
     struct {
         std::string root;           ///< Absolute path to runtime installation
         std::string resource_root;  ///< Resource path (defaults to root if empty)
         std::vector<std::string> lib_dirs;  ///< Library directories (absolute paths)
     } paths;
-    
+
     // Environment variables provided by this runtime
     EnvMap environment;
-    
+
     // Loaders - how this runtime executes apps. Empty for libs-only NAKs.
     // Key is loader name (use "default" for the primary loader).
     std::unordered_map<std::string, LoaderConfig> loaders;
-    
+
     bool has_loaders() const { return !loaders.empty(); }
-    
+
     struct {
         bool present = false;
         std::string cwd;  ///< Working directory template (supports {VAR} placeholders)
     } execution;
-    
+
     struct {
         std::string package_hash;   ///< SHA256 of installed package
         std::string installed_at;   ///< When installed (RFC3339)
         std::string installed_by;   ///< What tool installed it
         std::string source;         ///< Where it came from (URL, path)
     } provenance;
-    
+
     std::string source_path;  ///< For tracing
 };
 
@@ -716,7 +716,7 @@ struct InstallRecord {
     struct {
         std::string instance_id;  ///< UUID or similar unique ID
     } install;
-    
+
     // Snapshot of app info at install time (audit only, does not affect composition)
     struct {
         std::string id;
@@ -724,7 +724,7 @@ struct InstallRecord {
         std::string nak_id;
         std::string nak_version_req;
     } app;
-    
+
     // Which runtime to use - resolved and pinned at install time
     struct {
         std::string id;               ///< Runtime identifier
@@ -733,18 +733,18 @@ struct InstallRecord {
         std::string loader;           ///< Pinned loader name (if runtime has multiple)
         std::string selection_reason; ///< Why this version was chosen
     } nak;
-    
+
     struct {
         std::string install_root;  ///< Absolute path to installed app
     } paths;
-    
+
     struct {
         std::string package_hash;   ///< SHA256 of installed package
         std::string installed_at;   ///< When installed (RFC3339)
         std::string installed_by;   ///< What tool installed it
         std::string source;         ///< Where it came from
     } provenance;
-    
+
     TrustInfo trust;
 
     // Verification info (optional)
@@ -764,7 +764,7 @@ struct InstallRecord {
             std::vector<std::string> library_prepend;  ///< Library paths to prepend
         } paths;
     } overrides;
-    
+
     std::string source_path;  ///< For tracing
 };
 
@@ -831,39 +831,39 @@ struct ComponentURI {
 inline ComponentURI parse_component_uri(const std::string& uri) {
     ComponentURI result;
     result.raw_uri = uri;
-    
+
     // Find scheme separator
     size_t scheme_end = uri.find("://");
     if (scheme_end == std::string::npos) {
         return result;  // Invalid
     }
-    
+
     // Extract app_id (scheme)
     result.app_id = uri.substr(0, scheme_end);
     if (result.app_id.empty()) {
         return result;
     }
-    
+
     std::string rest = uri.substr(scheme_end + 3);
-    
+
     // Extract fragment (if present)
     size_t fragment_pos = rest.find('#');
     if (fragment_pos != std::string::npos) {
         result.fragment = rest.substr(fragment_pos + 1);
         rest = rest.substr(0, fragment_pos);
     }
-    
+
     // Extract query (if present)
     size_t query_pos = rest.find('?');
     if (query_pos != std::string::npos) {
         result.query = rest.substr(query_pos + 1);
         rest = rest.substr(0, query_pos);
     }
-    
+
     // Remaining is component_path
     result.component_path = rest;
     result.valid = true;
-    
+
     return result;
 }
 
@@ -1030,7 +1030,7 @@ struct CompositionResult {
 
 /**
  * Check if a path is absolute.
- * 
+ *
  * On Unix: starts with /
  * On Windows: starts with drive letter or UNC path
  */
@@ -1058,23 +1058,23 @@ inline std::string normalize_separators(const std::string& path) {
 
 /**
  * Check if a path escapes its root via traversal.
- * 
+ *
  * Detects attempts to escape using ".." components.
  * This is a pure string operation - no filesystem access.
  */
 inline bool path_escapes_root(const std::string& root, const std::string& path) {
     std::string norm_root = normalize_separators(root);
     std::string norm_path = normalize_separators(path);
-    
+
     while (!norm_root.empty() && norm_root.back() == '/') {
         norm_root.pop_back();
     }
-    
+
     // Path must start with root
     if (norm_path.find(norm_root) != 0) {
         return true;
     }
-    
+
     // Path must either be exactly root, or have a / after the root prefix
     // This prevents /app matching /application
     std::string rel = norm_path.substr(norm_root.size());
@@ -1084,26 +1084,26 @@ inline bool path_escapes_root(const std::string& root, const std::string& path) 
     if (!rel.empty() && rel[0] == '/') {
         rel = rel.substr(1);
     }
-    
+
     int depth = 0;
     size_t pos = 0;
     while (pos < rel.size()) {
         size_t next = rel.find('/', pos);
-        std::string component = (next == std::string::npos) 
-            ? rel.substr(pos) 
+        std::string component = (next == std::string::npos)
+            ? rel.substr(pos)
             : rel.substr(pos, next - pos);
-        
+
         if (component == "..") {
             depth--;
             if (depth < 0) return true;
         } else if (!component.empty() && component != ".") {
             depth++;
         }
-        
+
         if (next == std::string::npos) break;
         pos = next + 1;
     }
-    
+
     return false;
 }
 
@@ -1113,17 +1113,17 @@ inline bool path_escapes_root(const std::string& root, const std::string& path) 
 inline std::string join_path(const std::string& base, const std::string& rel) {
     if (base.empty()) return rel;
     if (rel.empty()) return base;
-    
+
     std::string result = base;
     if (result.back() != '/' && result.back() != '\\') {
         result += '/';
     }
-    
+
     size_t start = 0;
     while (start < rel.size() && (rel[start] == '/' || rel[start] == '\\')) {
         start++;
     }
-    
+
     result += rel.substr(start);
     return normalize_separators(result);
 }
@@ -1167,7 +1167,7 @@ struct ValidationResult {
 
 /**
  * Validate an app declaration.
- * 
+ *
  * Checks:
  * - Required fields present (id, version, entrypoint_path)
  * - entrypoint_path is relative
@@ -1176,45 +1176,45 @@ struct ValidationResult {
  */
 inline ValidationResult validate_declaration(const AppDeclaration& decl) {
     ValidationResult result;
-    
+
     if (decl.id.empty()) {
         result.ok = false;
         result.errors.push_back("app.id is required");
     }
-    
+
     if (decl.version.empty()) {
         result.ok = false;
         result.errors.push_back("app.version is required");
     }
-    
+
     if (decl.entrypoint_path.empty()) {
         result.ok = false;
         result.errors.push_back("entrypoint_path is required");
     }
-    
+
     if (!decl.entrypoint_path.empty() && is_absolute_path(decl.entrypoint_path)) {
         result.ok = false;
         result.errors.push_back("entrypoint_path must be relative");
     }
-    
+
     for (const auto& lib_dir : decl.lib_dirs) {
         if (is_absolute_path(lib_dir)) {
             result.ok = false;
             result.errors.push_back("lib_dir must be relative: " + lib_dir);
         }
     }
-    
+
     for (const auto& exp : decl.asset_exports) {
         if (is_absolute_path(exp.path)) {
             result.ok = false;
             result.errors.push_back("asset_export path must be relative: " + exp.path);
         }
     }
-    
+
     if (!decl.nak_id.empty() && decl.nak_version_req.empty()) {
         result.warnings.push_back("nak_id specified but nak_version_req is empty");
     }
-    
+
     return result;
 }
 
@@ -1223,22 +1223,22 @@ inline ValidationResult validate_declaration(const AppDeclaration& decl) {
  */
 inline ValidationResult validate_install_record(const InstallRecord& record) {
     ValidationResult result;
-    
+
     if (record.install.instance_id.empty()) {
         result.ok = false;
         result.errors.push_back("install.instance_id is required");
     }
-    
+
     if (record.paths.install_root.empty()) {
         result.ok = false;
         result.errors.push_back("paths.install_root is required");
     }
-    
+
     if (!record.paths.install_root.empty() && !is_absolute_path(record.paths.install_root)) {
         result.ok = false;
         result.errors.push_back("paths.install_root must be absolute");
     }
-    
+
     return result;
 }
 
@@ -1247,41 +1247,41 @@ inline ValidationResult validate_install_record(const InstallRecord& record) {
  */
 inline ValidationResult validate_runtime(const RuntimeDescriptor& runtime) {
     ValidationResult result;
-    
+
     if (runtime.nak.id.empty()) {
         result.ok = false;
         result.errors.push_back("nak.id is required");
     }
-    
+
     if (runtime.nak.version.empty()) {
         result.ok = false;
         result.errors.push_back("nak.version is required");
     }
-    
+
     if (runtime.paths.root.empty()) {
         result.ok = false;
         result.errors.push_back("paths.root is required");
     }
-    
+
     if (!runtime.paths.root.empty() && !is_absolute_path(runtime.paths.root)) {
         result.ok = false;
         result.errors.push_back("paths.root must be absolute");
     }
-    
+
     for (const auto& lib_dir : runtime.paths.lib_dirs) {
         if (!is_absolute_path(lib_dir)) {
             result.ok = false;
             result.errors.push_back("lib_dir must be absolute: " + lib_dir);
         }
     }
-    
+
     for (const auto& [name, loader] : runtime.loaders) {
         if (!loader.exec_path.empty() && !is_absolute_path(loader.exec_path)) {
             result.ok = false;
             result.errors.push_back("loader exec_path must be absolute: " + name);
         }
     }
-    
+
     return result;
 }
 
@@ -1293,7 +1293,7 @@ inline ValidationResult validate_runtime(const RuntimeDescriptor& runtime) {
 
 /**
  * Apply an environment operation.
- * 
+ *
  * Returns the new value, or nullopt for unset.
  */
 inline std::optional<std::string> apply_env_op(
@@ -1304,7 +1304,7 @@ inline std::optional<std::string> apply_env_op(
     switch (env_val.op) {
         case EnvOp::Set:
             return env_val.value;
-            
+
         case EnvOp::Prepend: {
             auto it = current_env.find(key);
             if (it != current_env.end() && !it->second.empty()) {
@@ -1312,7 +1312,7 @@ inline std::optional<std::string> apply_env_op(
             }
             return env_val.value;
         }
-        
+
         case EnvOp::Append: {
             auto it = current_env.find(key);
             if (it != current_env.end() && !it->second.empty()) {
@@ -1320,11 +1320,11 @@ inline std::optional<std::string> apply_env_op(
             }
             return env_val.value;
         }
-        
+
         case EnvOp::Unset:
             return std::nullopt;
     }
-    
+
     return env_val.value;
 }
 
@@ -1343,7 +1343,7 @@ struct ExpansionResult {
 
 /**
  * Expand {VAR} placeholders in a string.
- * 
+ *
  * Single-pass, no recursion. Missing variables become empty strings.
  * Enforces size and count limits to prevent DoS.
  */
@@ -1353,49 +1353,49 @@ inline ExpansionResult expand_placeholders(
 {
     ExpansionResult result;
     result.value.reserve(input.size());
-    
+
     size_t placeholder_count = 0;
     size_t i = 0;
-    
+
     while (i < input.size()) {
         if (input[i] == '{') {
             size_t end = input.find('}', i + 1);
             if (end != std::string::npos) {
                 std::string var_name = input.substr(i + 1, end - i - 1);
-                
+
                 placeholder_count++;
                 if (placeholder_count > MAX_PLACEHOLDERS) {
                     result.ok = false;
                     result.error = "placeholder_limit";
                     return result;
                 }
-                
+
                 auto it = env.find(var_name);
                 if (it != env.end()) {
                     result.value += it->second;
                 }
-                
+
                 if (result.value.size() > MAX_EXPANDED_SIZE) {
                     result.ok = false;
                     result.error = "expansion_overflow";
                     return result;
                 }
-                
+
                 i = end + 1;
                 continue;
             }
         }
-        
+
         result.value += input[i];
         i++;
-        
+
         if (result.value.size() > MAX_EXPANDED_SIZE) {
             result.ok = false;
             result.error = "expansion_overflow";
             return result;
         }
     }
-    
+
     return result;
 }
 
@@ -1408,12 +1408,12 @@ inline std::vector<std::string> expand_string_vector(
 {
     std::vector<std::string> result;
     result.reserve(inputs.size());
-    
+
     for (const auto& input : inputs) {
         auto expanded = expand_placeholders(input, env);
         result.push_back(expanded.ok ? expanded.value : input);
     }
-    
+
     return result;
 }
 
@@ -1434,7 +1434,7 @@ struct RuntimeResolutionResult {
 
 /**
  * Resolve runtime from inventory.
- * 
+ *
  * Uses the pinned record_ref from install record to look up the runtime.
  */
 inline RuntimeResolutionResult resolve_runtime(
@@ -1443,33 +1443,33 @@ inline RuntimeResolutionResult resolve_runtime(
     const RuntimeInventory& inventory)
 {
     RuntimeResolutionResult result;
-    
+
     // Standalone apps don't need runtime resolution
     if (app.nak_id.empty()) {
         result.resolved = true;
         result.selection_reason = "standalone_app";
         return result;
     }
-    
+
     // Get record_ref from install record
     std::string record_ref = install.nak.record_ref;
-    
+
     if (record_ref.empty()) {
         result.warnings.push_back("nak.record_ref is empty in install record");
         return result;
     }
-    
+
     auto it = inventory.runtimes.find(record_ref);
     if (it == inventory.runtimes.end()) {
         result.warnings.push_back("NAK not found in inventory: " + record_ref);
         return result;
     }
-    
+
     result.resolved = true;
     result.record_ref = record_ref;
     result.runtime = it->second;
     result.selection_reason = "pinned_from_install_record";
-    
+
     return result;
 }
 
@@ -1499,7 +1499,7 @@ inline PathBindingResult bind_paths(
 {
     PathBindingResult result;
     const std::string& app_root = install.paths.install_root;
-    
+
     // Entrypoint
     std::string entrypoint = join_path(app_root, decl.entrypoint_path);
     if (path_escapes_root(app_root, entrypoint)) {
@@ -1510,26 +1510,26 @@ inline PathBindingResult bind_paths(
         return result;
     }
     result.entrypoint = entrypoint;
-    
+
     // Library paths in order: host prepend, install overrides, NAK, app, host append
     for (const auto& path : host_env.paths.library_prepend) {
         if (is_absolute_path(path)) {
             result.library_paths.push_back(path);
         }
     }
-    
+
     for (const auto& path : install.overrides.paths.library_prepend) {
         if (is_absolute_path(path)) {
             result.library_paths.push_back(path);
         }
     }
-    
+
     if (runtime) {
         for (const auto& lib_dir : runtime->paths.lib_dirs) {
             result.library_paths.push_back(lib_dir);
         }
     }
-    
+
     for (const auto& lib_dir : decl.lib_dirs) {
         std::string abs_lib = join_path(app_root, lib_dir);
         if (path_escapes_root(app_root, abs_lib)) {
@@ -1541,13 +1541,13 @@ inline PathBindingResult bind_paths(
         }
         result.library_paths.push_back(abs_lib);
     }
-    
+
     for (const auto& path : host_env.paths.library_append) {
         if (is_absolute_path(path)) {
             result.library_paths.push_back(path);
         }
     }
-    
+
     // Asset exports
     for (const auto& exp : decl.asset_exports) {
         std::string abs_path = join_path(app_root, exp.path);
@@ -1560,7 +1560,7 @@ inline PathBindingResult bind_paths(
         }
         result.exports[exp.id] = {exp.id, abs_path, exp.type};
     }
-    
+
     return result;
 }
 
@@ -1570,7 +1570,7 @@ inline PathBindingResult bind_paths(
 
 /**
  * Compose environment from all sources.
- * 
+ *
  * Precedence (highest to lowest):
  * 1. NAH standard variables (NAH_APP_*, NAH_NAK_*)
  * 2. Install record overrides
@@ -1587,7 +1587,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
     CompositionTrace* trace = nullptr)
 {
     std::unordered_map<std::string, std::string> env;
-    
+
     auto record = [&](const std::string& key, const std::string& value,
                       const std::string& kind, const std::string& path,
                       int rank, EnvOp op, bool accepted) {
@@ -1602,7 +1602,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
             trace->environment[key].history.push_back(contrib);
         }
     };
-    
+
     // Layer 1: Host environment (rank 5)
     for (const auto& [key, val] : host_env.vars) {
         auto result = apply_env_op(key, val, env);
@@ -1614,7 +1614,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
             record(key, "", trace_source::HOST, host_env.source_path, 5, val.op, true);
         }
     }
-    
+
     // Layer 2: NAK environment (rank 4)
     if (runtime) {
         for (const auto& [key, val] : runtime->environment) {
@@ -1628,7 +1628,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
             }
         }
     }
-    
+
     // Layer 3: App manifest defaults (rank 3, fill-only)
     for (const auto& env_var : decl.env_vars) {
         auto eq = env_var.find('=');
@@ -1642,7 +1642,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
             record(key, val, trace_source::MANIFEST, "manifest", 3, EnvOp::Set, accepted);
         }
     }
-    
+
     // Layer 4: Install record overrides (rank 2)
     for (const auto& [key, val] : install.overrides.environment) {
         auto result = apply_env_op(key, val, env);
@@ -1654,31 +1654,31 @@ inline std::unordered_map<std::string, std::string> compose_environment(
             record(key, "", trace_source::INSTALL_RECORD, install.source_path, 2, val.op, true);
         }
     }
-    
+
     // Layer 5: NAH standard variables (rank 1, always set)
     env["NAH_APP_ID"] = contract.app.id;
     record("NAH_APP_ID", contract.app.id, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-    
+
     env["NAH_APP_VERSION"] = contract.app.version;
     record("NAH_APP_VERSION", contract.app.version, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-    
+
     env["NAH_APP_ROOT"] = contract.app.root;
     record("NAH_APP_ROOT", contract.app.root, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-    
+
     env["NAH_APP_ENTRY"] = contract.app.entrypoint;
     record("NAH_APP_ENTRY", contract.app.entrypoint, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-    
+
     if (runtime) {
         env["NAH_NAK_ID"] = runtime->nak.id;
         record("NAH_NAK_ID", runtime->nak.id, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-        
+
         env["NAH_NAK_VERSION"] = runtime->nak.version;
         record("NAH_NAK_VERSION", runtime->nak.version, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
-        
+
         env["NAH_NAK_ROOT"] = runtime->paths.root;
         record("NAH_NAK_ROOT", runtime->paths.root, trace_source::NAH_STANDARD, "nah", 1, EnvOp::Set, true);
     }
-    
+
     return env;
 }
 
@@ -1688,12 +1688,12 @@ inline std::unordered_map<std::string, std::string> compose_environment(
 
 /**
  * Normalize RFC3339 timestamp.
- * 
+ *
  * Converts +00:00/-00:00 to Z for consistent comparison.
  */
 inline std::string normalize_rfc3339(const std::string& ts) {
     if (ts.empty()) return ts;
-    
+
     std::string result = ts;
     if (result.size() >= 6) {
         std::string suffix = result.substr(result.size() - 6);
@@ -1701,13 +1701,13 @@ inline std::string normalize_rfc3339(const std::string& ts) {
             result = result.substr(0, result.size() - 6) + "Z";
         }
     }
-    
+
     return result;
 }
 
 /**
  * Compare RFC3339 timestamps.
- * 
+ *
  * Returns true if a < b.
  */
 inline bool timestamp_before(const std::string& a, const std::string& b) {
@@ -1766,7 +1766,7 @@ inline CompositionResult nah_compose(
     const CompositionOptions& options = {})
 {
     CompositionResult result;
-    
+
     // Initialize trace if enabled
     CompositionTrace* trace_ptr = nullptr;
     if (options.enable_trace) {
@@ -1774,12 +1774,12 @@ inline CompositionResult nah_compose(
         trace_ptr = &(*result.trace);
         trace_ptr->decisions.push_back("Starting composition");
     }
-    
+
     // Validate declaration
     auto decl_valid = validate_declaration(app);
     if (!decl_valid.ok) {
         result.critical_error = CriticalError::MANIFEST_MISSING;
-        result.critical_error_context = decl_valid.errors.empty() ? 
+        result.critical_error_context = decl_valid.errors.empty() ?
             "invalid declaration" : decl_valid.errors[0];
         for (const auto& err : decl_valid.errors) {
             result.warnings.push_back({
@@ -1790,7 +1790,7 @@ inline CompositionResult nah_compose(
         return result;
     }
     if (trace_ptr) trace_ptr->decisions.push_back("Declaration validated");
-    
+
     // Validate install record
     auto install_valid = validate_install_record(install);
     if (!install_valid.ok) {
@@ -1801,7 +1801,7 @@ inline CompositionResult nah_compose(
         return result;
     }
     if (trace_ptr) trace_ptr->decisions.push_back("Install record validated");
-    
+
     // Resolve runtime
     auto runtime_result = resolve_runtime(app, install, inventory);
     for (const auto& warn : runtime_result.warnings) {
@@ -1809,10 +1809,10 @@ inline CompositionResult nah_compose(
             warning_to_string(Warning::nak_not_found), "warn", {{"reason", warn}}
         });
     }
-    
+
     RuntimeDescriptor* runtime_ptr = runtime_result.resolved && !runtime_result.runtime.nak.id.empty()
         ? &runtime_result.runtime : nullptr;
-    
+
     if (trace_ptr) {
         if (runtime_ptr) {
             trace_ptr->decisions.push_back("Runtime resolved: " + runtime_ptr->nak.id + "@" + runtime_ptr->nak.version);
@@ -1822,7 +1822,7 @@ inline CompositionResult nah_compose(
             trace_ptr->decisions.push_back("Runtime not found");
         }
     }
-    
+
     // Validate runtime if present
     if (runtime_ptr) {
         auto runtime_valid = validate_runtime(*runtime_ptr);
@@ -1834,14 +1834,14 @@ inline CompositionResult nah_compose(
             return result;
         }
     }
-    
+
     // Populate basic contract fields
     LaunchContract& contract = result.contract;
-    
+
     contract.app.id = app.id;
     contract.app.version = app.version;
     contract.app.root = install.paths.install_root;
-    
+
     if (runtime_ptr) {
         contract.nak.id = runtime_ptr->nak.id;
         contract.nak.version = runtime_ptr->nak.version;
@@ -1850,7 +1850,7 @@ inline CompositionResult nah_compose(
             runtime_ptr->paths.root : runtime_ptr->paths.resource_root;
         contract.nak.record_ref = runtime_result.record_ref;
     }
-    
+
     // Bind paths
     auto paths = bind_paths(app, install, runtime_ptr, host_env);
     if (!paths.ok) {
@@ -1861,26 +1861,26 @@ inline CompositionResult nah_compose(
         if (trace_ptr) trace_ptr->decisions.push_back("FAILED: Path binding failed");
         return result;
     }
-    
+
     contract.app.entrypoint = paths.entrypoint;
     contract.exports = paths.exports;
     if (trace_ptr) trace_ptr->decisions.push_back("Paths bound successfully");
-    
+
     // Compose environment
     auto env = compose_environment(app, install, runtime_ptr, host_env, contract, trace_ptr);
-    
+
     // Determine execution binary and arguments
     std::string pinned_loader = install.nak.loader;
-    
+
     // Override loader if specified in options
     if (!options.loader_override.empty()) {
         pinned_loader = options.loader_override;
         if (trace_ptr) trace_ptr->decisions.push_back("Loader override requested: " + pinned_loader);
     }
-    
+
     if (runtime_ptr && runtime_ptr->has_loaders()) {
         std::string effective_loader = pinned_loader;
-        
+
         if (effective_loader.empty()) {
             if (runtime_ptr->loaders.count("default")) {
                 effective_loader = "default";
@@ -1900,7 +1900,7 @@ inline CompositionResult nah_compose(
         } else {
             if (trace_ptr) trace_ptr->decisions.push_back("Using pinned loader: " + effective_loader);
         }
-        
+
         if (!effective_loader.empty()) {
             auto it = runtime_ptr->loaders.find(effective_loader);
             if (it == runtime_ptr->loaders.end()) {
@@ -1909,7 +1909,7 @@ inline CompositionResult nah_compose(
                 if (trace_ptr) trace_ptr->decisions.push_back("FAILED: Loader not found");
                 return result;
             }
-            
+
             contract.execution.binary = it->second.exec_path;
             contract.execution.arguments = expand_string_vector(it->second.args_template, env);
         }
@@ -1917,26 +1917,26 @@ inline CompositionResult nah_compose(
         contract.execution.binary = contract.app.entrypoint;
         if (trace_ptr) trace_ptr->decisions.push_back("Using app entrypoint as binary");
     }
-    
+
     // Apply argument overrides
     auto expanded_prepend = expand_string_vector(install.overrides.arguments.prepend, env);
     contract.execution.arguments.insert(
         contract.execution.arguments.begin(),
         expanded_prepend.begin(),
         expanded_prepend.end());
-    
+
     auto expanded_entry_args = expand_string_vector(app.entrypoint_args, env);
     contract.execution.arguments.insert(
         contract.execution.arguments.end(),
         expanded_entry_args.begin(),
         expanded_entry_args.end());
-    
+
     auto expanded_append = expand_string_vector(install.overrides.arguments.append, env);
     contract.execution.arguments.insert(
         contract.execution.arguments.end(),
         expanded_append.begin(),
         expanded_append.end());
-    
+
     // Determine cwd
     if (runtime_ptr && runtime_ptr->execution.present && !runtime_ptr->execution.cwd.empty()) {
         auto cwd_expanded = expand_placeholders(runtime_ptr->execution.cwd, env);
@@ -1950,11 +1950,11 @@ inline CompositionResult nah_compose(
     } else {
         contract.execution.cwd = contract.app.root;
     }
-    
+
     // Library paths
     contract.execution.library_path_env_key = get_library_path_env_key();
     contract.execution.library_paths = paths.library_paths;
-    
+
     // Expand environment placeholders
     for (auto& [key, val] : env) {
         auto expanded = expand_placeholders(val, env);
@@ -1963,29 +1963,35 @@ inline CompositionResult nah_compose(
         }
     }
     contract.environment = env;
-    
-    // Enforcement
-    for (const auto& perm : app.permissions_filesystem) {
-        contract.enforcement.filesystem.push_back(perm);
-    }
-    for (const auto& perm : app.permissions_network) {
-        contract.enforcement.network.push_back(perm);
-    }
-    
-    // Capability usage
+
+    // Permissions are declarations. Hosts may map them to enforcement rules.
     if (!app.permissions_filesystem.empty() || !app.permissions_network.empty()) {
         contract.capability_usage.present = true;
-        for (const auto& perm : app.permissions_filesystem) {
-            contract.capability_usage.required_capabilities.push_back("fs." + perm);
-        }
-        for (const auto& perm : app.permissions_network) {
-            contract.capability_usage.required_capabilities.push_back("net." + perm);
-        }
+        const auto add_capability = [&](const std::string& permission, bool filesystem) {
+            const auto separator = permission.find(':');
+            if (separator == std::string::npos) {
+                result.warnings.push_back({warning_to_string(Warning::capability_malformed), "warn", {{"permission", permission}}});
+                contract.capability_usage.required_capabilities.push_back(permission);
+                return;
+            }
+            const auto operation = permission.substr(0, separator);
+            const auto selector = permission.substr(separator + 1);
+            const bool known = filesystem
+                ? (operation == "read" || operation == "write" || operation == "execute")
+                : (operation == "connect" || operation == "listen" || operation == "bind");
+            if (!known) {
+                result.warnings.push_back({warning_to_string(Warning::capability_unknown), "warn", {{"operation", operation}}});
+            }
+            const auto key = known ? (filesystem ? "filesystem." : "network.") + operation : operation;
+            contract.capability_usage.required_capabilities.push_back(key + ":" + selector);
+        };
+        for (const auto& permission : app.permissions_filesystem) add_capability(permission, true);
+        for (const auto& permission : app.permissions_network) add_capability(permission, false);
     }
-    
+
     // Trust
     contract.trust = install.trust;
-    
+
     if (install.trust.source.empty() && install.trust.evaluated_at.empty()) {
         contract.trust.state = TrustState::Unknown;
         result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), "warn", {}});
@@ -2004,7 +2010,7 @@ inline CompositionResult nah_compose(
                 break;
         }
     }
-    
+
     // Check trust staleness
     if (!install.trust.expires_at.empty() && !options.now.empty()) {
         if (timestamp_before(install.trust.expires_at, options.now)) {
@@ -2012,9 +2018,9 @@ inline CompositionResult nah_compose(
             if (trace_ptr) trace_ptr->decisions.push_back("WARNING: Trust verification has expired");
         }
     }
-    
+
     if (trace_ptr) trace_ptr->decisions.push_back("Composition completed successfully");
-    
+
     result.ok = true;
     return result;
 }
@@ -2065,11 +2071,11 @@ inline std::string str(const std::string& s) {
  */
 inline std::string object(const std::unordered_map<std::string, std::string>& m, size_t indent = 0) {
     if (m.empty()) return "{}";
-    
+
     std::vector<std::string> keys;
     for (const auto& [k, _] : m) keys.push_back(k);
     std::sort(keys.begin(), keys.end());
-    
+
     std::string pad(indent + 2, ' ');
     std::string result = "{\n";
     for (size_t i = 0; i < keys.size(); i++) {
@@ -2086,7 +2092,7 @@ inline std::string object(const std::unordered_map<std::string, std::string>& m,
  */
 inline std::string array(const std::vector<std::string>& v, size_t indent = 0) {
     if (v.empty()) return "[]";
-    
+
     std::string pad(indent + 2, ' ');
     std::string result = "[\n";
     for (size_t i = 0; i < v.size(); i++) {
@@ -2102,14 +2108,14 @@ inline std::string array(const std::vector<std::string>& v, size_t indent = 0) {
 
 /**
  * Serialize a launch contract to JSON.
- * 
+ *
  * Produces deterministic output (sorted keys, consistent formatting).
  */
 inline std::string serialize_contract(const LaunchContract& c) {
     std::ostringstream out;
     out << "{\n";
     out << "  \"schema\": \"" << NAH_CONTRACT_SCHEMA << "\",\n";
-    
+
     // app
     out << "  \"app\": {\n";
     out << "    \"id\": " << json::str(c.app.id) << ",\n";
@@ -2117,7 +2123,7 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"root\": " << json::str(c.app.root) << ",\n";
     out << "    \"entrypoint\": " << json::str(c.app.entrypoint) << "\n";
     out << "  },\n";
-    
+
     // nak
     out << "  \"nak\": {\n";
     out << "    \"id\": " << json::str(c.nak.id) << ",\n";
@@ -2126,7 +2132,7 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"resource_root\": " << json::str(c.nak.resource_root) << ",\n";
     out << "    \"record_ref\": " << json::str(c.nak.record_ref) << "\n";
     out << "  },\n";
-    
+
     // execution
     out << "  \"execution\": {\n";
     out << "    \"binary\": " << json::str(c.execution.binary) << ",\n";
@@ -2135,16 +2141,16 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"library_path_env_key\": " << json::str(c.execution.library_path_env_key) << ",\n";
     out << "    \"library_paths\": " << json::array(c.execution.library_paths, 4) << "\n";
     out << "  },\n";
-    
+
     // environment
     out << "  \"environment\": " << json::object(c.environment, 2) << ",\n";
-    
+
     // enforcement
     out << "  \"enforcement\": {\n";
     out << "    \"filesystem\": " << json::array(c.enforcement.filesystem, 4) << ",\n";
     out << "    \"network\": " << json::array(c.enforcement.network, 4) << "\n";
     out << "  },\n";
-    
+
     // trust
     out << "  \"trust\": {\n";
     out << "    \"state\": " << json::str(trust_state_to_string(c.trust.state)) << ",\n";
@@ -2152,13 +2158,13 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"evaluated_at\": " << json::str(c.trust.evaluated_at) << ",\n";
     out << "    \"expires_at\": " << json::str(c.trust.expires_at) << "\n";
     out << "  },\n";
-    
+
     // capability_usage
     out << "  \"capability_usage\": {\n";
     out << "    \"present\": " << (c.capability_usage.present ? "true" : "false") << ",\n";
     out << "    \"required_capabilities\": " << json::array(c.capability_usage.required_capabilities, 4) << "\n";
     out << "  }\n";
-    
+
     out << "}";
     return out.str();
 }
@@ -2170,14 +2176,14 @@ inline std::string serialize_result(const CompositionResult& r) {
     std::ostringstream out;
     out << "{\n";
     out << "  \"ok\": " << (r.ok ? "true" : "false") << ",\n";
-    
+
     if (r.critical_error.has_value()) {
         out << "  \"critical_error\": " << json::str(critical_error_to_string(*r.critical_error)) << ",\n";
         out << "  \"critical_error_context\": " << json::str(r.critical_error_context) << ",\n";
     } else {
         out << "  \"critical_error\": null,\n";
     }
-    
+
     // warnings
     out << "  \"warnings\": [\n";
     for (size_t i = 0; i < r.warnings.size(); i++) {
@@ -2191,13 +2197,13 @@ inline std::string serialize_result(const CompositionResult& r) {
         out << "\n";
     }
     out << "  ],\n";
-    
+
     if (r.ok) {
         out << "  \"contract\": " << serialize_contract(r.contract) << "\n";
     } else {
         out << "  \"contract\": null\n";
     }
-    
+
     out << "}";
     return out.str();
 }

@@ -241,7 +241,7 @@ The output shows:
 
 ## Determinism
 
-Given the same inputs (manifest, NAK, profile), NAH produces the same contract.
+Given the same manifest, pinned NAK, install record, host environment, and options, NAH produces the same contract.
 
 This enables:
 - **Auditing**: Inspect contract before execution

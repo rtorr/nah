@@ -26,6 +26,7 @@ target_include_directories(nah PRIVATE
 )
 
 target_compile_features(nah PRIVATE cxx_std_17)
+target_compile_options(nah PRIVATE ${NAH_WARNING_FLAGS})
 
 # Pass version from VERSION file to CLI tool
 target_compile_definitions(nah PRIVATE NAH_VERSION="${NAH_VERSION}")

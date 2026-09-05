@@ -4,7 +4,7 @@
  * This file provides filesystem operations needed by NAH hosts.
  * Uses standard C++ filesystem library.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef NAH_FS_H

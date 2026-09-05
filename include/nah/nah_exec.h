@@ -1,10 +1,10 @@
 /*
  * NAH Exec - Contract Execution for NAH
- * 
+ *
  * This file provides process spawning to execute a LaunchContract.
  * Platform-specific implementations for Unix and Windows.
- * 
- * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef NAH_EXEC_H
@@ -14,6 +14,7 @@
 
 #include "nah_core.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -46,27 +47,27 @@ struct ExecResult {
 
 /**
  * Build environment array for execve/CreateProcess.
- * 
+ *
  * Merges contract environment with library path.
  */
 inline std::vector<std::string> build_environment(const core::LaunchContract& contract) {
     std::vector<std::string> env;
-    
+
     // Add all contract environment variables
     for (const auto& [key, value] : contract.environment) {
         env.push_back(key + "=" + value);
     }
-    
+
     // Build library path
     if (!contract.execution.library_paths.empty()) {
         std::string lib_path;
         char sep = core::get_path_separator();
-        
+
         for (size_t i = 0; i < contract.execution.library_paths.size(); i++) {
             if (i > 0) lib_path += sep;
             lib_path += contract.execution.library_paths[i];
         }
-        
+
         // Check if key already exists in environment
         std::string lib_key = contract.execution.library_path_env_key;
         bool found = false;
@@ -79,12 +80,13 @@ inline std::vector<std::string> build_environment(const core::LaunchContract& co
                 break;
             }
         }
-        
+
         if (!found) {
             env.push_back(lib_key + "=" + lib_path);
         }
     }
-    
+
+    std::sort(env.begin(), env.end());
     return env;
 }
 
@@ -112,53 +114,53 @@ inline std::vector<std::string> build_argv(const core::LaunchContract& contract)
 
 /**
  * Execute contract using fork/exec (Unix).
- * 
+ *
  * If wait_for_exit is true, waits for process to complete and returns exit code.
  * If false, returns immediately after spawning (exit_code will be 0).
  */
 inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_for_exit = true) {
     ExecResult result;
-    
+
     auto argv_strings = build_argv(contract);
     auto env_strings = build_environment(contract);
-    
+
     // Build C-style arrays
     std::vector<char*> argv;
     for (auto& s : argv_strings) {
         argv.push_back(const_cast<char*>(s.c_str()));
     }
     argv.push_back(nullptr);
-    
+
     std::vector<char*> envp;
     for (auto& s : env_strings) {
         envp.push_back(const_cast<char*>(s.c_str()));
     }
     envp.push_back(nullptr);
-    
+
     pid_t pid = fork();
-    
+
     if (pid == -1) {
         result.error = "fork failed: " + std::string(strerror(errno));
         return result;
     }
-    
+
     if (pid == 0) {
         // Child process
-        
+
         // Change directory
         if (!contract.execution.cwd.empty()) {
             if (chdir(contract.execution.cwd.c_str()) != 0) {
                 _exit(127);
             }
         }
-        
+
         // Execute
         execve(contract.execution.binary.c_str(), argv.data(), envp.data());
-        
+
         // If execve returns, it failed
         _exit(127);
     }
-    
+
     // Parent process
     if (wait_for_exit) {
         int status;
@@ -166,7 +168,7 @@ inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_f
             result.error = "waitpid failed: " + std::string(strerror(errno));
             return result;
         }
-        
+
         if (WIFEXITED(status)) {
             result.exit_code = WEXITSTATUS(status);
             result.ok = true;
@@ -180,33 +182,33 @@ inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_f
         result.ok = true;
         result.exit_code = 0;
     }
-    
+
     return result;
 }
 
 /**
  * Replace current process with contract (Unix).
- * 
+ *
  * This function does not return on success.
  */
 inline ExecResult exec_replace_unix(const core::LaunchContract& contract) {
     ExecResult result;
-    
+
     auto argv_strings = build_argv(contract);
     auto env_strings = build_environment(contract);
-    
+
     std::vector<char*> argv;
     for (auto& s : argv_strings) {
         argv.push_back(const_cast<char*>(s.c_str()));
     }
     argv.push_back(nullptr);
-    
+
     std::vector<char*> envp;
     for (auto& s : env_strings) {
         envp.push_back(const_cast<char*>(s.c_str()));
     }
     envp.push_back(nullptr);
-    
+
     // Change directory
     if (!contract.execution.cwd.empty()) {
         if (chdir(contract.execution.cwd.c_str()) != 0) {
@@ -214,10 +216,10 @@ inline ExecResult exec_replace_unix(const core::LaunchContract& contract) {
             return result;
         }
     }
-    
+
     // Replace process
     execve(contract.execution.binary.c_str(), argv.data(), envp.data());
-    
+
     // If we get here, execve failed
     result.error = "execve failed: " + std::string(strerror(errno));
     return result;
@@ -238,14 +240,24 @@ inline std::string build_command_line(const std::vector<std::string>& argv) {
     std::string cmd;
     for (size_t i = 0; i < argv.size(); i++) {
         if (i > 0) cmd += " ";
-        
-        // Quote arguments containing spaces
-        bool needs_quotes = argv[i].find(' ') != std::string::npos ||
-                           argv[i].find('\t') != std::string::npos;
-        
-        if (needs_quotes) cmd += "\"";
-        cmd += argv[i];
-        if (needs_quotes) cmd += "\"";
+        const auto& argument = argv[i];
+        const bool quote = argument.empty() || argument.find_first_of(" \t\"") != std::string::npos;
+        if (!quote) { cmd += argument; continue; }
+        cmd += '"';
+        std::size_t backslashes = 0;
+        for (const char character : argument) {
+            if (character == '\\') { ++backslashes; continue; }
+            if (character == '"') {
+                cmd.append(backslashes * 2 + 1, '\\');
+                cmd += '"';
+            } else {
+                cmd.append(backslashes, '\\');
+                cmd += character;
+            }
+            backslashes = 0;
+        }
+        cmd.append(backslashes * 2, '\\');
+        cmd += '"';
     }
     return cmd;
 }
@@ -268,18 +280,18 @@ inline std::string build_environment_block(const std::vector<std::string>& env) 
  */
 inline ExecResult execute_windows(const core::LaunchContract& contract, bool wait_for_exit = true) {
     ExecResult result;
-    
+
     auto argv = build_argv(contract);
     auto env = build_environment(contract);
-    
+
     std::string cmd_line = build_command_line(argv);
     std::string env_block = build_environment_block(env);
-    
+
     STARTUPINFOA si = {0};
     si.cb = sizeof(si);
-    
+
     PROCESS_INFORMATION pi = {0};
-    
+
     BOOL success = CreateProcessA(
         contract.execution.binary.c_str(),
         const_cast<char*>(cmd_line.c_str()),
@@ -292,15 +304,15 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
         &si,
         &pi
     );
-    
+
     if (!success) {
         result.error = "CreateProcess failed: " + std::to_string(GetLastError());
         return result;
     }
-    
+
     if (wait_for_exit) {
         WaitForSingleObject(pi.hProcess, INFINITE);
-        
+
         DWORD exit_code;
         if (GetExitCodeProcess(pi.hProcess, &exit_code)) {
             result.exit_code = static_cast<int>(exit_code);
@@ -312,10 +324,10 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
         result.ok = true;
         result.exit_code = 0;
     }
-    
+
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    
+
     return result;
 }
 
@@ -327,9 +339,9 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
 
 /**
  * Execute a launch contract.
- * 
+ *
  * Spawns a new process according to the contract's execution specification.
- * 
+ *
  * @param contract The launch contract to execute
  * @param wait_for_exit If true, wait for process to complete
  * @return ExecResult with success status and exit code
@@ -344,9 +356,9 @@ inline ExecResult execute(const core::LaunchContract& contract, bool wait_for_ex
 
 /**
  * Replace current process with contract (Unix only).
- * 
+ *
  * On Windows, this spawns a new process and exits the current one.
- * 
+ *
  * @param contract The launch contract to execute
  * @return ExecResult (only returns on failure)
  */

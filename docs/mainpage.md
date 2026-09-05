@@ -1,59 +1,21 @@
-# NAH - Native Application Host {#mainpage}
+# NAH C++ API {#mainpage}
 
-NAH standardizes how native applications are installed, inspected, and launched. It provides a deterministic contract between applications and hosts.
-
-## Quick Start
+NAH composes installed app, runtime, and host metadata into an inspectable launch contract.
 
 ```cpp
+#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 
-// Create a host instance
-auto host = nah::NahHost::create("/nah");
-
-// List installed applications
-for (const auto& app : host->listApplications()) {
-    std::cout << app.id << "@" << app.version << "\n";
-}
-
-// Get launch contract for an app
-auto result = host->getLaunchContract("com.example.myapp");
-if (result.isOk()) {
-    const auto& contract = result.value().contract;
-    // Use contract.execution.binary, contract.environment, etc.
+int main() {
+    auto host = nah::host::NahHost::create("/opt/product/nah");
+    auto result = host->getLaunchContract("com.example.app");
+    if (!result.ok) return 1;
+    return host->executeContract(result.contract, {"argument"});
 }
 ```
 
-## Key Headers
+Link `NAH::nah` for the complete API or `NAH::core` for dependency-free composition types and functions.
 
-| Header | Description |
-|--------|-------------|
-| `<nah/nah.h>` | Complete API - includes all headers |
-| `<nah/nah_host.h>` | NahHost class for contract composition |
-| `<nah/nah_semver.h>` | Semantic versioning - parse and compare versions |
-| `<nah/nah_core.h>` | Core types and pure computation |
-
-## Integration
-
-### CMake FetchContent
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(nah
-    GIT_REPOSITORY https://github.com/rtorr/nah.git
-    GIT_TAG v1.0.0)
-FetchContent_MakeAvailable(nah)
-target_link_libraries(your_target PRIVATE nahhost)
-```
-
-### Conan 2
-
-```python
-def requirements(self):
-    self.requires("nah/1.0.0")
-```
-
-## Links
-
-- [GitHub Repository](https://github.com/rtorr/nah)
-- [CLI Reference](https://github.com/rtorr/nah/blob/main/docs/cli.md)
-- [Full Specification](https://github.com/rtorr/nah/blob/main/SPEC.md)
+- [CLI reference](cli.md)
+- [Specification](../SPEC.md)
+- [Source repository](https://github.com/rtorr/nah)

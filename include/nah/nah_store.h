@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <random>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -61,12 +62,12 @@ inline bool safe_relative(const fs::path& path) {
 
 inline bool allowed_pair(const fs::path& payload, const fs::path& record) {
     if (!safe_relative(payload) || !safe_relative(record)) return false;
-    const auto payload_head = *payload.begin();
-    const auto record_head = *record.begin();
-    auto record_it = record.begin();
-    if (record_it == record.end() || *record_it++ != "registry" || record_it == record.end()) return false;
-    return (payload_head == "apps" && *record_it == "apps") ||
-           (payload_head == "naks" && *record_it == "naks");
+    std::vector<fs::path> payload_parts(payload.begin(), payload.end());
+    std::vector<fs::path> record_parts(record.begin(), record.end());
+    if (record_parts.size() != 3 || record_parts[0] != "registry" ||
+        record_parts[2].extension() != ".json") return false;
+    return (payload_parts.size() == 2 && payload_parts[0] == "apps" && record_parts[1] == "apps") ||
+           (payload_parts.size() == 3 && payload_parts[0] == "naks" && record_parts[1] == "naks");
 }
 
 inline bool sync_file(const fs::path& path, std::string& error) {
@@ -105,16 +106,49 @@ inline bool write_file(const fs::path& path, const std::string& value, std::stri
 
 inline bool sync_tree(const fs::path& root, std::string& error) {
     std::error_code ec;
+    std::vector<fs::path> directories{root};
     for (fs::recursive_directory_iterator it(root, fs::directory_options::none, ec), end;
          !ec && it != end; it.increment(ec)) {
-        if (fs::is_regular_file(it->symlink_status(ec)) && !sync_file(it->path(), error)) return false;
+        const auto status = it->symlink_status(ec);
+        if (ec) break;
+        if (fs::is_regular_file(status) && !sync_file(it->path(), error)) return false;
+        if (fs::is_directory(status)) directories.push_back(it->path());
     }
     if (ec) { error = "cannot inspect staged package: " + ec.message(); return false; }
 #ifndef _WIN32
-    return sync_file(root, error);
+    for (auto it = directories.rbegin(); it != directories.rend(); ++it) {
+        if (!sync_file(*it, error)) return false;
+    }
+    return true;
 #else
     return true;
 #endif
+}
+
+inline bool sync_directory(const fs::path& path, std::string& error) {
+#ifdef _WIN32
+    (void)path;
+    (void)error;
+    return true;
+#else
+    return sync_file(path, error);
+#endif
+}
+
+inline bool rename_durable(const fs::path& from, const fs::path& to, std::string& error) {
+#ifdef _WIN32
+    if (!MoveFileExW(from.wstring().c_str(), to.wstring().c_str(), MOVEFILE_WRITE_THROUGH)) {
+        error = "cannot rename " + from.string() + " to " + to.string();
+        return false;
+    }
+#else
+    std::error_code ec;
+    fs::rename(from, to, ec);
+    if (ec) { error = "cannot rename " + from.string() + ": " + ec.message(); return false; }
+    if (!sync_directory(from.parent_path(), error)) return false;
+    if (to.parent_path() != from.parent_path() && !sync_directory(to.parent_path(), error)) return false;
+#endif
+    return true;
 }
 
 class Lock {
@@ -169,9 +203,14 @@ public:
 
     Result initialize() const {
         std::error_code ec;
-        for (const auto* path : {"apps", "naks", "host", "registry/apps", "registry/naks", "staging"}) {
+        for (const auto* path : {"apps", "naks", "host", "registry", "registry/apps", "registry/naks", "staging"}) {
             fs::create_directories(root_ / path, ec);
             if (ec) return failure(Error::io_error, "cannot create NAH root: " + ec.message());
+            const auto status = fs::symlink_status(root_ / path, ec);
+            if (ec || fs::is_symlink(status) || !fs::is_directory(status)) {
+                return failure(Error::invalid_path, "managed store directory is not a real directory: " +
+                                                      (root_ / path).string());
+            }
         }
         return success();
     }
@@ -201,6 +240,16 @@ public:
 
         std::error_code ec;
         if (!fs::is_directory(source, ec)) return failure(Error::io_error, "installation source is not a directory");
+        for (fs::recursive_directory_iterator it(source, fs::directory_options::none, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            const auto status = it->symlink_status(ec);
+            if (ec) break;
+            if (fs::is_symlink(status) || (!fs::is_directory(status) && !fs::is_regular_file(status))) {
+                return failure(Error::invalid_path, "installation source contains an unsupported file: " +
+                                                    it->path().string());
+            }
+        }
+        if (ec) return failure(Error::io_error, "cannot inspect installation source: " + ec.message());
         const auto final_path = root_ / payload_relative;
         const auto record_path = root_ / record_relative;
         if (!force && (fs::exists(final_path, ec) || fs::exists(record_path, ec))) {
@@ -225,21 +274,23 @@ public:
         if (!write_journal(journal, error)) return cleanup_failure(operation, error);
 
         fs::create_directories(final_path.parent_path(), ec);
+        if (ec) return rollback_failure(journal, "cannot create payload directory: " + ec.message());
         fs::create_directories(record_path.parent_path(), ec);
-        if (fs::exists(final_path, ec)) fs::rename(final_path, operation / "old-payload", ec);
-        if (ec) return rollback_failure(journal, "cannot preserve existing payload: " + ec.message());
-        if (fs::exists(record_path, ec)) fs::rename(record_path, operation / "old-record.json", ec);
-        if (ec) return rollback_failure(journal, "cannot preserve existing record: " + ec.message());
+        if (ec) return rollback_failure(journal, "cannot create registry directory: " + ec.message());
+        if (fs::exists(final_path, ec) && !detail::rename_durable(final_path, operation / "old-payload", error))
+            return rollback_failure(journal, error);
+        if (ec) return rollback_failure(journal, "cannot inspect existing payload: " + ec.message());
+        if (fs::exists(record_path, ec) && !detail::rename_durable(record_path, operation / "old-record.json", error))
+            return rollback_failure(journal, error);
+        if (ec) return rollback_failure(journal, "cannot inspect existing record: " + ec.message());
         journal["phase"] = "backed_up";
         if (!write_journal(journal, error)) return rollback_failure(journal, error);
 
-        fs::rename(staged_payload, final_path, ec);
-        if (ec) return rollback_failure(journal, "cannot activate package: " + ec.message());
+        if (!detail::rename_durable(staged_payload, final_path, error)) return rollback_failure(journal, error);
         journal["phase"] = "payload_active";
         if (!write_journal(journal, error)) return rollback_failure(journal, error);
 
-        fs::rename(staged_record, record_path, ec);
-        if (ec) return rollback_failure(journal, "cannot activate registry record: " + ec.message());
+        if (!detail::rename_durable(staged_record, record_path, error)) return rollback_failure(journal, error);
         journal["phase"] = "committed";
         if (!write_journal(journal, error)) return rollback_failure(journal, error);
         return finish_committed(operation);
@@ -269,10 +320,12 @@ public:
                                {"record", record_relative.generic_string()}};
         std::string error;
         if (!write_journal(journal, error)) return cleanup_failure(operation, error);
-        if (fs::exists(final_path, ec)) fs::rename(final_path, operation / "old-payload", ec);
-        if (ec) return rollback_failure(journal, "cannot stage installed payload: " + ec.message());
-        if (fs::exists(record_path, ec)) fs::rename(record_path, operation / "old-record.json", ec);
-        if (ec) return rollback_failure(journal, "cannot stage registry record: " + ec.message());
+        if (fs::exists(final_path, ec) && !detail::rename_durable(final_path, operation / "old-payload", error))
+            return rollback_failure(journal, error);
+        if (ec) return rollback_failure(journal, "cannot inspect installed payload: " + ec.message());
+        if (fs::exists(record_path, ec) && !detail::rename_durable(record_path, operation / "old-record.json", error))
+            return rollback_failure(journal, error);
+        if (ec) return rollback_failure(journal, "cannot inspect registry record: " + ec.message());
         journal["phase"] = "committed";
         if (!write_journal(journal, error)) return rollback_failure(journal, error);
         return finish_committed(operation);
@@ -312,19 +365,33 @@ private:
         } catch (...) {
             return failure(Error::invalid_journal, "transaction journal is invalid; manual recovery is required");
         }
-        if (journal.value("version", 0) != 1 || !journal.contains("operation") ||
-            !journal.contains("payload") || !journal.contains("record")) {
+        if (!journal.is_object() || !journal.contains("version") || !journal["version"].is_number_integer() ||
+            journal["version"].get<int>() != 1 ||
+            !journal.contains("kind") || !journal["kind"].is_string() ||
+            !journal.contains("phase") || !journal["phase"].is_string() ||
+            !journal.contains("operation") || !journal["operation"].is_string() ||
+            !journal.contains("payload") || !journal["payload"].is_string() ||
+            !journal.contains("record") || !journal["record"].is_string()) {
             return failure(Error::invalid_journal, "transaction journal is incomplete; manual recovery is required");
+        }
+        const std::string kind = journal["kind"].get<std::string>();
+        const std::string phase = journal["phase"].get<std::string>();
+        const bool valid_phase =
+            (kind == "install" && (phase == "prepared" || phase == "backed_up" ||
+                                    phase == "payload_active" || phase == "committed")) ||
+            (kind == "remove" && (phase == "prepared" || phase == "committed"));
+        if (!valid_phase) {
+            return failure(Error::invalid_journal, "transaction journal has an unsupported operation or phase");
         }
         const fs::path payload = journal["payload"].get<std::string>();
         const fs::path record = journal["record"].get<std::string>();
         const std::string operation_id = journal["operation"].get<std::string>();
-        if (!detail::allowed_pair(payload, record) || operation_id.empty() ||
+        if (!detail::allowed_pair(payload, record) || operation_id.size() != 32 ||
             operation_id.find_first_not_of("0123456789abcdef") != std::string::npos) {
             return failure(Error::invalid_journal, "transaction journal contains unsafe paths");
         }
         const auto operation = root_ / "staging" / operation_id;
-        if (journal.value("phase", "") == "committed") return finish_committed(operation);
+        if (phase == "committed") return finish_committed(operation);
         return rollback(journal);
     }
 
@@ -339,10 +406,15 @@ private:
             if (!fs::exists(operation / "record.json", ec)) fs::remove(record_path, ec);
         }
         ec.clear();
-        if (fs::exists(operation / "old-payload", ec)) fs::rename(operation / "old-payload", final_path, ec);
-        if (ec) return failure(Error::io_error, "cannot restore previous payload: " + ec.message());
-        if (fs::exists(operation / "old-record.json", ec)) fs::rename(operation / "old-record.json", record_path, ec);
-        if (ec) return failure(Error::io_error, "cannot restore previous record: " + ec.message());
+        std::string error;
+        if (fs::exists(operation / "old-payload", ec) &&
+            !detail::rename_durable(operation / "old-payload", final_path, error))
+            return failure(Error::io_error, error);
+        if (ec) return failure(Error::io_error, "cannot inspect previous payload: " + ec.message());
+        if (fs::exists(operation / "old-record.json", ec) &&
+            !detail::rename_durable(operation / "old-record.json", record_path, error))
+            return failure(Error::io_error, error);
+        if (ec) return failure(Error::io_error, "cannot inspect previous record: " + ec.message());
         fs::remove_all(operation, ec);
         fs::remove(journal_path(), ec);
         return success();

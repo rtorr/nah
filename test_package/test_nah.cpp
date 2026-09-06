@@ -2,7 +2,6 @@
  * Conan test_package - verify NAH headers work correctly
  */
 
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 #include <nah/nah_archive.h>
 #include <iostream>

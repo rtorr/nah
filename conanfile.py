@@ -34,8 +34,15 @@ class NahConan(ConanFile):
 
     settings = "os", "compiler", "build_type", "arch"
 
-    # Export headers
-    exports_sources = "include/*", "VERSION", "LICENSE"
+    exports_sources = (
+        "CMakeLists.txt",
+        "cmake/*",
+        "include/*",
+        "tools/**",
+        "tests/**",
+        "VERSION",
+        "LICENSE",
+    )
 
     # Tool build options
     options = {
@@ -83,6 +90,10 @@ class NahConan(ConanFile):
             cmake.build()
 
     def package(self):
+        if self.options.build_tools:
+            CMake(self).install()
+            return
+
         # Copy LICENSE
         copy(
             self,
@@ -100,33 +111,6 @@ class NahConan(ConanFile):
             keep_path=True,
         )
 
-        # Copy the CLI tool if built
-        if self.options.build_tools:
-            # Unix binary
-            copy(
-                self,
-                "nah",
-                src=os.path.join(self.build_folder, "tools", "nah"),
-                dst=os.path.join(self.package_folder, "bin"),
-                keep_path=False,
-            )
-            # Windows binary
-            copy(
-                self,
-                "nah.exe",
-                src=os.path.join(self.build_folder, "tools", "nah"),
-                dst=os.path.join(self.package_folder, "bin"),
-                keep_path=False,
-            )
-            # Also check Release subdirectory for Windows
-            copy(
-                self,
-                "nah.exe",
-                src=os.path.join(self.build_folder, "tools", "nah", "Release"),
-                dst=os.path.join(self.package_folder, "bin"),
-                keep_path=False,
-            )
-
     def package_info(self):
         # Header-only library
         self.cpp_info.bindirs = []
@@ -134,15 +118,21 @@ class NahConan(ConanFile):
 
         core = self.cpp_info.components["core"]
         core.includedirs = ["include"]
+        core.libdirs = []
+        core.bindirs = []
         core.set_property("cmake_target_name", "NAH::core")
 
         library = self.cpp_info.components["nah"]
         library.includedirs = ["include"]
+        library.libdirs = []
+        library.bindirs = []
         library.requires = ["core", "nlohmann_json::nlohmann_json"]
         library.set_property("cmake_target_name", "NAH::nah")
 
         package = self.cpp_info.components["package"]
         package.includedirs = ["include"]
+        package.libdirs = []
+        package.bindirs = []
         package.requires = ["core", "zlib::zlib"]
         package.set_property("cmake_target_name", "NAH::package")
 

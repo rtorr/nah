@@ -175,8 +175,8 @@ TEST_CASE("PlaceholderExpansion: MissingVariable") {
     std::unordered_map<std::string, std::string> env;
 
     auto result = expand_placeholders("{MISSING}", env);
-    CHECK(result.ok);
-    CHECK(result.value == "");
+    CHECK_FALSE(result.ok);
+    CHECK(result.error == "missing_placeholder:MISSING");
 }
 
 TEST_CASE("PlaceholderExpansion: NoPlaceholders") {
@@ -229,10 +229,17 @@ TEST_CASE("PlaceholderExpansion: VectorExpansion") {
     std::vector<std::string> inputs = {"{ROOT}/bin", "{ROOT}/lib", "static"};
     auto result = expand_string_vector(inputs, env);
 
-    CHECK(result.size() == 3u);
-    CHECK(result[0] == "/app/bin");
-    CHECK(result[1] == "/app/lib");
-    CHECK(result[2] == "static");
+    REQUIRE(result.ok);
+    CHECK(result.values.size() == 3u);
+    CHECK(result.values[0] == "/app/bin");
+    CHECK(result.values[1] == "/app/lib");
+    CHECK(result.values[2] == "static");
+}
+
+TEST_CASE("PlaceholderExpansion: VectorFailure") {
+    auto result = expand_string_vector({"{MISSING}"}, {});
+    CHECK_FALSE(result.ok);
+    CHECK(result.error == "missing_placeholder:MISSING");
 }
 
 // ============================================================================
@@ -371,14 +378,8 @@ TEST_CASE("TrustState: TimestampComparison") {
 // WARNING SYSTEM
 // ============================================================================
 
-TEST_CASE("WarningSystem: WarningParsing") {
-    CHECK(parse_warning_key("invalid_manifest") == Warning::invalid_manifest);
-    CHECK_FALSE(parse_warning_key("not_a_warning").has_value());
-}
-
 TEST_CASE("WarningSystem: WarningToString") {
-    CHECK(std::string(warning_to_string(Warning::invalid_manifest)) == "invalid_manifest");
-    CHECK(std::string(warning_to_string(Warning::nak_not_found)) == "nak_not_found");
+    CHECK(std::string(warning_to_string(Warning::trust_state_unknown)) == "trust_state_unknown");
 }
 
 // ============================================================================
@@ -418,6 +419,56 @@ TEST_CASE("Composition: StandaloneApp") {
     // NAH standard vars
     CHECK(result.contract.environment.at("NAH_APP_ID") == "com.example.hello");
     CHECK(result.contract.environment.at("NAH_APP_ROOT") == "/apps/hello");
+}
+
+TEST_CASE("Composition rejects mismatched installed identity") {
+    AppDeclaration app;
+    app.id = "com.example.app";
+    app.version = "1.0.0";
+    app.entrypoint_path = "bin/app";
+    InstallRecord install;
+    install.install.instance_id = "installed";
+    install.app.id = "com.example.other";
+    install.app.version = app.version;
+    install.paths.install_root = "/apps/example";
+    const auto result = nah_compose(app, HostEnvironment{}, install, RuntimeInventory{});
+    CHECK_FALSE(result.ok);
+    CHECK(result.critical_error == CriticalError::INSTALL_RECORD_INVALID);
+}
+
+TEST_CASE("Composition rejects unresolved placeholders") {
+    AppDeclaration app;
+    app.id = "com.example.app";
+    app.version = "1.0.0";
+    app.entrypoint_path = "bin/app";
+    app.entrypoint_args = {"{MISSING}"};
+    InstallRecord install;
+    install.install.instance_id = "installed";
+    install.paths.install_root = "/apps/example";
+
+    const auto result = nah_compose(app, HostEnvironment{}, install, RuntimeInventory{});
+    CHECK_FALSE(result.ok);
+    CHECK(result.critical_error == CriticalError::EXPANSION_FAILED);
+    CHECK(result.critical_error_context == "app arguments: missing_placeholder:MISSING");
+}
+
+TEST_CASE("Composition orders install library appends last") {
+    AppDeclaration app;
+    app.id = "com.example.app";
+    app.version = "1.0.0";
+    app.entrypoint_path = "bin/app";
+    app.lib_dirs = {"lib"};
+    HostEnvironment host;
+    host.paths.library_append = {"/host/lib"};
+    InstallRecord install;
+    install.install.instance_id = "installed";
+    install.paths.install_root = "/apps/example";
+    install.overrides.paths.library_append = {"/install/lib"};
+
+    const auto result = nah_compose(app, host, install, RuntimeInventory{});
+    REQUIRE(result.ok);
+    CHECK(result.contract.execution.library_paths ==
+          std::vector<std::string>{"/apps/example/lib", "/host/lib", "/install/lib"});
 }
 
 // ============================================================================
@@ -840,7 +891,7 @@ TEST_CASE("JsonSerialization: SerializeResult") {
     result.contract.execution.cwd = "/app";
     result.contract.trust.state = TrustState::Unknown;
 
-    result.warnings.push_back({"test_warning", "warn", {{"key", "value"}}});
+    result.warnings.push_back({"test_warning", {{"key", "value"}}});
 
     std::string json_str = serialize_result(result);
 

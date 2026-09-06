@@ -4,7 +4,6 @@
  * Inspect and compare launch contracts for applications.
  */
 
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 #include <iostream>
 #include <iomanip>

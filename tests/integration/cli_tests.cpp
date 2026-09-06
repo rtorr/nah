@@ -4,7 +4,6 @@
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah_host.h>
 #include <nah/nah_fs.h>
 #include <nah/nah_core.h>
@@ -645,7 +644,6 @@ TEST_CASE("nah loader selection")
         std::string record_path = nah::fs::join_paths(env.root, "registry", "naks", id + "@" + version + ".json");
         std::ofstream record(record_path);
         record << "{\n";
-        record << "  \"install\": { \"instance_id\": \"test-nak-" << id << "\" },\n";
         record << "  \"nak\": { \"id\": \"" << id << "\", \"version\": \"" << version << "\" },\n";
         record << "  \"paths\": { \"root\": \"" << nah::core::normalize_separators(nak_dir) << "\" },\n";
         record << "  \"loaders\": {\n";
@@ -871,8 +869,9 @@ TEST_CASE("NahHost discovery API")
         // Create a minimal NAH structure
         std::string temp_dir = std::filesystem::temp_directory_path().string() + "/valid-nah-root-" +
                                std::to_string(std::time(nullptr));
-        std::filesystem::create_directories(temp_dir + "/registry/apps");
-        std::filesystem::create_directories(temp_dir + "/host");
+        for (const auto* path : {"apps", "naks", "host", "registry/apps", "registry/naks", "staging"}) {
+            std::filesystem::create_directories(temp_dir + "/" + path);
+        }
 
         CHECK(nah::host::NahHost::isValidRoot(temp_dir));
 

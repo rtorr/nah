@@ -93,7 +93,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -209,8 +208,8 @@ using EnvMap = std::unordered_map<std::string, EnvValue>;
 /**
  * Trust verification state.
  *
- * - Verified: Cryptographic verification succeeded
- * - Unverified: No verification was performed
+ * - Verified: Supplied artifact evidence was accepted
+ * - Unverified: The artifact was installed without verification
  * - Failed: Verification was attempted but failed
  * - Unknown: Trust state could not be determined
  */
@@ -240,7 +239,7 @@ inline std::optional<TrustState> parse_trust_state(const std::string& s) {
 }
 
 /**
- * Trust information for an installed artifact.
+ * Trust evidence supplied by an installer or embedding host.
  *
  * Contains verification state, timestamps, and optional details.
  * Timestamps use RFC3339 format (e.g., "2025-01-18T12:00:00Z").
@@ -261,12 +260,9 @@ struct TrustInfo {
 /**
  * Warning types that can be emitted during composition.
  *
- * Warnings are non-fatal issues that may indicate problems.
- * Each warning can be configured with an action: warn, ignore, or error.
+ * Warnings are non-fatal trust observations.
  */
 enum class Warning {
-    invalid_manifest,
-    nak_not_found,
     trust_state_unknown,
     trust_state_unverified,
     trust_state_failed,
@@ -275,8 +271,6 @@ enum class Warning {
 
 inline const char* warning_to_string(Warning w) {
     switch (w) {
-        case Warning::invalid_manifest: return "invalid_manifest";
-        case Warning::nak_not_found: return "nak_not_found";
         case Warning::trust_state_unknown: return "trust_state_unknown";
         case Warning::trust_state_unverified: return "trust_state_unverified";
         case Warning::trust_state_failed: return "trust_state_failed";
@@ -285,26 +279,15 @@ inline const char* warning_to_string(Warning w) {
     return "unknown";
 }
 
-inline std::optional<Warning> parse_warning_key(const std::string& key) {
-    if (key == "invalid_manifest") return Warning::invalid_manifest;
-    if (key == "nak_not_found") return Warning::nak_not_found;
-    if (key == "trust_state_unknown") return Warning::trust_state_unknown;
-    if (key == "trust_state_unverified") return Warning::trust_state_unverified;
-    if (key == "trust_state_failed") return Warning::trust_state_failed;
-    if (key == "trust_state_stale") return Warning::trust_state_stale;
-    return std::nullopt;
-}
-
 /**
- * A warning object with key, action, and optional fields.
+ * A warning object with a stable key and optional context.
  */
 struct WarningObject {
     std::string key;     ///< Warning identifier (lowercase_snake_case)
-    std::string action;  ///< Action taken: "warn" or "error"
     std::unordered_map<std::string, std::string> fields;  ///< Additional context
 
     bool operator==(const WarningObject& other) const {
-        return key == other.key && action == other.action && fields == other.fields;
+        return key == other.key && fields == other.fields;
     }
 };
 
@@ -322,6 +305,8 @@ enum class CriticalError {
     MANIFEST_MISSING,        ///< App manifest not found or invalid
     ENTRYPOINT_NOT_FOUND,    ///< Entrypoint binary doesn't exist
     PATH_TRAVERSAL,          ///< Path escapes allowed root
+    EXPANSION_FAILED,        ///< A launch placeholder could not be expanded
+    HOST_CONFIG_INVALID,     ///< Host configuration is malformed
     INSTALL_RECORD_INVALID,  ///< Install record is malformed
     NAK_NOT_FOUND,           ///< Required pinned NAK is unavailable or inconsistent
     NAK_LOADER_INVALID,      ///< Requested loader not available
@@ -332,6 +317,8 @@ inline const char* critical_error_to_string(CriticalError e) {
         case CriticalError::MANIFEST_MISSING: return "MANIFEST_MISSING";
         case CriticalError::ENTRYPOINT_NOT_FOUND: return "ENTRYPOINT_NOT_FOUND";
         case CriticalError::PATH_TRAVERSAL: return "PATH_TRAVERSAL";
+        case CriticalError::EXPANSION_FAILED: return "EXPANSION_FAILED";
+        case CriticalError::HOST_CONFIG_INVALID: return "HOST_CONFIG_INVALID";
         case CriticalError::INSTALL_RECORD_INVALID: return "INSTALL_RECORD_INVALID";
         case CriticalError::NAK_NOT_FOUND: return "NAK_NOT_FOUND";
         case CriticalError::NAK_LOADER_INVALID: return "NAK_LOADER_INVALID";
@@ -343,6 +330,8 @@ inline std::optional<CriticalError> parse_critical_error(const std::string& s) {
     if (s == "MANIFEST_MISSING") return CriticalError::MANIFEST_MISSING;
     if (s == "ENTRYPOINT_NOT_FOUND") return CriticalError::ENTRYPOINT_NOT_FOUND;
     if (s == "PATH_TRAVERSAL") return CriticalError::PATH_TRAVERSAL;
+    if (s == "EXPANSION_FAILED") return CriticalError::EXPANSION_FAILED;
+    if (s == "HOST_CONFIG_INVALID") return CriticalError::HOST_CONFIG_INVALID;
     if (s == "INSTALL_RECORD_INVALID") return CriticalError::INSTALL_RECORD_INVALID;
     if (s == "NAK_NOT_FOUND") return CriticalError::NAK_NOT_FOUND;
     if (s == "NAK_LOADER_INVALID") return CriticalError::NAK_LOADER_INVALID;
@@ -355,22 +344,13 @@ inline std::optional<CriticalError> parse_critical_error(const std::string& s) {
 
 /**
  * Source kind constants for tracing.
- *
- * Valid values: host, nak_record, manifest, install_record,
- * process_env, overrides_file, standard, nah_standard
  */
 namespace trace_source {
     constexpr const char* HOST = "host";
     constexpr const char* NAK_RECORD = "nak_record";
-    constexpr const char* NAK = "nak";  // Alias for NAK_RECORD
     constexpr const char* MANIFEST = "manifest";
     constexpr const char* INSTALL_RECORD = "install_record";
-    constexpr const char* INSTALL_OVERRIDE = "install_override";
-    constexpr const char* PROCESS_ENV = "process_env";
-    constexpr const char* OVERRIDES_FILE = "overrides_file";
-    constexpr const char* STANDARD = "standard";
     constexpr const char* NAH_STANDARD = "nah_standard";
-    constexpr const char* COMPUTED = "computed";
 }
 
 /**
@@ -653,12 +633,6 @@ struct InstallRecord {
 
     TrustInfo trust;
 
-    // Verification info (optional)
-    struct {
-        std::string last_verified_at;      ///< When last verified (RFC3339)
-        std::string last_verifier_version; ///< Version of tool that verified
-    } verification;
-
     // Per-install host-owned overrides
     struct {
         EnvMap environment;  ///< Additional/override environment variables
@@ -668,6 +642,7 @@ struct InstallRecord {
         } arguments;
         struct {
             std::vector<std::string> library_prepend;  ///< Library paths to prepend
+            std::vector<std::string> library_append;   ///< Library paths to append
         } paths;
     } overrides;
 
@@ -794,17 +769,6 @@ struct LaunchContract {
 };
 
 // ============================================================================
-// POLICY VIOLATION
-// ============================================================================
-
-// Describes a policy violation (e.g., path traversal attempt).
-struct PolicyViolation {
-    std::string type;     ///< Violation type (e.g., "path_traversal")
-    std::string target;   ///< What was violated (e.g., "entrypoint")
-    std::string context;  ///< Human-readable description
-};
-
-// ============================================================================
 // COMPOSITION OPTIONS
 // ============================================================================
 
@@ -845,7 +809,6 @@ struct CompositionResult {
     std::string critical_error_context;           ///< Human-readable error message
     LaunchContract contract;                      ///< The launch contract (valid if ok)
     std::vector<WarningObject> warnings;          ///< Non-fatal warnings
-    std::vector<PolicyViolation> policy_violations;
     std::optional<CompositionTrace> trace;        ///< Detailed trace (if options.enable_trace)
 };
 
@@ -1093,17 +1056,25 @@ inline ValidationResult validate_runtime(const RuntimeDescriptor& runtime) {
         result.errors.push_back("paths.root must be absolute");
     }
 
+    if (!runtime.paths.resource_root.empty() &&
+        (!is_absolute_path(runtime.paths.resource_root) ||
+         path_escapes_root(runtime.paths.root, runtime.paths.resource_root))) {
+        result.ok = false;
+        result.errors.push_back("paths.resource_root must be within paths.root");
+    }
+
     for (const auto& lib_dir : runtime.paths.lib_dirs) {
-        if (!is_absolute_path(lib_dir)) {
+        if (!is_absolute_path(lib_dir) || path_escapes_root(runtime.paths.root, lib_dir)) {
             result.ok = false;
-            result.errors.push_back("lib_dir must be absolute: " + lib_dir);
+            result.errors.push_back("lib_dir must be within paths.root: " + lib_dir);
         }
     }
 
     for (const auto& [name, loader] : runtime.loaders) {
-        if (!loader.exec_path.empty() && !is_absolute_path(loader.exec_path)) {
+        if (loader.exec_path.empty() || !is_absolute_path(loader.exec_path) ||
+            path_escapes_root(runtime.paths.root, loader.exec_path)) {
             result.ok = false;
-            result.errors.push_back("loader exec_path must be absolute: " + name);
+            result.errors.push_back("loader exec_path must be within paths.root: " + name);
         }
     }
 
@@ -1169,7 +1140,7 @@ struct ExpansionResult {
 /**
  * Expand {VAR} placeholders in a string.
  *
- * Single-pass, no recursion. Missing variables become empty strings.
+ * Single-pass, no recursion. Missing variables are errors.
  * Enforces size and count limits to prevent DoS.
  */
 inline ExpansionResult expand_placeholders(
@@ -1196,9 +1167,12 @@ inline ExpansionResult expand_placeholders(
                 }
 
                 auto it = env.find(var_name);
-                if (it != env.end()) {
-                    result.value += it->second;
+                if (it == env.end()) {
+                    result.ok = false;
+                    result.error = "missing_placeholder:" + var_name;
+                    return result;
                 }
+                result.value += it->second;
 
                 if (result.value.size() > MAX_EXPANDED_SIZE) {
                     result.ok = false;
@@ -1227,16 +1201,27 @@ inline ExpansionResult expand_placeholders(
 /**
  * Expand placeholders in a vector of strings.
  */
-inline std::vector<std::string> expand_string_vector(
+struct ExpansionListResult {
+    bool ok = true;
+    std::vector<std::string> values;
+    std::string error;
+};
+
+inline ExpansionListResult expand_string_vector(
     const std::vector<std::string>& inputs,
     const std::unordered_map<std::string, std::string>& env)
 {
-    std::vector<std::string> result;
-    result.reserve(inputs.size());
+    ExpansionListResult result;
+    result.values.reserve(inputs.size());
 
     for (const auto& input : inputs) {
         auto expanded = expand_placeholders(input, env);
-        result.push_back(expanded.ok ? expanded.value : input);
+        if (!expanded.ok) {
+            result.ok = false;
+            result.error = expanded.error;
+            return result;
+        }
+        result.values.push_back(std::move(expanded.value));
     }
 
     return result;
@@ -1317,7 +1302,7 @@ struct PathBindingResult {
     std::string entrypoint;
     std::vector<std::string> library_paths;
     std::unordered_map<std::string, AssetExport> exports;
-    std::vector<PolicyViolation> violations;
+    std::vector<std::string> errors;
 };
 
 /**
@@ -1336,9 +1321,7 @@ inline PathBindingResult bind_paths(
     std::string entrypoint = join_path(app_root, decl.entrypoint_path);
     if (path_escapes_root(app_root, entrypoint)) {
         result.ok = false;
-        result.violations.push_back({
-            "path_traversal", "entrypoint", "entrypoint escapes app root"
-        });
+        result.errors.push_back("entrypoint escapes app root");
         return result;
     }
     result.entrypoint = entrypoint;
@@ -1366,9 +1349,7 @@ inline PathBindingResult bind_paths(
         std::string abs_lib = join_path(app_root, lib_dir);
         if (path_escapes_root(app_root, abs_lib)) {
             result.ok = false;
-            result.violations.push_back({
-                "path_traversal", "lib_dir", "lib_dir escapes app root: " + lib_dir
-            });
+            result.errors.push_back("lib_dir escapes app root: " + lib_dir);
             return result;
         }
         result.library_paths.push_back(abs_lib);
@@ -1380,14 +1361,18 @@ inline PathBindingResult bind_paths(
         }
     }
 
+    for (const auto& path : install.overrides.paths.library_append) {
+        if (is_absolute_path(path)) {
+            result.library_paths.push_back(path);
+        }
+    }
+
     // Asset exports
     for (const auto& exp : decl.asset_exports) {
         std::string abs_path = join_path(app_root, exp.path);
         if (path_escapes_root(app_root, abs_path)) {
             result.ok = false;
-            result.violations.push_back({
-                "path_traversal", "asset_export", "asset export escapes app root: " + exp.id
-            });
+            result.errors.push_back("asset export escapes app root: " + exp.id);
             return result;
         }
         result.exports[exp.id] = {exp.id, abs_path, exp.type};
@@ -1607,11 +1592,6 @@ inline CompositionResult nah_compose(
         result.critical_error = CriticalError::MANIFEST_MISSING;
         result.critical_error_context = decl_valid.errors.empty() ?
             "invalid declaration" : decl_valid.errors[0];
-        for (const auto& err : decl_valid.errors) {
-            result.warnings.push_back({
-                warning_to_string(Warning::invalid_manifest), "error", {{"reason", err}}
-            });
-        }
         if (trace_ptr) trace_ptr->decisions.push_back("FAILED: Declaration validation failed");
         return result;
     }
@@ -1619,6 +1599,11 @@ inline CompositionResult nah_compose(
 
     // Validate install record
     auto install_valid = validate_install_record(install);
+    if ((!install.app.id.empty() && install.app.id != app.id) ||
+        (!install.app.version.empty() && install.app.version != app.version)) {
+        install_valid.ok = false;
+        install_valid.errors.push_back("install record app identity does not match the manifest");
+    }
     if (!install_valid.ok) {
         result.critical_error = CriticalError::INSTALL_RECORD_INVALID;
         result.critical_error_context = install_valid.errors.empty() ?
@@ -1630,12 +1615,6 @@ inline CompositionResult nah_compose(
 
     // Resolve runtime
     auto runtime_result = resolve_runtime(app, install, inventory);
-    for (const auto& warn : runtime_result.warnings) {
-        result.warnings.push_back({
-            warning_to_string(Warning::nak_not_found), "warn", {{"reason", warn}}
-        });
-    }
-
     RuntimeDescriptor* runtime_ptr = runtime_result.resolved && !runtime_result.runtime.nak.id.empty()
         ? &runtime_result.runtime : nullptr;
 
@@ -1691,9 +1670,8 @@ inline CompositionResult nah_compose(
     auto paths = bind_paths(app, install, runtime_ptr, host_env);
     if (!paths.ok) {
         result.critical_error = CriticalError::PATH_TRAVERSAL;
-        result.critical_error_context = paths.violations.empty() ?
-            "path binding failed" : paths.violations[0].context;
-        result.policy_violations = paths.violations;
+        result.critical_error_context = paths.errors.empty() ?
+            "path binding failed" : paths.errors.front();
         if (trace_ptr) trace_ptr->decisions.push_back("FAILED: Path binding failed");
         return result;
     }
@@ -1704,6 +1682,24 @@ inline CompositionResult nah_compose(
 
     // Compose environment
     auto env = compose_environment(app, install, runtime_ptr, host_env, contract, trace_ptr);
+    const auto unexpanded_env = env;
+    for (auto& [key, value] : env) {
+        auto expanded = expand_placeholders(value, unexpanded_env);
+        if (!expanded.ok) {
+            result.critical_error = CriticalError::EXPANSION_FAILED;
+            result.critical_error_context = "environment " + key + ": " + expanded.error;
+            if (trace_ptr) trace_ptr->decisions.push_back("FAILED: " + result.critical_error_context);
+            return result;
+        }
+        value = std::move(expanded.value);
+    }
+    contract.environment = env;
+
+    auto fail_expansion = [&](const std::string& context, const std::string& error) {
+        result.critical_error = CriticalError::EXPANSION_FAILED;
+        result.critical_error_context = context + ": " + error;
+        if (trace_ptr) trace_ptr->decisions.push_back("FAILED: " + result.critical_error_context);
+    };
 
     // Determine execution binary and arguments
     std::string pinned_loader = install.nak.loader;
@@ -1744,7 +1740,12 @@ inline CompositionResult nah_compose(
             }
 
             contract.execution.binary = it->second.exec_path;
-            contract.execution.arguments = expand_string_vector(it->second.args_template, env);
+            auto expanded = expand_string_vector(it->second.args_template, env);
+            if (!expanded.ok) {
+                fail_expansion("loader arguments", expanded.error);
+                return result;
+            }
+            contract.execution.arguments = std::move(expanded.values);
         }
     } else {
         contract.execution.binary = contract.app.entrypoint;
@@ -1753,32 +1754,52 @@ inline CompositionResult nah_compose(
 
     // Apply argument overrides
     auto expanded_prepend = expand_string_vector(install.overrides.arguments.prepend, env);
+    if (!expanded_prepend.ok) {
+        fail_expansion("prepended arguments", expanded_prepend.error);
+        return result;
+    }
     contract.execution.arguments.insert(
         contract.execution.arguments.begin(),
-        expanded_prepend.begin(),
-        expanded_prepend.end());
+        expanded_prepend.values.begin(),
+        expanded_prepend.values.end());
 
     auto expanded_entry_args = expand_string_vector(app.entrypoint_args, env);
+    if (!expanded_entry_args.ok) {
+        fail_expansion("app arguments", expanded_entry_args.error);
+        return result;
+    }
     contract.execution.arguments.insert(
         contract.execution.arguments.end(),
-        expanded_entry_args.begin(),
-        expanded_entry_args.end());
+        expanded_entry_args.values.begin(),
+        expanded_entry_args.values.end());
 
     auto expanded_append = expand_string_vector(install.overrides.arguments.append, env);
+    if (!expanded_append.ok) {
+        fail_expansion("appended arguments", expanded_append.error);
+        return result;
+    }
     contract.execution.arguments.insert(
         contract.execution.arguments.end(),
-        expanded_append.begin(),
-        expanded_append.end());
+        expanded_append.values.begin(),
+        expanded_append.values.end());
 
     // Determine cwd
     if (runtime_ptr && runtime_ptr->execution.present && !runtime_ptr->execution.cwd.empty()) {
         auto cwd_expanded = expand_placeholders(runtime_ptr->execution.cwd, env);
-        if (cwd_expanded.ok && is_absolute_path(cwd_expanded.value)) {
+        if (!cwd_expanded.ok) {
+            fail_expansion("working directory", cwd_expanded.error);
+            return result;
+        }
+        if (is_absolute_path(cwd_expanded.value)) {
             contract.execution.cwd = cwd_expanded.value;
-        } else if (cwd_expanded.ok) {
-            contract.execution.cwd = join_path(runtime_ptr->paths.root, cwd_expanded.value);
         } else {
-            contract.execution.cwd = contract.app.root;
+            contract.execution.cwd = join_path(runtime_ptr->paths.root, cwd_expanded.value);
+        }
+        if (path_escapes_root(runtime_ptr->paths.root, contract.execution.cwd) &&
+            path_escapes_root(contract.app.root, contract.execution.cwd)) {
+            result.critical_error = CriticalError::PATH_TRAVERSAL;
+            result.critical_error_context = "working directory escapes app and runtime roots";
+            return result;
         }
     } else {
         contract.execution.cwd = contract.app.root;
@@ -1787,15 +1808,6 @@ inline CompositionResult nah_compose(
     // Library paths
     contract.execution.library_path_env_key = get_library_path_env_key();
     contract.execution.library_paths = paths.library_paths;
-
-    // Expand environment placeholders
-    for (auto& [key, val] : env) {
-        auto expanded = expand_placeholders(val, env);
-        if (expanded.ok) {
-            val = expanded.value;
-        }
-    }
-    contract.environment = env;
 
     contract.permissions.filesystem = app.permissions_filesystem;
     contract.permissions.network = app.permissions_network;
@@ -1829,19 +1841,19 @@ inline CompositionResult nah_compose(
 
     if (contract.trust.source.empty() && contract.trust.evaluated_at.empty()) {
         contract.trust.state = TrustState::Unknown;
-        result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), "warn", {}});
+        result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), {}});
     } else {
         switch (contract.trust.state) {
             case TrustState::Verified:
                 break;
             case TrustState::Unverified:
-                result.warnings.push_back({warning_to_string(Warning::trust_state_unverified), "warn", {}});
+                result.warnings.push_back({warning_to_string(Warning::trust_state_unverified), {}});
                 break;
             case TrustState::Failed:
-                result.warnings.push_back({warning_to_string(Warning::trust_state_failed), "warn", {}});
+                result.warnings.push_back({warning_to_string(Warning::trust_state_failed), {}});
                 break;
             case TrustState::Unknown:
-                result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), "warn", {}});
+                result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), {}});
                 break;
         }
     }
@@ -1849,7 +1861,7 @@ inline CompositionResult nah_compose(
     // Check trust staleness
     if (!contract.trust.expires_at.empty() && !options.now.empty()) {
         if (timestamp_before(contract.trust.expires_at, options.now)) {
-            result.warnings.push_back({warning_to_string(Warning::trust_state_stale), "warn", {}});
+            result.warnings.push_back({warning_to_string(Warning::trust_state_stale), {}});
             if (trace_ptr) trace_ptr->decisions.push_back("WARNING: Trust verification has expired");
         }
     }
@@ -2021,7 +2033,6 @@ inline std::string serialize_result(const CompositionResult& r) {
         const auto& w = r.warnings[i];
         out << "    {\n";
         out << "      \"key\": " << json::str(w.key) << ",\n";
-        out << "      \"action\": " << json::str(w.action) << ",\n";
         out << "      \"fields\": " << json::object(w.fields, 6) << "\n";
         out << "    }";
         if (i < r.warnings.size() - 1) out << ",";

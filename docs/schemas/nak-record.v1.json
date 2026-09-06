@@ -112,23 +112,27 @@
       },
       "default": {}
     },
-    "loader": {
+    "loaders": {
       "type": "object",
-      "description": "NAK loader configuration",
-      "additionalProperties": false,
-      "properties": {
-        "exec_path": {
-          "type": "string",
-          "description": "Absolute path to loader executable",
-          "minLength": 1
-        },
-        "args_template": {
-          "type": "array",
-          "description": "Argument template for loader (may contain placeholders)",
-          "items": {
-            "type": "string"
+      "description": "Named NAK loader configurations",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["exec_path"],
+        "additionalProperties": false,
+        "properties": {
+          "exec_path": {
+            "type": "string",
+            "description": "Path to the loader executable, relative to the NAK root",
+            "minLength": 1
           },
-          "default": []
+          "args_template": {
+            "type": "array",
+            "description": "Argument template for the loader",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
         }
       }
     },
@@ -141,22 +145,6 @@
           "type": "string",
           "description": "Working directory for NAK loader (may contain placeholders)",
           "minLength": 1
-        }
-      }
-    },
-    "install": {
-      "type": "object",
-      "description": "Installation metadata",
-      "additionalProperties": false,
-      "properties": {
-        "timestamp": {
-          "type": "string",
-          "description": "Installation timestamp (ISO 8601 / RFC 3339)",
-          "format": "date-time"
-        },
-        "source": {
-          "type": "string",
-          "description": "Source of the NAK package (file path, URL, etc.)"
         }
       }
     },
@@ -182,14 +170,6 @@
         "source": {
           "type": "string",
           "description": "Source of the package"
-        },
-        "signature": {
-          "type": "string",
-          "description": "Digital signature of the package"
-        },
-        "cert_chain": {
-          "type": "string",
-          "description": "Certificate chain for signature verification"
         }
       }
     },

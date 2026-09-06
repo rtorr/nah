@@ -3,7 +3,6 @@
 NAH composes installed app, runtime, and host metadata into an inspectable launch contract.
 
 ```cpp
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 
 int main() {

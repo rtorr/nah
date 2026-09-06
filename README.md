@@ -57,7 +57,6 @@ target_link_libraries(my_host PRIVATE NAH::nah)
 ```
 
 ```cpp
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 
 auto host = nah::host::NahHost::create("./nah-root");

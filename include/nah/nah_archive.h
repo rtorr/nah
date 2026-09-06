@@ -12,9 +12,14 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <zlib.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace nah::archive {
 
@@ -179,17 +184,16 @@ inline Result create(const fs::path& source, const fs::path& output) {
         fs::remove(temporary, ec);
         return {false, "failed to finalize package"};
     }
-    const auto backup = absolute_output.string() + ".backup." + std::to_string(random());
-    const bool had_output = fs::exists(absolute_output, ec);
-    if (had_output) fs::rename(absolute_output, backup, ec);
-    if (ec) { fs::remove(temporary, ec); return {false, "cannot stage existing output package"}; }
-    fs::rename(temporary, absolute_output, ec);
-    if (ec) {
-        if (had_output) fs::rename(backup, absolute_output, ec);
+#ifdef _WIN32
+    if (!MoveFileExW(fs::path(temporary).wstring().c_str(), absolute_output.wstring().c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         fs::remove(temporary, ec);
         return {false, "cannot activate output package"};
     }
-    if (had_output) fs::remove(backup, ec);
+#else
+    fs::rename(temporary, absolute_output, ec);
+    if (ec) { fs::remove(temporary, ec); return {false, "cannot activate output package"}; }
+#endif
     return {true, {}};
 }
 
@@ -211,6 +215,7 @@ inline Result extract(const fs::path& archive, const fs::path& destination) {
     std::array<char, 64 * 1024> buffer{};
     std::uintmax_t total = 0;
     std::size_t entries = 0;
+    std::unordered_set<std::string> seen_paths;
     while (true) {
         if (!read_gzip(input, header.data(), header.size())) return fail("truncated package header");
         bool zero = true;
@@ -229,6 +234,11 @@ inline Result extract(const fs::path& archive, const fs::path& destination) {
             break;
         }
         if (++entries > max_entries) return fail("package contains too many entries");
+
+        if (std::memcmp(header.data() + 257, "ustar", 5) != 0 ||
+            std::memcmp(header.data() + 263, "00", 2) != 0) {
+            return fail("package entry is not USTAR");
+        }
 
         const auto stored_checksum = parse_octal(header.data() + 148, 8);
         if (!stored_checksum) return fail("invalid package checksum");
@@ -251,6 +261,7 @@ inline Result extract(const fs::path& archive, const fs::path& destination) {
         if (archive_path.empty() || archive_path.find('\\') != std::string::npos || relative.is_absolute() || relative.has_root_name()) return fail("unsafe package path");
         relative = relative.lexically_normal();
         for (const auto& part : relative) if (part == "..") return fail("package path escapes the destination");
+        if (!seen_paths.insert(relative.generic_string()).second) return fail("duplicate package path");
         const auto target = (root / relative).lexically_normal();
         auto mismatch = std::mismatch(root.begin(), root.end(), target.begin(), target.end());
         if (mismatch.first != root.end() || target == root) return fail("package path escapes the destination");

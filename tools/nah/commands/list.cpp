@@ -4,9 +4,6 @@
  * List installed apps and NAKs.
  */
 
-// Enable host implementation in this translation unit
-#define NAH_HOST_IMPLEMENTATION
-
 #include "../common.hpp"
 #include <nah/nah_host.h>
 #include <CLI/CLI.hpp>

@@ -8,10 +8,6 @@ string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" NAH_VERSION_CMAKE "${
 
 project(nah VERSION ${NAH_VERSION_CMAKE} LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 # Determine if NAH is the top-level project or included via add_subdirectory/FetchContent
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(NAH_MAIN_PROJECT ON)
@@ -56,11 +52,10 @@ target_compile_features(nah_core INTERFACE cxx_std_17)
 add_library(nah_headers INTERFACE)
 add_library(NAH::nah ALIAS nah_headers)
 set_target_properties(nah_headers PROPERTIES EXPORT_NAME nah)
-get_target_property(NAH_NLOHMANN_INCLUDE_DIRS nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(nah_headers INTERFACE
-    $<BUILD_INTERFACE:${NAH_NLOHMANN_INCLUDE_DIRS}>
+target_link_libraries(nah_headers INTERFACE
+    nah_core
+    $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>
 )
-target_link_libraries(nah_headers INTERFACE nah_core)
 
 # Archive support is separate because it adds a zlib dependency.
 add_library(nah_package INTERFACE)

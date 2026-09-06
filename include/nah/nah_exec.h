@@ -43,6 +43,34 @@ struct ExecResult {
     std::string error;
 };
 
+inline std::string validate_contract(const core::LaunchContract& contract) {
+    const auto contains_nul = [](const std::string& value) {
+        return value.find('\0') != std::string::npos;
+    };
+    if (contract.execution.binary.empty()) return "execution binary is empty";
+    if (contains_nul(contract.execution.binary)) return "execution binary contains NUL";
+    if (contains_nul(contract.execution.cwd)) return "working directory contains NUL";
+    for (const auto& argument : contract.execution.arguments) {
+        if (contains_nul(argument)) return "execution argument contains NUL";
+    }
+    for (const auto& [key, value] : contract.environment) {
+        if (key.empty() || key.find('=') != std::string::npos || contains_nul(key)) {
+            return "invalid environment key";
+        }
+        if (contains_nul(value)) return "environment value contains NUL: " + key;
+    }
+    if (!contract.execution.library_paths.empty()) {
+        const auto& key = contract.execution.library_path_env_key;
+        if (key.empty() || key.find('=') != std::string::npos || contains_nul(key)) {
+            return "invalid library path environment key";
+        }
+        for (const auto& path : contract.execution.library_paths) {
+            if (contains_nul(path)) return "library path contains NUL";
+        }
+    }
+    return {};
+}
+
 // ============================================================================
 // ENVIRONMENT BUILDING
 // ============================================================================
@@ -117,11 +145,15 @@ inline std::vector<std::string> build_argv(const core::LaunchContract& contract)
 /**
  * Execute contract using fork/exec (Unix).
  *
- * If wait_for_exit is true, waits for process to complete and returns exit code.
- * If false, returns immediately after spawning (exit_code will be 0).
+ * Waits for the process to complete and returns its exit code.
  */
-inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_for_exit = true) {
+inline ExecResult execute_unix(const core::LaunchContract& contract) {
     ExecResult result;
+
+    if (const auto error = validate_contract(contract); !error.empty()) {
+        result.error = error;
+        return result;
+    }
 
     auto argv_strings = build_argv(contract);
     auto env_strings = build_environment(contract);
@@ -163,26 +195,20 @@ inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_f
         _exit(127);
     }
 
-    // Parent process
-    if (wait_for_exit) {
-        int status;
-        if (waitpid(pid, &status, 0) == -1) {
-            result.error = "waitpid failed: " + std::string(strerror(errno));
-            return result;
-        }
+    int status;
+    if (waitpid(pid, &status, 0) == -1) {
+        result.error = "waitpid failed: " + std::string(strerror(errno));
+        return result;
+    }
 
-        if (WIFEXITED(status)) {
-            result.exit_code = WEXITSTATUS(status);
-            result.ok = true;
-        } else if (WIFSIGNALED(status)) {
-            result.exit_code = 128 + WTERMSIG(status);
-            result.ok = true;
-        } else {
-            result.error = "process terminated abnormally";
-        }
-    } else {
+    if (WIFEXITED(status)) {
+        result.exit_code = WEXITSTATUS(status);
         result.ok = true;
-        result.exit_code = 0;
+    } else if (WIFSIGNALED(status)) {
+        result.exit_code = 128 + WTERMSIG(status);
+        result.ok = true;
+    } else {
+        result.error = "process terminated abnormally";
     }
 
     return result;
@@ -195,6 +221,11 @@ inline ExecResult execute_unix(const core::LaunchContract& contract, bool wait_f
  */
 inline ExecResult exec_replace_unix(const core::LaunchContract& contract) {
     ExecResult result;
+
+    if (const auto error = validate_contract(contract); !error.empty()) {
+        result.error = error;
+        return result;
+    }
 
     auto argv_strings = build_argv(contract);
     auto env_strings = build_environment(contract);
@@ -280,8 +311,14 @@ inline std::string build_environment_block(const std::vector<std::string>& env) 
 /**
  * Execute contract using CreateProcess (Windows).
  */
-inline ExecResult execute_windows(const core::LaunchContract& contract, bool wait_for_exit = true) {
+namespace detail {
+inline ExecResult spawn_windows(const core::LaunchContract& contract, bool wait_for_exit) {
     ExecResult result;
+
+    if (const auto error = validate_contract(contract); !error.empty()) {
+        result.error = error;
+        return result;
+    }
 
     auto argv = build_argv(contract);
     auto env = build_environment(contract);
@@ -296,12 +333,12 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
 
     BOOL success = CreateProcessA(
         contract.execution.binary.c_str(),
-        const_cast<char*>(cmd_line.c_str()),
+        cmd_line.data(),
         nullptr,  // Process security attributes
         nullptr,  // Thread security attributes
         FALSE,    // Inherit handles
         0,        // Creation flags
-        const_cast<char*>(env_block.c_str()),
+        env_block.data(),
         contract.execution.cwd.empty() ? nullptr : contract.execution.cwd.c_str(),
         &si,
         &pi
@@ -313,7 +350,12 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
     }
 
     if (wait_for_exit) {
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        if (WaitForSingleObject(pi.hProcess, INFINITE) == WAIT_FAILED) {
+            result.error = "WaitForSingleObject failed: " + std::to_string(GetLastError());
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            return result;
+        }
 
         DWORD exit_code;
         if (GetExitCodeProcess(pi.hProcess, &exit_code)) {
@@ -332,6 +374,7 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
 
     return result;
 }
+} // namespace detail
 
 #endif // _WIN32
 
@@ -345,14 +388,13 @@ inline ExecResult execute_windows(const core::LaunchContract& contract, bool wai
  * Spawns a new process according to the contract's execution specification.
  *
  * @param contract The launch contract to execute
- * @param wait_for_exit If true, wait for process to complete
  * @return ExecResult with success status and exit code
  */
-inline ExecResult execute(const core::LaunchContract& contract, bool wait_for_exit = true) {
+inline ExecResult execute(const core::LaunchContract& contract) {
 #ifdef _WIN32
-    return execute_windows(contract, wait_for_exit);
+    return detail::spawn_windows(contract, true);
 #else
-    return execute_unix(contract, wait_for_exit);
+    return execute_unix(contract);
 #endif
 }
 
@@ -366,7 +408,7 @@ inline ExecResult execute(const core::LaunchContract& contract, bool wait_for_ex
  */
 inline ExecResult exec_replace(const core::LaunchContract& contract) {
 #ifdef _WIN32
-    auto result = execute_windows(contract, false);
+    auto result = detail::spawn_windows(contract, false);
     if (result.ok) {
         ExitProcess(0);
     }

@@ -1,8 +1,13 @@
 # JSON schemas
 
-These schemas document NAH's JSON boundaries. They support editors, build-time
-validation, and independent producers and consumers; NAH does not embed a JSON
-Schema engine. Its typed parsers enforce the same required shape at runtime.
+These schemas document NAH's JSON boundaries. JSON is used only where humans,
+build tools, persisted state, or another process cross the typed C++ API. The
+schemas support editors, build-time validation, and independent producers and
+consumers; they are not a second domain model.
+
+NAH does not embed a JSON Schema engine. Its typed parsers reject incompatible
+versions and invalid semantic inputs. Producers that need complete structural
+validation should validate against these files before calling NAH.
 
 | Schema | Artifact | Owner |
 | --- | --- | --- |

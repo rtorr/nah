@@ -189,22 +189,6 @@
         }
       }
     },
-    "verification": {
-      "type": "object",
-      "description": "Verification history",
-      "additionalProperties": false,
-      "properties": {
-        "last_verified_at": {
-          "type": "string",
-          "description": "Last verification timestamp (ISO 8601 / RFC 3339)",
-          "format": "date-time"
-        },
-        "last_verifier_version": {
-          "type": "string",
-          "description": "Version of verification tool"
-        }
-      }
-    },
     "overrides": {
       "type": "object",
       "description": "Host-owned per-install launch overrides",
@@ -249,6 +233,15 @@
             "library_prepend": {
               "type": "array",
               "description": "Library paths to prepend for this app",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            },
+            "library_append": {
+              "type": "array",
+              "description": "Library paths to append for this app",
               "items": {
                 "type": "string",
                 "minLength": 1

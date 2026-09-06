@@ -59,6 +59,9 @@ TEST_CASE("store rejects paths outside its managed layout") {
     nah::store::Store store(temp.root);
     CHECK_FALSE(store.install(temp.root, "../outside", "registry/apps/a.json", "{}").ok);
     CHECK_FALSE(store.remove("apps/a", "registry/naks/a.json").ok);
+    CHECK_FALSE(store.remove("apps", "registry/apps/a.json").ok);
+    CHECK_FALSE(store.remove("naks", "registry/naks/a.json").ok);
+    CHECK_FALSE(store.remove("apps/a", "registry/apps/nested/a.json").ok);
 }
 
 TEST_CASE("store recovers an interrupted replacement") {
@@ -82,3 +85,38 @@ TEST_CASE("store recovers an interrupted replacement") {
     CHECK(read_text(temp.root / "registry/apps/com.example@1.0.0.json") == "old-record\n");
     CHECK_FALSE(std::filesystem::exists(temp.root / "staging/transaction.json"));
 }
+
+TEST_CASE("store fails closed on a malformed journal") {
+    TempStore temp;
+    nah::store::Store store(temp.root);
+    REQUIRE(store.initialize().ok);
+    write_text(temp.root / "staging/transaction.json",
+               R"({"version":"one","kind":"install","phase":"prepared","operation":7,"payload":[],"record":{}})");
+    const auto result = store.recover();
+    CHECK_FALSE(result.ok);
+    CHECK(result.code == nah::store::Error::invalid_journal);
+    CHECK(std::filesystem::exists(temp.root / "staging/transaction.json"));
+}
+
+#ifndef _WIN32
+TEST_CASE("store rejects symlinked managed directories and source entries") {
+    TempStore temp;
+    const auto outside = temp.root.parent_path() / "nah-store-outside";
+    const auto source = temp.root.parent_path() / "nah-store-symlink-source";
+    std::error_code ec;
+    std::filesystem::remove_all(outside, ec);
+    std::filesystem::remove_all(source, ec);
+    std::filesystem::create_directories(outside);
+    std::filesystem::create_directories(temp.root);
+    std::filesystem::create_directory_symlink(outside, temp.root / "apps");
+    nah::store::Store store(temp.root);
+    CHECK_FALSE(store.initialize().ok);
+
+    std::filesystem::remove_all(temp.root, ec);
+    std::filesystem::create_directories(source);
+    std::filesystem::create_symlink(outside / "missing", source / "link");
+    CHECK_FALSE(store.install(source, "apps/a", "registry/apps/a.json", "{}").ok);
+    std::filesystem::remove_all(outside, ec);
+    std::filesystem::remove_all(source, ec);
+}
+#endif

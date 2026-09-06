@@ -1,7 +1,7 @@
 /*
  * NAH JSON - JSON Parsing for NAH Types
  *
- * This file provides JSON serialization and deserialization for all NAH types.
+ * This file parses NAH's JSON boundary formats and exposes contract serializers.
  * Requires nlohmann/json.
  *
  * SPDX-License-Identifier: MIT
@@ -126,8 +126,13 @@ inline std::string validate_env_map(const json& values) {
     if (!values.is_object()) return "environment must be an object";
     for (const auto& [key, value] : values.items()) {
         if (key.empty()) return "environment keys must not be empty";
+        if (key.find('=') != std::string::npos || key.find('\0') != std::string::npos) {
+            return "invalid environment key: '" + key + "'";
+        }
         if (value.is_string()) continue;
         if (!value.is_object()) return "environment value for '" + key + "' must be a string or object";
+        if (const auto error = detail::validate_keys(value, {"op", "value", "separator"},
+                "environment operation for '" + key + "'"); !error.empty()) return error;
         if (!value.contains("op") || !value["op"].is_string()) {
             return "environment operation for '" + key + "' requires a string op";
         }
@@ -438,6 +443,15 @@ inline ParseResult<core::InstallRecord> parse_install_record(const std::string& 
             result.error = "unsupported app record schema";
             return result;
         }
+        if (const auto error = detail::validate_keys(j,
+                {"$schema", "install", "app", "nak", "paths", "provenance", "trust", "overrides"},
+                "app install record"); !error.empty()) { result.error = error; return result; }
+        for (const char* section : {"install", "app", "paths"}) {
+            if (!j.contains(section) || !j[section].is_object()) {
+                result.error = std::string("missing required object: ") + section;
+                return result;
+            }
+        }
 
         ir.source_path = source_path;
 
@@ -457,6 +471,10 @@ inline ParseResult<core::InstallRecord> parse_install_record(const std::string& 
             ir.app.version = detail::get_string(j["app"], "version");
             ir.app.nak_id = detail::get_string(j["app"], "nak_id");
             ir.app.nak_version_req = detail::get_string(j["app"], "nak_version_req");
+        }
+        if (ir.app.id.empty() || ir.app.version.empty()) {
+            result.error = "app record requires app.id and app.version";
+            return result;
         }
 
         // NAK section
@@ -514,6 +532,7 @@ inline ParseResult<core::InstallRecord> parse_install_record(const std::string& 
 
             if (ovr.contains("paths") && ovr["paths"].is_object()) {
                 ir.overrides.paths.library_prepend = detail::get_string_array(ovr["paths"], "library_prepend");
+                ir.overrides.paths.library_append = detail::get_string_array(ovr["paths"], "library_append");
             }
         }
 
@@ -543,6 +562,15 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
              j["$schema"].get<std::string>() != "https://nah.rtorr.com/schemas/nak-record.v1.json")) {
             result.error = "unsupported NAK record schema";
             return result;
+        }
+        if (const auto error = detail::validate_keys(j,
+                {"$schema", "nak", "paths", "environment", "loaders", "execution", "provenance", "trust"},
+                "NAK install record"); !error.empty()) { result.error = error; return result; }
+        for (const char* section : {"nak", "paths"}) {
+            if (!j.contains(section) || !j[section].is_object()) {
+                result.error = std::string("missing required object: ") + section;
+                return result;
+            }
         }
 
         rd.source_path = source_path;
@@ -574,10 +602,6 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
             return result;
         }
 
-        if (rd.paths.resource_root.empty()) {
-            rd.paths.resource_root = rd.paths.root;
-        }
-
         // Environment section
         if (j.contains("environment") && j["environment"].is_object()) {
             const auto error = validate_env_map(j["environment"]);
@@ -594,8 +618,22 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
         // Loaders section
         if (j.contains("loaders") && j["loaders"].is_object()) {
             for (auto& [name, config] : j["loaders"].items()) {
+                if (const auto error = detail::validate_keys(config, {"exec_path", "args_template"},
+                        "NAK loader " + name); !error.empty()) { result.error = error; return result; }
+                if (!config.contains("exec_path") || !config["exec_path"].is_string() ||
+                    config["exec_path"].get<std::string>().empty()) {
+                    result.error = "NAK loader requires a non-empty exec_path: " + name;
+                    return result;
+                }
+                if (config.contains("args_template")) {
+                    if (const auto error = detail::validate_string_array(config["args_template"],
+                            "NAK loader args_template"); !error.empty()) { result.error = error; return result; }
+                }
                 rd.loaders[name] = parse_loader_config(config);
             }
+        } else if (j.contains("loaders")) {
+            result.error = "loaders must be an object";
+            return result;
         }
 
         // Execution section

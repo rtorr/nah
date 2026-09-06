@@ -4,7 +4,6 @@
  * Demonstrates the NAH host library for integration.
  */
 
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 #include <iostream>
 
@@ -58,19 +57,23 @@ int main(int argc, char* argv[]) {
     print_separator();
 
     auto host_env = host->getHostEnvironment();
+    if (!host_env) {
+        std::cerr << "Invalid host configuration\n";
+        return 1;
+    }
 
-    if (!host_env.vars.empty()) {
+    if (!host_env->vars.empty()) {
         std::cout << "  Environment variables:\n";
-        for (const auto& [k, v] : host_env.vars) {
+        for (const auto& [k, v] : host_env->vars) {
             std::cout << "    " << k << "=" << v.value << "\n";
         }
     } else {
         std::cout << "  (no environment variables configured)\n";
     }
 
-    if (!host_env.paths.library_prepend.empty()) {
+    if (!host_env->paths.library_prepend.empty()) {
         std::cout << "  Library paths (prepend):\n";
-        for (const auto& p : host_env.paths.library_prepend) {
+        for (const auto& p : host_env->paths.library_prepend) {
             std::cout << "    " << p << "\n";
         }
     }
@@ -155,18 +158,6 @@ int main(int argc, char* argv[]) {
     std::cout << "\n";
     print_separator();
     std::cout << "Demo complete.\n";
-
-    // Show convenience functions
-    std::cout << "\n";
-    print_separator();
-    std::cout << "Quick Examples:\n";
-    print_separator();
-    std::cout << "// List all apps\n";
-    std::cout << "auto app_list = nah::host::listInstalledApps();\n\n";
-    std::cout << "// Execute app directly\n";
-    std::cout << "int code = nah::host::quickExecute(\"com.example.app\");\n\n";
-    std::cout << "// Check if installed\n";
-    std::cout << "bool installed = host->isApplicationInstalled(\"com.example.app\");\n";
 
     return 0;
 }

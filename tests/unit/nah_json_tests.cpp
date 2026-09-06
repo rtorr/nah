@@ -2,7 +2,6 @@
  * Unit tests for nah_json.h parsing functions
  */
 
-#define NAH_JSON_IMPLEMENTATION
 #include <nah/nah_json.h>
 #include <doctest/doctest.h>
 #include <sstream>
@@ -323,7 +322,8 @@ TEST_CASE("parse_install_record") {
                     "append": ["--quiet"]
                 },
                 "paths": {
-                    "library_prepend": ["/custom/lib"]
+                    "library_prepend": ["/custom/lib"],
+                    "library_append": ["/fallback/lib"]
                 }
             }
         })";
@@ -334,6 +334,7 @@ TEST_CASE("parse_install_record") {
         CHECK(result.value.overrides.arguments.prepend.size() == 1);
         CHECK(result.value.overrides.arguments.append.size() == 1);
         CHECK(result.value.overrides.paths.library_prepend.size() == 1);
+        CHECK(result.value.overrides.paths.library_append.size() == 1);
     }
 }
 
@@ -466,18 +467,5 @@ TEST_CASE("trust state parsing") {
     SUBCASE("parse invalid trust state returns nullopt") {
         CHECK(!nah::core::parse_trust_state("invalid").has_value());
         CHECK(!nah::core::parse_trust_state("").has_value());
-    }
-}
-
-TEST_CASE("warning key parsing") {
-    SUBCASE("parse valid warning keys") {
-        CHECK(nah::core::parse_warning_key("invalid_manifest") == nah::core::Warning::invalid_manifest);
-        CHECK(nah::core::parse_warning_key("nak_not_found") == nah::core::Warning::nak_not_found);
-    }
-
-    SUBCASE("parse invalid warning key returns nullopt") {
-        CHECK(!nah::core::parse_warning_key("invalid").has_value());
-        CHECK(!nah::core::parse_warning_key("").has_value());
-        CHECK(!nah::core::parse_warning_key("not_a_warning").has_value());
     }
 }

@@ -2,7 +2,6 @@
  * Unit tests for nah_fs.h filesystem functions
  */
 
-#define NAH_FS_IMPLEMENTATION
 #include <nah/nah_fs.h>
 #include <doctest/doctest.h>
 #include <fstream>

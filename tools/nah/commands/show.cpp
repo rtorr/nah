@@ -219,8 +219,7 @@ namespace nah::cli::commands
                     std::cout << "\nWarnings:" << std::endl;
                     for (const auto &warning : result.warnings)
                     {
-                        std::string prefix = (warning.action == "error") ? "[ERROR]" : "[WARN]";
-                        std::cout << "  " << prefix << " " << warning.key << std::endl;
+                        std::cout << "  [WARN] " << warning.key << std::endl;
                     }
                 }
                 else

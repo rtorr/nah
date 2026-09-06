@@ -15,7 +15,6 @@
 #include <vector>
 #include <memory>
 #include <optional>
-#include <functional>
 #include <algorithm>
 #include <filesystem>
 
@@ -106,7 +105,7 @@ class NahHost {
 public:
     /**
      * Create a NahHost instance for a NAH root directory.
-     * If root_path is empty, uses $NAH_ROOT or /nah as default.
+     * If root_path is empty, uses $NAH_ROOT, then the user's .nah directory.
      * Note: Does not validate the root directory structure.
      */
     static std::unique_ptr<NahHost> create(const std::string& root_path = "");
@@ -158,7 +157,7 @@ public:
     /**
      * Get the host environment from host.json
      */
-    nah::core::HostEnvironment getHostEnvironment() const;
+    std::optional<nah::core::HostEnvironment> getHostEnvironment() const;
 
     /**
      * Generate a launch contract for an application
@@ -189,26 +188,22 @@ public:
      * @param app_id Application identifier
      * @param version Optional specific version (empty = latest)
      * @param args Additional arguments to pass to the app
-     * @param output_handler Optional callback for output (line by line)
      * @return Exit code of the application
      */
     int executeApplication(
         const std::string& app_id,
         const std::string& version = "",
-        const std::vector<std::string>& args = {},
-        std::function<void(const std::string&)> output_handler = nullptr) const;
+        const std::vector<std::string>& args = {}) const;
 
     /**
      * Execute using a pre-composed contract
      * @param contract The launch contract to execute
      * @param args Additional arguments to pass to the app
-     * @param output_handler Optional callback for output (line by line)
      * @return Exit code of the application
      */
     int executeContract(
         const nah::core::LaunchContract& contract,
-        const std::vector<std::string>& args = {},
-        std::function<void(const std::string&)> output_handler = nullptr) const;
+        const std::vector<std::string>& args = {}) const;
 
     /**
      * Check if an application is installed
@@ -242,40 +237,8 @@ private:
 };
 
 // ============================================================================
-// Convenience Functions
-// ============================================================================
-
-/**
- * Quick execute - compose and run an app in one call
- * @param app_id Application identifier
- * @param nah_root NAH root directory (empty = use default)
- * @return Exit code
- */
-inline int quickExecute(const std::string& app_id, const std::string& nah_root = "") {
-    auto host = NahHost::create(nah_root);
-    return host->executeApplication(app_id);
-}
-
-/**
- * List all installed apps
- * @param nah_root NAH root directory (empty = use default)
- * @return Vector of app IDs with versions
- */
-inline std::vector<std::string> listInstalledApps(const std::string& nah_root = "") {
-    auto host = NahHost::create(nah_root);
-    auto apps = host->listApplications();
-    std::vector<std::string> results;
-    for (const auto& app : apps) {
-        results.push_back(app.id + "@" + app.version);
-    }
-    return results;
-}
-
-// ============================================================================
 // Implementation
 // ============================================================================
-
-#ifdef NAH_HOST_IMPLEMENTATION
 
 inline std::unique_ptr<NahHost> NahHost::create(const std::string& root_path) {
     std::string resolved_root = root_path;
@@ -285,7 +248,9 @@ inline std::unique_ptr<NahHost> NahHost::create(const std::string& root_path) {
         if (!env_root.empty()) {
             resolved_root = env_root;
         } else {
-            resolved_root = "/nah";
+            std::string home = detail::safe_getenv("HOME");
+            if (home.empty()) home = detail::safe_getenv("USERPROFILE");
+            resolved_root = home.empty() ? ".nah" : home + "/.nah";
         }
     }
 
@@ -352,7 +317,7 @@ inline std::optional<AppInfo> NahHost::findApplication(const std::string& id,
     return matches[0];
 }
 
-inline nah::core::HostEnvironment NahHost::getHostEnvironment() const {
+inline std::optional<nah::core::HostEnvironment> NahHost::getHostEnvironment() const {
     std::string host_json_path = root_ + "/host/host.json";
     auto content = nah::fs::read_file(host_json_path);
     if (!content) {
@@ -365,56 +330,16 @@ inline nah::core::HostEnvironment NahHost::getHostEnvironment() const {
         return result.value;
     }
 
-    // Return empty environment on parse failure
-    return nah::core::HostEnvironment{};
+    return std::nullopt;
 }
 
 inline nah::core::CompositionResult NahHost::getLaunchContract(
     const std::string& app_id,
     const std::string& version,
     bool enable_trace) const {
-
-    // Find the application
-    auto app_info = findApplication(app_id, version);
-    if (!app_info) {
-        nah::core::CompositionResult result;
-        result.ok = false;
-        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
-        result.critical_error_context = "Application not found: " + app_id;
-        return result;
-    }
-
-    // Load install record
-    auto record = loadInstallRecord(app_info->record_path);
-    if (!record) {
-        nah::core::CompositionResult result;
-        result.ok = false;
-        result.critical_error = nah::core::CriticalError::INSTALL_RECORD_INVALID;
-        result.critical_error_context = "Failed to load install record";
-        return result;
-    }
-
-    // Load app manifest
-    auto app_decl = loadAppManifest(app_info->install_root);
-    if (!app_decl) {
-        nah::core::CompositionResult result;
-        result.ok = false;
-        result.critical_error = nah::core::CriticalError::MANIFEST_MISSING;
-        result.critical_error_context = "Failed to load app manifest";
-        return result;
-    }
-
-    // Load host environment
-    auto host_env = getHostEnvironment();
-
-    // Get inventory
-    auto inventory = getInventory();
-
-    // Compose
     nah::core::CompositionOptions opts;
     opts.enable_trace = enable_trace;
-
-    return nah::core::nah_compose(*app_decl, host_env, *record, inventory, opts);
+    return getLaunchContract(app_id, version, opts);
 }
 
 inline nah::core::CompositionResult NahHost::getLaunchContract(
@@ -454,47 +379,67 @@ inline nah::core::CompositionResult NahHost::getLaunchContract(
 
     // Load host environment
     auto host_env = getHostEnvironment();
+    if (!host_env) {
+        nah::core::CompositionResult result;
+        result.critical_error = nah::core::CriticalError::HOST_CONFIG_INVALID;
+        result.critical_error_context = "Failed to load host configuration";
+        return result;
+    }
 
     // Get inventory
     auto inventory = getInventory();
 
-    // Use provided options (including loader_override)
-    return nah::core::nah_compose(*app_decl, host_env, *record, inventory, options);
+    auto result = nah::core::nah_compose(*app_decl, *host_env, *record, inventory, options);
+    if (!result.ok) return result;
+
+    const std::string binary_boundary = result.contract.nak.id.empty()
+        ? result.contract.app.root : result.contract.nak.root;
+    const auto binary = detail::resolve_within(binary_boundary, result.contract.execution.binary);
+    if (!binary || !nah::fs::is_file(*binary)) {
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::ENTRYPOINT_NOT_FOUND;
+        result.critical_error_context = "Execution binary not found: " + result.contract.execution.binary;
+        return result;
+    }
+    result.contract.execution.binary = *binary;
+
+    const auto cwd_in_app = detail::resolve_within(result.contract.app.root, result.contract.execution.cwd);
+    std::optional<std::string> cwd_in_nak;
+    if (!result.contract.nak.root.empty()) {
+        cwd_in_nak = detail::resolve_within(result.contract.nak.root, result.contract.execution.cwd);
+    }
+    const auto cwd = cwd_in_app ? cwd_in_app : cwd_in_nak;
+    if (!cwd || !nah::fs::is_directory(*cwd)) {
+        result.ok = false;
+        result.critical_error = nah::core::CriticalError::PATH_TRAVERSAL;
+        result.critical_error_context = "Working directory is outside the installed app and runtime";
+        return result;
+    }
+    result.contract.execution.cwd = *cwd;
+    return result;
 }
 
 inline int NahHost::executeApplication(
     const std::string& app_id,
     const std::string& version,
-    const std::vector<std::string>& args,
-    std::function<void(const std::string&)> output_handler) const {
+    const std::vector<std::string>& args) const {
 
     auto result = getLaunchContract(app_id, version);
-    if (!result.ok) {
-        if (output_handler) {
-            output_handler("Error: " + result.critical_error_context);
-        }
-        return 1;
-    }
+    if (!result.ok) return 1;
 
-    return executeContract(result.contract, args, output_handler);
+    return executeContract(result.contract, args);
 }
 
 inline int NahHost::executeContract(
     const nah::core::LaunchContract& contract,
-    const std::vector<std::string>& args,
-    std::function<void(const std::string&)> output_handler) const {
+    const std::vector<std::string>& args) const {
 
     auto effective_contract = contract;
     effective_contract.execution.arguments.insert(
         effective_contract.execution.arguments.end(), args.begin(), args.end());
     auto exec_result = nah::exec::execute(effective_contract);
 
-    if (!exec_result.ok) {
-        if (output_handler) {
-            output_handler("Execution error: " + exec_result.error);
-        }
-        return 1;
-    }
+    if (!exec_result.ok) return 1;
 
     return exec_result.exit_code;
 }
@@ -536,11 +481,24 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
                     if (!result.value.paths.root.empty() && !nah::fs::is_absolute_path(result.value.paths.root)) {
                         result.value.paths.root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.root));
                     }
-                    const auto runtime_root = detail::resolve_within(root_, result.value.paths.root);
+                    const auto runtime_root = detail::resolve_within(root_ + "/naks", result.value.paths.root);
                     if (!runtime_root) {
                         continue;
                     }
                     result.value.paths.root = *runtime_root;
+
+                    if (result.value.paths.resource_root.empty()) {
+                        result.value.paths.resource_root = result.value.paths.root;
+                    } else if (!nah::fs::is_absolute_path(result.value.paths.resource_root)) {
+                        result.value.paths.resource_root = nah::fs::absolute_path(
+                            nah::fs::join_paths(result.value.paths.root, result.value.paths.resource_root));
+                    }
+                    const auto resource_root = detail::resolve_within(
+                        result.value.paths.root, result.value.paths.resource_root);
+                    if (!resource_root) {
+                        continue;
+                    }
+                    result.value.paths.resource_root = *resource_root;
 
                     // Resolve relative lib_dirs
                     for (auto& lib_dir : result.value.paths.lib_dirs) {
@@ -578,18 +536,17 @@ inline nah::core::RuntimeInventory NahHost::getInventory() const {
 }
 
 inline std::string NahHost::validateRoot() const {
-    if (!nah::fs::exists(root_)) {
+    if (!nah::fs::is_directory(root_)) {
         return "NAH root does not exist: " + root_;
     }
 
     // Check required directories
-    std::vector<std::string> required_dirs = {
-        "/registry/apps",
-        "/host"
+    const std::vector<std::string> required_dirs = {
+        "/apps", "/naks", "/host", "/registry/apps", "/registry/naks", "/staging"
     };
 
     for (const auto& dir : required_dirs) {
-        if (!nah::fs::exists(root_ + dir)) {
+        if (!nah::fs::is_directory(root_ + dir)) {
             return "Missing required directory: " + root_ + dir;
         }
     }
@@ -598,24 +555,7 @@ inline std::string NahHost::validateRoot() const {
 }
 
 inline bool NahHost::isValidRoot(const std::string& path) {
-    if (path.empty() || !nah::fs::exists(path)) {
-        return false;
-    }
-
-    // Check required directories that make up a valid NAH root
-    std::vector<std::string> required_dirs = {
-        "/registry/apps",
-        "/host"
-    };
-
-    for (const auto& dir : required_dirs) {
-        std::string full_path = path + dir;
-        if (!nah::fs::exists(full_path)) {
-            return false;
-        }
-    }
-
-    return true;
+    return !path.empty() && NahHost(path).validateRoot().empty();
 }
 
 inline std::unique_ptr<NahHost> NahHost::discover(const std::vector<std::string>& search_paths) {
@@ -647,7 +587,7 @@ inline std::optional<nah::core::InstallRecord> NahHost::loadInstallRecord(const 
         if (!result.value.paths.install_root.empty() && !nah::fs::is_absolute_path(result.value.paths.install_root)) {
             result.value.paths.install_root = nah::fs::absolute_path(nah::fs::join_paths(root_, result.value.paths.install_root));
         }
-        const auto install_root = detail::resolve_within(root_, result.value.paths.install_root);
+        const auto install_root = detail::resolve_within(root_ + "/apps", result.value.paths.install_root);
         if (!install_root) {
             return std::nullopt;
         }
@@ -691,12 +631,6 @@ inline std::string NahHost::extractMetadataJson(const std::string& app_dir) cons
 
     return "{}";
 }
-
-// ============================================================================
-// Component Implementation
-// ============================================================================
-
-#endif // NAH_HOST_IMPLEMENTATION
 
 } // namespace host
 } // namespace nah

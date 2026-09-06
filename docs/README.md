@@ -13,7 +13,7 @@ The schemas in [schemas](schemas) define current JSON authoring formats.
 
 ## Library surface
 
-Use `<nah/nah.h>` and `NAH::nah` for the complete filesystem, JSON, host, and execution API. Define `NAH_HOST_IMPLEMENTATION` in exactly one translation unit that uses `NahHost`.
+Use `<nah/nah.h>` and `NAH::nah` for the complete filesystem, JSON, host, and execution API.
 
 Use `<nah/nah_core.h>` and `NAH::core` when only dependency-free types and pure composition are needed.
 
@@ -29,7 +29,6 @@ archive creation and extraction. This target adds zlib; it is not pulled into
 - `executeApplication(...)` and `executeContract(...)`;
 
 ```cpp
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
 
 int main() {

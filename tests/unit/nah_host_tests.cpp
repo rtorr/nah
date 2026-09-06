@@ -2,7 +2,6 @@
  * Unit tests for nah_host.h NahHost class
  */
 
-#define NAH_HOST_IMPLEMENTATION
 #include <nah/nah_host.h>
 #include <doctest/doctest.h>
 #include <filesystem>
@@ -87,6 +86,7 @@ public:
         std::filesystem::create_directories(root + "/host");
         std::filesystem::create_directories(root + "/registry/apps");
         std::filesystem::create_directories(root + "/registry/naks");
+        std::filesystem::create_directories(root + "/staging");
     }
 
     ~TestNahEnvironment() {
@@ -338,9 +338,10 @@ TEST_CASE("NahHost::getHostEnvironment") {
         REQUIRE(host != nullptr);
 
         auto host_env = host->getHostEnvironment();
-        CHECK(host_env.vars.empty());
-        CHECK(host_env.paths.library_prepend.empty());
-        CHECK(host_env.paths.library_append.empty());
+        REQUIRE(host_env.has_value());
+        CHECK(host_env->vars.empty());
+        CHECK(host_env->paths.library_prepend.empty());
+        CHECK(host_env->paths.library_append.empty());
     }
 
     SUBCASE("load host config from file") {
@@ -359,16 +360,27 @@ TEST_CASE("NahHost::getHostEnvironment") {
         REQUIRE(host != nullptr);
 
         auto host_env = host->getHostEnvironment();
-        REQUIRE(host_env.vars.size() == 2);
-        CHECK(host_env.vars.at("TEST_VAR").value == "test_value");
-        CHECK(host_env.vars.at("DEBUG").value == "1");
+        REQUIRE(host_env.has_value());
+        REQUIRE(host_env->vars.size() == 2);
+        CHECK(host_env->vars.at("TEST_VAR").value == "test_value");
+        CHECK(host_env->vars.at("DEBUG").value == "1");
 
-        REQUIRE(host_env.paths.library_prepend.size() == 1);
-        CHECK(host_env.paths.library_prepend[0] == "/custom/lib");
+        REQUIRE(host_env->paths.library_prepend.size() == 1);
+        CHECK(host_env->paths.library_prepend[0] == "/custom/lib");
 
-        REQUIRE(host_env.paths.library_append.size() == 1);
-        CHECK(host_env.paths.library_append[0] == "/other/lib");
+        REQUIRE(host_env->paths.library_append.size() == 1);
+        CHECK(host_env->paths.library_append[0] == "/other/lib");
 
+    }
+
+    SUBCASE("malformed host config fails") {
+        env.installTestApp("com.test.app", "1.0.0");
+        env.createHostConfig(R"({"paths":{"library_prepend":"not-an-array"}})");
+        auto host = nah::host::NahHost::create(env.root);
+        CHECK_FALSE(host->getHostEnvironment().has_value());
+        auto result = host->getLaunchContract("com.test.app");
+        CHECK_FALSE(result.ok);
+        CHECK(result.critical_error == nah::core::CriticalError::HOST_CONFIG_INVALID);
     }
 }
 
@@ -404,6 +416,19 @@ TEST_CASE("NahHost::getInventory") {
     }
 }
 
+TEST_CASE("NahHost rejects app records outside the apps directory") {
+    TestNahEnvironment env;
+    std::ofstream record(env.root + "/registry/apps/com.test.escape@1.0.0.json");
+    record << "{\n"
+           << "  \"install\": {\"instance_id\": \"test\"},\n"
+           << "  \"app\": {\"id\": \"com.test.escape\", \"version\": \"1.0.0\"},\n"
+           << "  \"paths\": {\"install_root\": \"host\"}\n"
+           << "}\n";
+    record.close();
+    auto host = nah::host::NahHost::create(env.root);
+    CHECK(host->listApplications().empty());
+}
+
 TEST_CASE("NahHost::getLaunchContract") {
     TestNahEnvironment env;
     REQUIRE(!env.root.empty());
@@ -433,29 +458,6 @@ TEST_CASE("NahHost::getLaunchContract") {
         REQUIRE(result.ok);
         CHECK(result.trace.has_value());
         CHECK(!result.trace->decisions.empty());
-    }
-}
-
-TEST_CASE("NahHost convenience functions") {
-    TestNahEnvironment env;
-    REQUIRE(!env.root.empty());
-
-    env.installTestApp("com.test.app", "1.0.0");
-
-    SUBCASE("listInstalledApps") {
-        safe_setenv("NAH_ROOT", env.root.c_str());
-
-        auto apps = nah::host::listInstalledApps();
-        CHECK(apps.size() == 1);
-        CHECK(apps[0] == "com.test.app@1.0.0");
-
-        safe_unsetenv("NAH_ROOT");
-    }
-
-    SUBCASE("quickExecute requires actual execution") {
-        // Note: quickExecute would actually try to execute the app
-        // which we can't easily test in a unit test environment
-        // without potentially affecting the system
     }
 }
 

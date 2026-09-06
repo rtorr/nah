@@ -28,6 +28,8 @@ TEST_CASE("package extraction rejects parent traversal") {
     CHECK(put_octal(header.data() + 136, 12, 0));
     std::memset(header.data() + 148, ' ', 8);
     header[156] = '0';
+    std::memcpy(header.data() + 257, "ustar", 5);
+    std::memcpy(header.data() + 263, "00", 2);
     std::uint64_t checksum = 0;
     for (const auto byte : header) checksum += byte;
     CHECK(put_octal(header.data() + 148, 7, checksum));

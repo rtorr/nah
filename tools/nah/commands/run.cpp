@@ -4,9 +4,6 @@
  * Launch an application using the NahHost library.
  */
 
-// Enable host implementation in this translation unit
-#define NAH_HOST_IMPLEMENTATION
-
 #include "../common.hpp"
 #include <nah/nah_host.h>
 #include <CLI/CLI.hpp>
@@ -70,16 +67,10 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
     if (!opts.json && !opts.quiet && !result.warnings.empty()) {
         for (const auto& warning : result.warnings) {
             std::string warning_msg = "Warning [" + warning.key + "]: ";
-            if (warning.action == "error") {
-                // This was escalated to an error by policy
-                print_error(warning_msg + "escalated to error by policy", opts.json);
-            } else {
-                // Regular warning
-                for (const auto& [field, value] : warning.fields) {
-                    warning_msg += field + "=" + value + " ";
-                }
-                print_warning(warning_msg, opts.json);
+            for (const auto& [field, value] : warning.fields) {
+                warning_msg += field + "=" + value + " ";
             }
+            print_warning(warning_msg, opts.json);
         }
     }
 

@@ -57,6 +57,7 @@ jobs:
           path: |
             build/tools/nah/nah
             build/tools/nah/nah.exe
+            build/tools/nah/Release/nah.exe
           if-no-files-found: ignore
 
   conan:

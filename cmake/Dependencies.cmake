@@ -12,6 +12,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 # zlib backs the package archive API.
 find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND)
+    enable_language(C)
     FetchContent_Declare(
         zlib
         URL https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz
@@ -21,7 +22,11 @@ if(NOT ZLIB_FOUND)
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "")
     FetchContent_MakeAvailable(zlib)
     if(NOT TARGET ZLIB::ZLIB)
-        add_library(ZLIB::ZLIB ALIAS zlibstatic)
+        add_library(ZLIB::ZLIB INTERFACE IMPORTED GLOBAL)
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            INTERFACE_LINK_LIBRARIES zlibstatic
+            INTERFACE_INCLUDE_DIRECTORIES "${zlib_SOURCE_DIR};${zlib_BINARY_DIR}"
+        )
     endif()
 endif()
 

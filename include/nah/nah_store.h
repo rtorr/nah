@@ -72,7 +72,8 @@ inline bool allowed_pair(const fs::path& payload, const fs::path& record) {
 
 inline bool sync_file(const fs::path& path, std::string& error) {
 #ifdef _WIN32
-    HANDLE handle = CreateFileW(path.wstring().c_str(), GENERIC_READ,
+    // FlushFileBuffers requires a handle opened for writing.
+    HANDLE handle = CreateFileW(path.wstring().c_str(), GENERIC_READ | GENERIC_WRITE,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                 nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE || !FlushFileBuffers(handle)) {

@@ -211,9 +211,11 @@ public:
         std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"id\": \"" << id << "\",\n";
-        manifest << "  \"version\": \"" << version << "\",\n";
-        manifest << "  \"entrypoint\": \"bin/app\"\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\"id\": \"" << id << "\", \"version\": \"" << version << "\"},\n";
+        manifest << "    \"execution\": {\"entrypoint\": \"bin/app\"}\n";
+        manifest << "  }\n";
         manifest << "}\n";
         manifest.close();
 
@@ -257,18 +259,6 @@ TEST_CASE("executing commands reject JSON mode")
     auto run_error = nlohmann::json::parse(run.output);
     CHECK(run_error["ok"] == false);
 
-    auto launch = execute_command(get_nah_executable() + " --json launch com.test://component");
-    CHECK(launch.exit_code != 0);
-    auto launch_error = nlohmann::json::parse(launch.output);
-    CHECK(launch_error["ok"] == false);
-}
-
-TEST_CASE("empty components JSON is an array")
-{
-    TestNahEnvironment env;
-    auto result = execute_command(get_nah_executable() + " --json components");
-    CHECK(result.exit_code == 0);
-    CHECK(nlohmann::json::parse(result.output) == nlohmann::json::array());
 }
 
 TEST_CASE("nah --help")
@@ -693,11 +683,12 @@ TEST_CASE("nah loader selection")
         std::string manifest_path = nah::fs::join_paths(app_dir, "nap.json");
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"id\": \"" << app_id << "\",\n";
-        manifest << "  \"version\": \"" << app_version << "\",\n";
-        manifest << "  \"nak_id\": \"" << nak_id << "\",\n";
-        manifest << "  \"nak_version_req\": \"" << nak_version << "\",\n";
-        manifest << "  \"entrypoint\": \"bin/app\"\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
+        manifest << "  \"app\": {\n";
+        manifest << "    \"identity\": {\"id\": \"" << app_id << "\", \"version\": \"" << app_version
+                 << "\", \"nak_id\": \"" << nak_id << "\", \"nak_version_req\": \"" << nak_version << "\"},\n";
+        manifest << "    \"execution\": {\"entrypoint\": \"bin/app\"}\n";
+        manifest << "  }\n";
         manifest << "}\n";
         manifest.close();
 
@@ -1079,7 +1070,7 @@ TEST_CASE("app loader preference from manifest")
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
         manifest << "  \"app\": {\n";
         manifest << "    \"identity\": {\n";
         manifest << "      \"id\": \"com.test.noloader\",\n";
@@ -1121,7 +1112,7 @@ TEST_CASE("app loader preference from manifest")
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
         manifest << "  \"app\": {\n";
         manifest << "    \"identity\": {\n";
         manifest << "      \"id\": \"com.test.withloader\",\n";

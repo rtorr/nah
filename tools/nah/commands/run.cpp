@@ -21,7 +21,8 @@ namespace {
 struct RunOptions {
     std::string target;
     std::vector<std::string> args;
-    std::string loader;  // Runtime loader override
+    std::string loader;
+    bool require_verified = false;
 };
 
 int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
@@ -82,31 +83,11 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
         }
     }
 
-    // Check trust state if enforcement is enabled
-    std::string require_trust_value = safe_getenv("NAH_REQUIRE_TRUST");
-    if (!require_trust_value.empty()) {
-        auto trust_state = result.contract.trust.state;
-        if (trust_state != nah::core::TrustState::Verified) {
-            std::string trust_msg = std::string("Trust verification failed: state is ") +
-                nah::core::trust_state_to_string(trust_state);
-            if (trust_state == nah::core::TrustState::Failed) {
-                print_error(trust_msg, opts.json);
-                return 1;
-            } else if (trust_state == nah::core::TrustState::Unknown ||
-                       trust_state == nah::core::TrustState::Unverified) {
-                if (require_trust_value == "1" || require_trust_value == "true") {
-                    print_error(trust_msg + ". Set NAH_REQUIRE_TRUST=0 to bypass.", opts.json);
-                    return 1;
-                } else {
-                    print_warning(trust_msg, opts.json);
-                }
-            }
-        }
+    if (run_opts.require_verified && result.contract.trust.state != nah::core::TrustState::Verified) {
+        print_error(std::string("launch requires verified artifacts; state is ") +
+                    nah::core::trust_state_to_string(result.contract.trust.state), opts.json);
+        return 1;
     }
-
-    // Apply overrides from environment
-    auto host_env = host->getHostEnvironment();
-    nah::overrides::apply_overrides(result, host_env);
 
     // Add any extra args from command line
     for (const auto& arg : run_opts.args) {
@@ -138,6 +119,8 @@ void setup_run(CLI::App* app, GlobalOptions& opts) {
     app->add_option("target", run_opts.target, "App to run (id or id@version)")->required();
     app->add_option("args", run_opts.args, "Arguments to pass to the app");
     app->add_option("--loader", run_opts.loader, "Loader to use (overrides install record)");
+    app->add_flag("--require-verified", run_opts.require_verified,
+                  "Refuse to launch unless all artifacts were digest-verified");
 
     // Allow -- to separate nah args from app args
     app->allow_extras();

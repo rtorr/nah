@@ -31,12 +31,6 @@ namespace {
 #endif
 }
 
-TEST_CASE("component wildcard requires a path boundary") {
-    CHECK(nah::host::matches_uri_pattern("com.example://open/*", "com.example://open/file"));
-    CHECK_FALSE(nah::host::matches_uri_pattern("com.example://open/*", "com.example://openly"));
-    CHECK_FALSE(nah::host::matches_uri_pattern("com.example://open/*", "com.example://open"));
-}
-
 inline void safe_setenv(const char* name, const char* value) {
 #ifdef _WIN32
     _putenv_s(name, value);
@@ -121,7 +115,7 @@ public:
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
-        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+        manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
         manifest << "  \"app\": {\n";
         manifest << "    \"identity\": {\n";
         manifest << "      \"id\": \"" << id << "\",\n";
@@ -347,7 +341,6 @@ TEST_CASE("NahHost::getHostEnvironment") {
         CHECK(host_env.vars.empty());
         CHECK(host_env.paths.library_prepend.empty());
         CHECK(host_env.paths.library_append.empty());
-        CHECK_FALSE(host_env.overrides.allow_env_overrides);
     }
 
     SUBCASE("load host config from file") {
@@ -359,10 +352,6 @@ TEST_CASE("NahHost::getHostEnvironment") {
             "paths": {
                 "library_prepend": ["/custom/lib"],
                 "library_append": ["/other/lib"]
-            },
-            "overrides": {
-                "allow_env_overrides": false,
-                "allowed_env_keys": ["DEBUG"]
             }
         })");
 
@@ -380,9 +369,6 @@ TEST_CASE("NahHost::getHostEnvironment") {
         REQUIRE(host_env.paths.library_append.size() == 1);
         CHECK(host_env.paths.library_append[0] == "/other/lib");
 
-        CHECK(host_env.overrides.allow_env_overrides == false);
-        REQUIRE(host_env.overrides.allowed_env_keys.size() == 1);
-        CHECK(host_env.overrides.allowed_env_keys[0] == "DEBUG");
     }
 }
 
@@ -488,7 +474,7 @@ TEST_CASE("NahHost with app requiring NAK") {
     std::string manifest_path = app_dir + "/nap.json";
     std::ofstream manifest(manifest_path);
     manifest << "{\n";
-    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
     manifest << "  \"app\": {\n";
     manifest << "    \"identity\": {\n";
     manifest << "      \"id\": \"com.test.nakapp\",\n";
@@ -607,10 +593,6 @@ TEST_CASE("NahHost with complex environment") {
         "paths": {
             "library_prepend": ["/usr/local/lib"],
             "library_append": []
-        },
-        "overrides": {
-            "allow_env_overrides": true,
-            "allowed_env_keys": []
         }
     })");
 
@@ -620,7 +602,7 @@ TEST_CASE("NahHost with complex environment") {
 
     std::ofstream manifest(app_dir + "/nap.json");
     manifest << "{\n";
-    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n";
+    manifest << "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n";
     manifest << "  \"app\": {\n";
     manifest << "    \"identity\": {\n";
     manifest << "      \"id\": \"env.test.app\",\n";
@@ -739,7 +721,7 @@ TEST_CASE("NahHost app metadata") {
 
         std::ofstream manifest(app_dir + "/nap.json");
         manifest << R"({
-            "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+            "$schema": "https://nah.rtorr.com/schemas/nap.v2.json",
             "app": {
                 "identity": {
                     "id": "com.test.meta",
@@ -787,7 +769,7 @@ TEST_CASE("NahHost app metadata") {
 
         std::ofstream manifest(app_dir + "/nap.json");
         manifest << R"({
-            "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+            "$schema": "https://nah.rtorr.com/schemas/nap.v2.json",
             "app": {
                 "identity": {
                     "id": "com.test.custom",

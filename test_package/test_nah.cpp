@@ -4,6 +4,7 @@
 
 #define NAH_HOST_IMPLEMENTATION
 #include <nah/nah.h>
+#include <nah/nah_archive.h>
 #include <iostream>
 
 int main() {
@@ -23,10 +24,15 @@ int main() {
 
     // Test JSON parsing
     std::string json = R"({
-        "id": "com.example.app",
-        "version": "1.0.0",
-        "entrypoint": "main.lua",
-        "nak": { "id": "lua", "version_req": ">=5.4" }
+        "app": {
+            "identity": {
+                "id": "com.example.app",
+                "version": "1.0.0",
+                "nak_id": "lua",
+                "nak_version_req": ">=5.4"
+            },
+            "execution": {"entrypoint": "main.lua"}
+        }
     })";
 
     auto result = nah::json::parse_app_declaration(json);
@@ -36,6 +42,7 @@ int main() {
     }
 
     std::cout << "Parsed app: " << result.value.id << " v" << result.value.version << "\n";
+    if (!nah::archive::split_ustar_path("bin/app")) return 1;
     std::cout << "NAH test_package: OK\n";
 
     return 0;

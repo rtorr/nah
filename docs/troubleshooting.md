@@ -26,7 +26,7 @@ If the app requires a NAK, install a matching NAK and reinstall the app so its r
 
 ## Host configuration is ignored
 
-The runtime reads `<root>/host/host.json`. Its fields are `environment`, `paths`, and `overrides`; there is no outer `host` object in newly generated files. Run `nah init --host <root>` for a usable skeleton.
+The runtime reads `<root>/host/host.json`. Its fields are `environment` and `paths`; there is no outer `host` object in newly generated files. Run `nah init --host <root>` for a usable skeleton.
 
 ## Root selection
 

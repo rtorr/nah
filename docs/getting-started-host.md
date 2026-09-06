@@ -24,10 +24,6 @@ The root contains managed `apps`, `naks`, `registry`, `host`, and `staging` dire
   "paths": {
     "library_prepend": [],
     "library_append": []
-  },
-  "overrides": {
-    "allow_env_overrides": false,
-    "allowed_env_keys": []
   }
 }
 ```

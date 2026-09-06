@@ -1,6 +1,6 @@
 # NAH specification
 
-Status: implemented contract for NAH 2.x. “Must” identifies behavior required for compatibility.
+Status: implemented contract for NAH 3.x. “Must” identifies behavior required for compatibility.
 
 ## Scope
 
@@ -46,7 +46,7 @@ An app package contains exactly one `nap.json`. Its current minimal form is:
 
 ```json
 {
-  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "$schema": "https://nah.rtorr.com/schemas/nap.v2.json",
   "app": {
     "identity": {
       "id": "com.example.app",
@@ -63,8 +63,6 @@ An app package contains exactly one `nap.json`. Its current minimal form is:
 `app.identity.nak_id` and `nak_version_req` request a runtime. `app.execution.loader` requests a named loader. Entrypoints and app layout paths are relative to the app root and must not escape it.
 
 Environment values may be strings or operations with `op`, `value`, and optional `separator`. Supported operations are `set`, `prepend`, `append`, and `unset`.
-
-Components are entries under `app.components.provides`. A component id must be unique within the app. Its entrypoint must be a packaged regular file. A wildcard URI pattern ending in `/*` matches only descendants at the next path boundary; `/open/*` must not match `/openly`.
 
 ## NAK manifest
 
@@ -117,7 +115,16 @@ Extraction failure must clean its unique temporary directory and must not alter 
 
 Installation accepts only a local directory, `.nap`, or `.nak`. A source must contain exactly one package manifest. The CLI validates the source tree, manifest identity, declared entrypoints, and contained paths before changing existing state.
 
-Files and the new registry record are prepared under `<root>/staging`. Activation must not leave a partial new installation. `--force` may replace the same id and version; without it, an existing file tree or record is an error.
+Files and the new registry record are prepared under `<root>/staging`. A root-wide
+lock serializes mutations, and a durable journal permits rollback or completion
+after interruption. Activation must not leave a partial new installation.
+`--force` may replace the same id and version; without it, an existing file tree
+or record is an error.
+
+Archive installation records its SHA-256 digest. When `--expected-sha256` is
+provided, NAH hashes the same snapshot it extracts, rejects a mismatch before
+mutation, and marks a match verified. This is digest verification, not identity
+or signature verification.
 
 When installing an app with a NAK requirement:
 
@@ -155,19 +162,18 @@ Library paths are ordered as host prepend, install prepend, NAK libraries, app l
 
 For a NAK loader, its executable becomes `execution.binary` and its expanded template begins the argument list. Otherwise the app entrypoint is the binary. Install argument prepends, manifest arguments, install appends, and caller-supplied execution arguments retain their order.
 
-The contract serializer must produce valid JSON with stable field order and sorted map keys.
+The contract serializer must produce JSON matching `launch.v2.json`, with stable field order and sorted map keys.
 
 ## Permissions and trust
 
-Manifest permissions are declarations, not enforced rules. Composition leaves `enforcement.filesystem` and `enforcement.network` empty and reports normalized capability strings in manifest order:
+Manifest permissions are declarations, not enforced rules. Composition copies filesystem and network requests into the launch contract without granting them. A host may reject the contract or map those opaque requests to its own enforcement mechanism.
 
-- filesystem `read`, `write`, `execute` become `filesystem.<operation>:<selector>`;
-- network `connect`, `listen`, `bind` become `network.<operation>:<selector>`;
-- malformed or unknown operations produce warnings.
-
-Selectors remain opaque strings.
-
-Trust state is copied from the install record. Missing trust data is `unknown` and produces a warning. If `expires_at` precedes `CompositionOptions.now`, composition produces a stale-trust warning. NAH does not itself verify artifacts or signatures.
+Trust state is copied from the install records and aggregated across the app and
+selected NAK. Their package digests are exposed in the launch contract. Missing
+trust data is `unknown` and produces a warning. If `expires_at` precedes
+`CompositionOptions.now`, composition produces a stale-trust warning. NAH can
+compare a caller-supplied digest; it does not establish identity or verify
+signatures.
 
 ## Execution
 
@@ -180,18 +186,18 @@ The implemented command grammar is:
 ```text
 nah [global options] init [--app|--nak|--host] [dir]
 nah [global options] pack <dir> [--output <file>]
-nah [global options] install <local-source> [--force] [--app|--nak] [--dry-run]
+nah [global options] install <local-source> [--force] [--app|--nak] [--dry-run] [--expected-sha256 <hex>]
 nah [global options] uninstall <id[@version]> [--app|--nak] [--force]
 nah [global options] list [--apps|--naks]
 nah [global options] which <id[@version]>
 nah [global options] show [app-id[@version]] [--trace]
-nah [global options] run <app-id[@version]> [--loader <name>] [-- args...]
-nah [global options] components [--all]
-nah [global options] launch <component-uri> [--referrer <uri>] [-- args...]
+nah [global options] run <app-id[@version]> [--loader <name>] [--require-verified] [-- args...]
 ```
 
 Global options precede the subcommand. JSON mode must emit one valid JSON value. A nonzero exit status means the requested operation failed.
 
 ## Compatibility boundary
 
-The JSON schemas in `docs/schemas` are authoritative for authored manifests and records. Parsers may accept legacy fields for migration, but generators, documentation, tests, and new records must use the current shapes in this document.
+The JSON schemas in `docs/schemas` document authored and serialized boundaries.
+The C++ parsers enforce current required fields and reject obsolete aliases.
+Breaking formats require a new schema identifier and major library version.

@@ -39,9 +39,12 @@ Creates one current-format manifest and minimal directory structure. App is the 
 
 Creates a deterministic gzip/tar package based on `nap.json` or `nak.json`. Package ids and versions are validated. Links and special files are rejected.
 
-### `install <source> [--force] [--app|--nak] [--dry-run] [--loader <name>]`
+### `install <source> [--force] [--app|--nak] [--dry-run] [--loader <name>] [--expected-sha256 <hex>]`
 
 Validates and stages one local package before atomically activating its files and registry record. For an app with a NAK requirement, installation pins the highest installed matching semantic version.
+For an archive, `--expected-sha256` binds installation to a digest supplied by
+the caller. NAH records the digest either way; only an explicit match is marked
+verified.
 
 ### `uninstall <id[@version]> [--app|--nak] [--force]`
 
@@ -59,19 +62,12 @@ Prints the registry record and resolved installation path.
 
 With no target, prints root status. With an app target, composes and displays its launch contract without executing it.
 
-### `run <id[@version]> [--loader <name>] [-- args...]`
+### `run <id[@version]> [--loader <name>] [--require-verified] [-- args...]`
 
 Composes and executes an installed app. Arguments following `--` are appended to the manifest arguments.
+`--require-verified` refuses execution unless the app and selected NAK were
+installed with matching expected digests.
 `--json` is rejected because successful execution hands stdout to the child process; use `show` to inspect the contract.
-
-### `components [--all]`
-
-Lists installed app components.
-
-### `launch <component-uri> [--referrer <uri>] [-- args...]`
-
-Resolves and launches a component URI.
-`--json` is rejected for the same reason as `run`.
 
 ## Exit status
 

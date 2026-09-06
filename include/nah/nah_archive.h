@@ -16,7 +16,7 @@
 
 #include <zlib.h>
 
-namespace nah::cli::package_archive {
+namespace nah::archive {
 
 namespace fs = std::filesystem;
 
@@ -286,4 +286,4 @@ inline Result extract(const fs::path& archive, const fs::path& destination) {
     return {true, {}};
 }
 
-} // namespace nah::cli::package_archive
+} // namespace nah::archive

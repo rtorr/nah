@@ -17,13 +17,16 @@ Use `<nah/nah.h>` and `NAH::nah` for the complete filesystem, JSON, host, and ex
 
 Use `<nah/nah_core.h>` and `NAH::core` when only dependency-free types and pure composition are needed.
 
+Use `<nah/nah_archive.h>` and `NAH::package` for deterministic `.nap`/`.nak`
+archive creation and extraction. This target adds zlib; it is not pulled into
+`NAH::core` or `NAH::nah`.
+
 `NahHost` provides these primary operations:
 
 - `create(root)` and `discover(search_paths)`;
 - `listApplications()` and `findApplication(id, version)`;
 - `getLaunchContract(...)`;
 - `executeApplication(...)` and `executeContract(...)`;
-- component discovery, composition, and launch.
 
 ```cpp
 #define NAH_HOST_IMPLEMENTATION

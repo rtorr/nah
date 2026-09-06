@@ -53,7 +53,7 @@
   },
   "properties": {
     "$schema": {
-      "type": "string",
+      "const": "https://nah.rtorr.com/schemas/nak-record.v1.json",
       "description": "JSON Schema reference"
     },
     "nak": {
@@ -85,17 +85,17 @@
       "properties": {
         "root": {
           "type": "string",
-          "description": "Absolute path to NAK installation root",
+          "description": "Path to the NAK installation root, relative to the NAH root",
           "minLength": 1
         },
         "resource_root": {
           "type": "string",
-          "description": "Absolute path to NAK resources directory",
+          "description": "Path to NAK resources, relative to the NAK root",
           "minLength": 1
         },
         "lib_dirs": {
           "type": "array",
-          "description": "Absolute paths to NAK library directories",
+          "description": "Library paths relative to the NAK root",
           "items": {
             "type": "string",
             "minLength": 1
@@ -205,8 +205,7 @@
             "unknown",
             "verified",
             "unverified",
-            "failed",
-            "stale"
+            "failed"
           ]
         },
         "source": {

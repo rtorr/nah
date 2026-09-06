@@ -108,13 +108,13 @@ namespace core {
 // ============================================================================
 
 /// Library version following semver
-constexpr const char* NAH_CORE_VERSION = "1.0.0";
-constexpr int NAH_CORE_VERSION_MAJOR = 1;
+constexpr const char* NAH_CORE_VERSION = "2.0.0";
+constexpr int NAH_CORE_VERSION_MAJOR = 2;
 constexpr int NAH_CORE_VERSION_MINOR = 0;
 constexpr int NAH_CORE_VERSION_PATCH = 0;
 
 /// Schema identifier for serialized contracts
-constexpr const char* NAH_CONTRACT_SCHEMA = "nah.launch.contract.v1";
+constexpr const char* NAH_CONTRACT_SCHEMA = "nah.launch.contract.v2";
 
 /// Maximum expanded string size (64 KiB) - prevents DoS via expansion
 constexpr size_t MAX_EXPANDED_SIZE = 64 * 1024;
@@ -265,52 +265,18 @@ struct TrustInfo {
  * Each warning can be configured with an action: warn, ignore, or error.
  */
 enum class Warning {
-    invalid_manifest,         ///< Manifest has structural issues
-    invalid_configuration,    ///< Configuration is malformed
-    profile_invalid,          ///< Profile has structural issues
-    profile_missing,          ///< Referenced profile not found
-    profile_parse_error,      ///< Profile could not be parsed
-    nak_pin_invalid,          ///< NAK pin is malformed
-    nak_not_found,            ///< Referenced NAK not in inventory
-    nak_version_unsupported,  ///< NAK version not allowed by policy
-    nak_loader_required,      ///< NAK has loaders but none specified
-    nak_loader_missing,       ///< Requested loader not in NAK
-    binary_not_found,         ///< Binary doesn't exist (diagnostic only)
-    capability_missing,       ///< Required capability not granted
-    capability_malformed,     ///< Capability string is malformed
-    capability_unknown,       ///< Capability type not recognized
-    missing_env_var,          ///< Referenced env var not found
-    invalid_trust_state,      ///< Trust state is malformed
-    override_denied,          ///< Override blocked by policy
-    override_invalid,         ///< Override value is invalid
-    invalid_library_path,     ///< Library path is invalid
-    trust_state_unknown,      ///< Trust state is unknown
-    trust_state_unverified,   ///< Trust state is unverified
-    trust_state_failed,       ///< Trust verification failed
-    trust_state_stale,        ///< Trust verification has expired
+    invalid_manifest,
+    nak_not_found,
+    trust_state_unknown,
+    trust_state_unverified,
+    trust_state_failed,
+    trust_state_stale,
 };
 
 inline const char* warning_to_string(Warning w) {
     switch (w) {
         case Warning::invalid_manifest: return "invalid_manifest";
-        case Warning::invalid_configuration: return "invalid_configuration";
-        case Warning::profile_invalid: return "profile_invalid";
-        case Warning::profile_missing: return "profile_missing";
-        case Warning::profile_parse_error: return "profile_parse_error";
-        case Warning::nak_pin_invalid: return "nak_pin_invalid";
         case Warning::nak_not_found: return "nak_not_found";
-        case Warning::nak_version_unsupported: return "nak_version_unsupported";
-        case Warning::nak_loader_required: return "nak_loader_required";
-        case Warning::nak_loader_missing: return "nak_loader_missing";
-        case Warning::binary_not_found: return "binary_not_found";
-        case Warning::capability_missing: return "capability_missing";
-        case Warning::capability_malformed: return "capability_malformed";
-        case Warning::capability_unknown: return "capability_unknown";
-        case Warning::missing_env_var: return "missing_env_var";
-        case Warning::invalid_trust_state: return "invalid_trust_state";
-        case Warning::override_denied: return "override_denied";
-        case Warning::override_invalid: return "override_invalid";
-        case Warning::invalid_library_path: return "invalid_library_path";
         case Warning::trust_state_unknown: return "trust_state_unknown";
         case Warning::trust_state_unverified: return "trust_state_unverified";
         case Warning::trust_state_failed: return "trust_state_failed";
@@ -321,24 +287,7 @@ inline const char* warning_to_string(Warning w) {
 
 inline std::optional<Warning> parse_warning_key(const std::string& key) {
     if (key == "invalid_manifest") return Warning::invalid_manifest;
-    if (key == "invalid_configuration") return Warning::invalid_configuration;
-    if (key == "profile_invalid") return Warning::profile_invalid;
-    if (key == "profile_missing") return Warning::profile_missing;
-    if (key == "profile_parse_error") return Warning::profile_parse_error;
-    if (key == "nak_pin_invalid") return Warning::nak_pin_invalid;
     if (key == "nak_not_found") return Warning::nak_not_found;
-    if (key == "nak_version_unsupported") return Warning::nak_version_unsupported;
-    if (key == "nak_loader_required") return Warning::nak_loader_required;
-    if (key == "nak_loader_missing") return Warning::nak_loader_missing;
-    if (key == "binary_not_found") return Warning::binary_not_found;
-    if (key == "capability_missing") return Warning::capability_missing;
-    if (key == "capability_malformed") return Warning::capability_malformed;
-    if (key == "capability_unknown") return Warning::capability_unknown;
-    if (key == "missing_env_var") return Warning::missing_env_var;
-    if (key == "invalid_trust_state") return Warning::invalid_trust_state;
-    if (key == "override_denied") return Warning::override_denied;
-    if (key == "override_invalid") return Warning::override_invalid;
-    if (key == "invalid_library_path") return Warning::invalid_library_path;
     if (key == "trust_state_unknown") return Warning::trust_state_unknown;
     if (key == "trust_state_unverified") return Warning::trust_state_unverified;
     if (key == "trust_state_failed") return Warning::trust_state_failed;
@@ -431,7 +380,7 @@ namespace trace_source {
  */
 struct TraceContribution {
     std::string value;           ///< The contributed value
-    std::string source_kind;     ///< Where it came from (profile, nak_record, manifest, etc.)
+    std::string source_kind;     ///< Where it came from (host, NAK record, manifest, etc.)
     std::string source_path;     ///< Specific file/location
     int precedence_rank = 0;     ///< Priority (1=highest)
     EnvOp operation = EnvOp::Set;///< Operation applied
@@ -462,45 +411,6 @@ struct CompositionTrace {
 };
 
 // ============================================================================
-// COMPONENT DECLARATION
-// ============================================================================
-
-/// A component is a launchable feature within an application.
-///
-/// Components allow a single app package to provide multiple entry points
-/// (e.g., editor, viewer, debugger) with independent loader selection.
-///
-/// Example:
-///
-///     ComponentDecl editor;
-///     editor.id = "editor";
-///     editor.name = "Document Editor";
-///     editor.entrypoint = "bin/editor";
-///     editor.uri_pattern = "com.docproc.suite://editor/*";
-///     editor.loader = "default";  // Optional: use specific NAK loader
-///     editor.standalone = true;
-///     editor.hidden = false;
-///
-struct ComponentDecl {
-    std::string id;            ///< Component identifier (unique within app)
-    std::string name;          ///< Human-readable name
-    std::string description;   ///< Optional description
-    std::string icon;          ///< Relative path to icon (optional)
-    std::string entrypoint;    ///< Relative path to executable/script
-    std::string uri_pattern;   ///< URI pattern this component handles
-    std::string loader;        ///< Optional: specific NAK loader name
-    bool standalone = true;    ///< Can be launched independently
-    bool hidden = false;       ///< Hide from host UI
-
-    // Per-component overrides (extend app-level settings)
-    EnvMap environment;                       ///< Component-specific environment
-    std::vector<std::string> permissions_filesystem;  ///< Component-specific perms
-    std::vector<std::string> permissions_network;     ///< Component-specific perms
-
-    std::unordered_map<std::string, std::string> metadata;  ///< Arbitrary metadata
-};
-
-// ============================================================================
 // APP DECLARATION
 // ============================================================================
 
@@ -526,7 +436,7 @@ struct AssetExportDecl {
 //     app.nak_id = "lua";
 //     app.nak_version_req = ">=5.4.0";
 //     app.lib_dirs = {"lib", "vendor"};
-//     app.env_vars = {"GAME_DATA=./data"};
+//     app.environment["GAME_DATA"] = "./data";
 //
 // Example - a standalone binary (no runtime):
 //
@@ -552,9 +462,8 @@ struct AppDeclaration {
     // Optional: Arguments passed after the entrypoint
     std::vector<std::string> entrypoint_args;
 
-    // Optional: Environment operations. env_vars is retained for legacy callers.
+    // Optional: Environment operations.
     EnvMap environment;
-    std::vector<std::string> env_vars;
 
     // Optional: Library search paths (relative to app root)
     std::vector<std::string> lib_dirs;
@@ -573,8 +482,6 @@ struct AppDeclaration {
     std::string license;
     std::string homepage;
 
-    // Optional: Components provided by this application
-    std::vector<ComponentDecl> components;
 };
 
 // ============================================================================
@@ -584,7 +491,7 @@ struct AppDeclaration {
 // Host configuration loaded from host.json.
 //
 // This replaces the old "profiles" concept with a single host configuration.
-// It contains environment variables, library paths, and override policy.
+// It contains environment variables and library paths.
 //
 // Example:
 //
@@ -593,8 +500,7 @@ struct AppDeclaration {
 //     host_env.vars["LOG_LEVEL"] = EnvValue(EnvOp::Set, "warn");
 //     host_env.paths.library_prepend = {"/opt/libs"};
 //
-// Host environment takes precedence over app-declared environment variables
-// but can be overridden by install record overrides (subject to override policy).
+// Host environment takes precedence over app-declared environment variables.
 //
 struct HostEnvironment {
     EnvMap vars;  ///< Environment variables to inject
@@ -603,11 +509,6 @@ struct HostEnvironment {
         std::vector<std::string> library_prepend;  ///< Library paths to prepend
         std::vector<std::string> library_append;   ///< Library paths to append
     } paths;
-
-    struct {
-        bool allow_env_overrides = false;  ///< Allow NAH_OVERRIDE_ENVIRONMENT
-        std::vector<std::string> allowed_env_keys;  ///< If non-empty, only these keys can be overridden
-    } overrides;
 
     std::string source_path;  ///< For tracing (e.g., "/nah/host/host.json")
 };
@@ -684,6 +585,8 @@ struct RuntimeDescriptor {
         std::string source;         ///< Where it came from (URL, path)
     } provenance;
 
+    TrustInfo trust;  ///< Trust evidence for this installed runtime
+
     std::string source_path;  ///< For tracing
 };
 
@@ -756,7 +659,7 @@ struct InstallRecord {
         std::string last_verifier_version; ///< Version of tool that verified
     } verification;
 
-    // Per-install overrides (subject to host profile policy)
+    // Per-install host-owned overrides
     struct {
         EnvMap environment;  ///< Additional/override environment variables
         struct {
@@ -799,87 +702,6 @@ struct AssetExport {
     std::string id;    ///< Export identifier
     std::string path;  ///< Absolute path on disk
     std::string type;  ///< MIME type (optional)
-};
-
-// ============================================================================
-// COMPONENT URI
-// ============================================================================
-
-/// Parsed component URI.
-///
-/// Format: <app-id>://<component-path>[?<query>][#<fragment>]
-///
-/// Example:
-///     com.devtools://editor/open?file=doc.txt#line-42
-///
-struct ComponentURI {
-    bool valid = false;             ///< Parse succeeded
-    std::string raw_uri;            ///< Original URI
-    std::string app_id;             ///< Application ID (scheme)
-    std::string component_path;     ///< Path after ://
-    std::string query;              ///< Query string (without ?)
-    std::string fragment;           ///< Fragment (without #)
-};
-
-/// Parse a component URI.
-///
-/// Format: <app-id>://<component-path>[?<query>][#<fragment>]
-///
-/// Examples:
-///     com.suite://editor                    → app_id="com.suite", component_path="editor"
-///     com.suite://editor/open               → component_path="editor/open"
-///     com.suite://editor?file=doc.txt       → query="file=doc.txt"
-///     com.suite://editor#section-3          → fragment="section-3"
-///
-inline ComponentURI parse_component_uri(const std::string& uri) {
-    ComponentURI result;
-    result.raw_uri = uri;
-
-    // Find scheme separator
-    size_t scheme_end = uri.find("://");
-    if (scheme_end == std::string::npos) {
-        return result;  // Invalid
-    }
-
-    // Extract app_id (scheme)
-    result.app_id = uri.substr(0, scheme_end);
-    if (result.app_id.empty()) {
-        return result;
-    }
-
-    std::string rest = uri.substr(scheme_end + 3);
-
-    // Extract fragment (if present)
-    size_t fragment_pos = rest.find('#');
-    if (fragment_pos != std::string::npos) {
-        result.fragment = rest.substr(fragment_pos + 1);
-        rest = rest.substr(0, fragment_pos);
-    }
-
-    // Extract query (if present)
-    size_t query_pos = rest.find('?');
-    if (query_pos != std::string::npos) {
-        result.query = rest.substr(query_pos + 1);
-        rest = rest.substr(0, query_pos);
-    }
-
-    // Remaining is component_path
-    result.component_path = rest;
-    result.valid = true;
-
-    return result;
-}
-
-// ============================================================================
-// CAPABILITY USAGE
-// ============================================================================
-
-// Summary of capabilities requested by the app.
-struct CapabilityUsage {
-    bool present = false;
-    std::vector<std::string> required_capabilities;
-    std::vector<std::string> optional_capabilities;
-    std::vector<std::string> critical_capabilities;
 };
 
 // ============================================================================
@@ -932,6 +754,7 @@ struct LaunchContract {
         std::string version;     ///< App version
         std::string root;        ///< Absolute path to app installation
         std::string entrypoint;  ///< Absolute path to entrypoint file
+        std::string package_hash; ///< Installed package digest, if available
     } app;
 
     // Runtime info (empty if standalone app)
@@ -941,6 +764,7 @@ struct LaunchContract {
         std::string root;          ///< Absolute path to runtime
         std::string resource_root; ///< Resource path (often same as root)
         std::string record_ref;    ///< Key used to look up this runtime
+        std::string package_hash;  ///< Installed runtime package digest, if available
     } nak;
 
     // How to execute the app
@@ -955,20 +779,18 @@ struct LaunchContract {
     // Complete environment map (ready to pass to exec)
     std::unordered_map<std::string, std::string> environment;
 
-    // Capability/permission requirements for sandboxing
+    // Permission requests for a host launcher to interpret and enforce
     struct {
-        std::vector<std::string> filesystem;  ///< Filesystem permissions
-        std::vector<std::string> network;     ///< Network permissions
-    } enforcement;
+        std::vector<std::string> filesystem;
+        std::vector<std::string> network;
+    } permissions;
 
-    // Trust/verification state from install record
+    // Aggregate trust for every executable artifact in this contract
     TrustInfo trust;
 
     // Exported assets (id -> absolute path)
     std::unordered_map<std::string, AssetExport> exports;
 
-    // Summary of capability usage
-    CapabilityUsage capability_usage;
 };
 
 // ============================================================================
@@ -1007,7 +829,7 @@ struct CompositionOptions {
 //
 // Example:
 //
-//     CompositionResult result = nah_compose(app, profile, install, inventory);
+//     CompositionResult result = nah_compose(app, host_env, install, inventory);
 //     if (!result.ok) {
 //         std::cerr << "Composition failed: " << result.critical_error_context << "\n";
 //         return 1;
@@ -1609,18 +1431,7 @@ inline std::unordered_map<std::string, std::string> compose_environment(
         }
     };
 
-    // Layer 1: Legacy app KEY=value defaults (rank 5)
-    for (const auto& env_var : decl.env_vars) {
-        auto eq = env_var.find('=');
-        if (eq != std::string::npos) {
-            const std::string key = env_var.substr(0, eq);
-            const std::string value = env_var.substr(eq + 1);
-            env[key] = value;
-            record(key, value, trace_source::MANIFEST, "manifest", 5, EnvOp::Set, true);
-        }
-    }
-
-    // Current app environment operations override legacy values (rank 5).
+    // Layer 1: App environment (rank 5).
     for (const auto& [key, val] : decl.environment) {
         auto result = apply_env_op(key, val, env);
         if (result.has_value()) {
@@ -1864,6 +1675,7 @@ inline CompositionResult nah_compose(
     contract.app.id = app.id;
     contract.app.version = app.version;
     contract.app.root = install.paths.install_root;
+    contract.app.package_hash = install.provenance.package_hash;
 
     if (runtime_ptr) {
         contract.nak.id = runtime_ptr->nak.id;
@@ -1872,6 +1684,7 @@ inline CompositionResult nah_compose(
         contract.nak.resource_root = runtime_ptr->paths.resource_root.empty() ?
             runtime_ptr->paths.root : runtime_ptr->paths.resource_root;
         contract.nak.record_ref = runtime_result.record_ref;
+        contract.nak.package_hash = runtime_ptr->provenance.package_hash;
     }
 
     // Bind paths
@@ -1984,39 +1797,41 @@ inline CompositionResult nah_compose(
     }
     contract.environment = env;
 
-    // Permissions are declarations. Hosts may map them to enforcement rules.
-    if (!app.permissions_filesystem.empty() || !app.permissions_network.empty()) {
-        contract.capability_usage.present = true;
-        const auto add_capability = [&](const std::string& permission, bool filesystem) {
-            const auto separator = permission.find(':');
-            if (separator == std::string::npos) {
-                result.warnings.push_back({warning_to_string(Warning::capability_malformed), "warn", {{"permission", permission}}});
-                contract.capability_usage.required_capabilities.push_back(permission);
-                return;
-            }
-            const auto operation = permission.substr(0, separator);
-            const auto selector = permission.substr(separator + 1);
-            const bool known = filesystem
-                ? (operation == "read" || operation == "write" || operation == "execute")
-                : (operation == "connect" || operation == "listen" || operation == "bind");
-            if (!known) {
-                result.warnings.push_back({warning_to_string(Warning::capability_unknown), "warn", {{"operation", operation}}});
-            }
-            const auto key = known ? (filesystem ? "filesystem." : "network.") + operation : operation;
-            contract.capability_usage.required_capabilities.push_back(key + ":" + selector);
-        };
-        for (const auto& permission : app.permissions_filesystem) add_capability(permission, true);
-        for (const auto& permission : app.permissions_network) add_capability(permission, false);
+    contract.permissions.filesystem = app.permissions_filesystem;
+    contract.permissions.network = app.permissions_network;
+
+    // Trust. A runtime participates in the executable trust chain, so the
+    // aggregate can only be verified when both app and runtime are verified.
+    contract.trust = install.trust;
+    if (runtime_ptr) {
+        const auto app_state = install.trust.state;
+        const auto runtime_state = runtime_ptr->trust.state;
+        contract.trust.source = "nah.artifact-chain";
+        contract.trust.details["app_state"] = trust_state_to_string(app_state);
+        contract.trust.details["runtime_state"] = trust_state_to_string(runtime_state);
+        contract.trust.details["app_digest"] = install.provenance.package_hash;
+        contract.trust.details["runtime_digest"] = runtime_ptr->provenance.package_hash;
+        if (app_state == TrustState::Failed || runtime_state == TrustState::Failed) {
+            contract.trust.state = TrustState::Failed;
+        } else if (app_state == TrustState::Unknown || runtime_state == TrustState::Unknown) {
+            contract.trust.state = TrustState::Unknown;
+        } else if (app_state == TrustState::Unverified || runtime_state == TrustState::Unverified) {
+            contract.trust.state = TrustState::Unverified;
+        } else {
+            contract.trust.state = TrustState::Verified;
+        }
+        if (contract.trust.expires_at.empty() ||
+            (!runtime_ptr->trust.expires_at.empty() &&
+             timestamp_before(runtime_ptr->trust.expires_at, contract.trust.expires_at))) {
+            contract.trust.expires_at = runtime_ptr->trust.expires_at;
+        }
     }
 
-    // Trust
-    contract.trust = install.trust;
-
-    if (install.trust.source.empty() && install.trust.evaluated_at.empty()) {
+    if (contract.trust.source.empty() && contract.trust.evaluated_at.empty()) {
         contract.trust.state = TrustState::Unknown;
         result.warnings.push_back({warning_to_string(Warning::trust_state_unknown), "warn", {}});
     } else {
-        switch (install.trust.state) {
+        switch (contract.trust.state) {
             case TrustState::Verified:
                 break;
             case TrustState::Unverified:
@@ -2032,8 +1847,8 @@ inline CompositionResult nah_compose(
     }
 
     // Check trust staleness
-    if (!install.trust.expires_at.empty() && !options.now.empty()) {
-        if (timestamp_before(install.trust.expires_at, options.now)) {
+    if (!contract.trust.expires_at.empty() && !options.now.empty()) {
+        if (timestamp_before(contract.trust.expires_at, options.now)) {
             result.warnings.push_back({warning_to_string(Warning::trust_state_stale), "warn", {}});
             if (trace_ptr) trace_ptr->decisions.push_back("WARNING: Trust verification has expired");
         }
@@ -2141,7 +1956,8 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"id\": " << json::str(c.app.id) << ",\n";
     out << "    \"version\": " << json::str(c.app.version) << ",\n";
     out << "    \"root\": " << json::str(c.app.root) << ",\n";
-    out << "    \"entrypoint\": " << json::str(c.app.entrypoint) << "\n";
+    out << "    \"entrypoint\": " << json::str(c.app.entrypoint) << ",\n";
+    out << "    \"package_hash\": " << json::str(c.app.package_hash) << "\n";
     out << "  },\n";
 
     // nak
@@ -2150,7 +1966,8 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"version\": " << json::str(c.nak.version) << ",\n";
     out << "    \"root\": " << json::str(c.nak.root) << ",\n";
     out << "    \"resource_root\": " << json::str(c.nak.resource_root) << ",\n";
-    out << "    \"record_ref\": " << json::str(c.nak.record_ref) << "\n";
+    out << "    \"record_ref\": " << json::str(c.nak.record_ref) << ",\n";
+    out << "    \"package_hash\": " << json::str(c.nak.package_hash) << "\n";
     out << "  },\n";
 
     // execution
@@ -2165,10 +1982,10 @@ inline std::string serialize_contract(const LaunchContract& c) {
     // environment
     out << "  \"environment\": " << json::object(c.environment, 2) << ",\n";
 
-    // enforcement
-    out << "  \"enforcement\": {\n";
-    out << "    \"filesystem\": " << json::array(c.enforcement.filesystem, 4) << ",\n";
-    out << "    \"network\": " << json::array(c.enforcement.network, 4) << "\n";
+    // permission requests
+    out << "  \"permissions\": {\n";
+    out << "    \"filesystem\": " << json::array(c.permissions.filesystem, 4) << ",\n";
+    out << "    \"network\": " << json::array(c.permissions.network, 4) << "\n";
     out << "  },\n";
 
     // trust
@@ -2177,12 +1994,6 @@ inline std::string serialize_contract(const LaunchContract& c) {
     out << "    \"source\": " << json::str(c.trust.source) << ",\n";
     out << "    \"evaluated_at\": " << json::str(c.trust.evaluated_at) << ",\n";
     out << "    \"expires_at\": " << json::str(c.trust.expires_at) << "\n";
-    out << "  },\n";
-
-    // capability_usage
-    out << "  \"capability_usage\": {\n";
-    out << "    \"present\": " << (c.capability_usage.present ? "true" : "false") << ",\n";
-    out << "    \"required_capabilities\": " << json::array(c.capability_usage.required_capabilities, 4) << "\n";
     out << "  }\n";
 
     out << "}";

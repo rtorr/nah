@@ -1,7 +1,9 @@
 /*
  * NAH Exec - Contract Execution for NAH
  *
- * This file provides process spawning to execute a LaunchContract.
+ * This file provides low-level, unsandboxed process spawning for a
+ * LaunchContract. Hosts that need isolation should execute the contract with
+ * their own platform launcher instead.
  * Platform-specific implementations for Unix and Windows.
  *
  * SPDX-License-Identifier: MIT

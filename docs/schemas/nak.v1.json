@@ -52,7 +52,7 @@
   },
   "properties": {
     "$schema": {
-      "type": "string",
+      "const": "https://nah.rtorr.com/schemas/nak.v1.json",
       "description": "JSON Schema reference"
     },
     "nak": {

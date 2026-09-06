@@ -13,6 +13,7 @@
 #ifdef __cplusplus
 
 #include "nah_core.h"
+#include <initializer_list>
 #include <nlohmann/json.hpp>
 
 namespace nah {
@@ -37,6 +38,27 @@ struct ParseResult {
 // ============================================================================
 
 namespace detail {
+
+inline std::string validate_keys(const json& value,
+                                 std::initializer_list<const char*> allowed,
+                                 const std::string& context) {
+    if (!value.is_object()) return context + " must be an object";
+    for (auto item = value.begin(); item != value.end(); ++item) {
+        const std::string key = item.key();
+        const bool known = std::any_of(allowed.begin(), allowed.end(),
+            [&key](const char* candidate) { return key == candidate; });
+        if (!known) return "unknown field in " + context + ": " + key;
+    }
+    return {};
+}
+
+inline std::string validate_string_array(const json& value, const std::string& context) {
+    if (!value.is_array()) return context + " must be an array";
+    for (const auto& item : value) {
+        if (!item.is_string()) return context + " must contain only strings";
+    }
+    return {};
+}
 
 inline std::string get_string(const json& j, const std::string& key, const std::string& default_val = "") {
     if (j.contains(key) && j[key].is_string()) {
@@ -160,46 +182,6 @@ inline core::LoaderConfig parse_loader_config(const json& j) {
 }
 
 // ============================================================================
-// COMPONENT PARSING
-// ============================================================================
-
-inline core::ComponentDecl parse_component(const json& j) {
-    core::ComponentDecl comp;
-
-    comp.id = detail::get_string(j, "id");
-    comp.name = detail::get_string(j, "name");
-    comp.description = detail::get_string(j, "description");
-    comp.icon = detail::get_string(j, "icon");
-    comp.entrypoint = detail::get_string(j, "entrypoint");
-    comp.uri_pattern = detail::get_string(j, "uri_pattern");
-    comp.loader = detail::get_string(j, "loader");
-    comp.standalone = detail::get_bool(j, "standalone", true);
-    comp.hidden = detail::get_bool(j, "hidden", false);
-
-    // Component-specific environment
-    if (j.contains("environment") && j["environment"].is_object()) {
-        comp.environment = parse_env_map(j["environment"]);
-    }
-
-    // Component-specific permissions
-    if (j.contains("permissions") && j["permissions"].is_object()) {
-        comp.permissions_filesystem = detail::get_string_array(j["permissions"], "filesystem");
-        comp.permissions_network = detail::get_string_array(j["permissions"], "network");
-    }
-
-    // Metadata
-    if (j.contains("metadata") && j["metadata"].is_object()) {
-        for (auto& [key, value] : j["metadata"].items()) {
-            if (value.is_string()) {
-                comp.metadata[key] = value.get<std::string>();
-            }
-        }
-    }
-
-    return comp;
-}
-
-// ============================================================================
 // APP DECLARATION PARSING
 // ============================================================================
 
@@ -209,37 +191,46 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
     try {
         json j = json::parse(json_str);
 
-        // Handle nested "app" structure if present
-        if (j.contains("app") && j["app"].is_object()) {
-            j = j["app"];
+        if (!j.is_object()) {
+            result.error = "app manifest must be an object";
+            return result;
+        }
+        if (const auto error = detail::validate_keys(j, {"$schema", "app"}, "app manifest"); !error.empty()) {
+            result.error = error;
+            return result;
+        }
+        if (j.contains("$schema") && (!j["$schema"].is_string() ||
+             j["$schema"].get<std::string>() != "https://nah.rtorr.com/schemas/nap.v2.json")) {
+            result.error = "unsupported app manifest schema";
+            return result;
+        }
+        if (!j.contains("app") || !j["app"].is_object()) {
+            result.error = "missing required object: app";
+            return result;
+        }
+        j = j["app"];
+        if (const auto error = detail::validate_keys(j,
+                {"identity", "execution", "layout", "environment", "permissions", "exports", "metadata"},
+                "app"); !error.empty()) {
+            result.error = error;
+            return result;
         }
 
         auto& app = result.value;
-
-        // Current manifests nest identity; flat fields remain readable for migration.
-        if (j.contains("identity") && j["identity"].is_object()) {
-            // New format: app.identity
-            auto& identity = j["identity"];
-            app.id = detail::get_string(identity, "id");
-            app.version = detail::get_string(identity, "version");
-            app.nak_id = detail::get_string(identity, "nak_id");
-            app.nak_version_req = detail::get_string(identity, "nak_version_req");
-        } else {
-            // Legacy flat format
-            app.id = detail::get_string(j, "id");
-            app.version = detail::get_string(j, "version");
-
-            // NAK requirements - check multiple possible formats
-            if (j.contains("nak") && j["nak"].is_object()) {
-                // Legacy: nak.id and nak.version_req
-                app.nak_id = detail::get_string(j["nak"], "id");
-                app.nak_version_req = detail::get_string(j["nak"], "version_req");
-            } else {
-                // Flat format: nak_id and nak_version_req
-                app.nak_id = detail::get_string(j, "nak_id");
-                app.nak_version_req = detail::get_string(j, "nak_version_req");
-            }
+        if (!j.contains("identity") || !j["identity"].is_object()) {
+            result.error = "missing required object: app.identity";
+            return result;
         }
+        const auto& identity = j["identity"];
+        if (const auto error = detail::validate_keys(identity,
+                {"id", "version", "nak_id", "nak_version_req"}, "app.identity"); !error.empty()) {
+            result.error = error;
+            return result;
+        }
+        app.id = detail::get_string(identity, "id");
+        app.version = detail::get_string(identity, "version");
+        app.nak_id = detail::get_string(identity, "nak_id");
+        app.nak_version_req = detail::get_string(identity, "nak_version_req");
 
         if (app.id.empty()) {
             result.error = "missing required field: id";
@@ -250,45 +241,43 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
 
-        // Execution
-        if (j.contains("execution") && j["execution"].is_object()) {
-            // New format: app.execution
-            auto& execution = j["execution"];
-            app.entrypoint_path = detail::get_string(execution, "entrypoint");
-            app.entrypoint_args = detail::get_string_array(execution, "args");
-            app.nak_loader = detail::get_string(execution, "loader");  // Optional loader preference
-        } else if (j.contains("entrypoint")) {
-            // Legacy format
-            if (j["entrypoint"].is_object()) {
-                app.entrypoint_path = detail::get_string(j["entrypoint"], "path");
-                app.entrypoint_args = detail::get_string_array(j["entrypoint"], "args");
-            } else if (j["entrypoint"].is_string()) {
-                app.entrypoint_path = j["entrypoint"].get<std::string>();
-            }
-        } else {
-            app.entrypoint_path = detail::get_string(j, "entrypoint_path");
-            app.entrypoint_args = detail::get_string_array(j, "entrypoint_args");
+        if (!j.contains("execution") || !j["execution"].is_object()) {
+            result.error = "missing required object: app.execution";
+            return result;
         }
+        const auto& execution = j["execution"];
+        if (const auto error = detail::validate_keys(execution, {"entrypoint", "loader", "args"},
+                                                       "app.execution"); !error.empty()) {
+            result.error = error;
+            return result;
+        }
+        if (execution.contains("args")) {
+            if (const auto error = detail::validate_string_array(execution["args"], "app.execution.args");
+                !error.empty()) { result.error = error; return result; }
+        }
+        app.entrypoint_path = detail::get_string(execution, "entrypoint");
+        app.entrypoint_args = detail::get_string_array(execution, "args");
+        app.nak_loader = detail::get_string(execution, "loader");
 
         if (app.entrypoint_path.empty()) {
             result.error = "missing required field: entrypoint path";
             return result;
         }
 
-        // Layout
-        if (j.contains("layout") && j["layout"].is_object()) {
-            // New format: app.layout
-            auto& layout = j["layout"];
+        if (j.contains("layout")) {
+            const auto& layout = j["layout"];
+            if (const auto error = detail::validate_keys(layout, {"lib_dirs", "asset_dirs"}, "app.layout");
+                !error.empty()) { result.error = error; return result; }
+            for (const char* key : {"lib_dirs", "asset_dirs"}) {
+                if (layout.contains(key)) {
+                    if (const auto error = detail::validate_string_array(layout[key], std::string("app.layout.") + key);
+                        !error.empty()) { result.error = error; return result; }
+                }
+            }
             app.lib_dirs = detail::get_string_array(layout, "lib_dirs");
             app.asset_dirs = detail::get_string_array(layout, "asset_dirs");
-        } else {
-            // Legacy flat format
-            app.lib_dirs = detail::get_string_array(j, "lib_dirs");
-            app.asset_dirs = detail::get_string_array(j, "asset_dirs");
         }
 
-        // Environment
-        app.env_vars = detail::get_string_array(j, "env_vars");
         if (j.contains("environment") && j["environment"].is_object()) {
             const auto error = validate_env_map(j["environment"]);
             if (!error.empty()) {
@@ -301,52 +290,49 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
 
-        // Asset exports
-        if (j.contains("exports") && j["exports"].is_array()) {
+        if (j.contains("exports")) {
+            if (!j["exports"].is_array()) { result.error = "app.exports must be an array"; return result; }
             for (const auto& exp : j["exports"]) {
+                if (const auto error = detail::validate_keys(exp, {"id", "path", "type"}, "app.exports item");
+                    !error.empty()) { result.error = error; return result; }
                 core::AssetExportDecl aed;
                 aed.id = detail::get_string(exp, "id");
                 aed.path = detail::get_string(exp, "path");
                 aed.type = detail::get_string(exp, "type");
-                app.asset_exports.push_back(aed);
-            }
-        } else if (j.contains("asset_exports") && j["asset_exports"].is_array()) {
-            for (const auto& exp : j["asset_exports"]) {
-                core::AssetExportDecl aed;
-                aed.id = detail::get_string(exp, "id");
-                aed.path = detail::get_string(exp, "path");
-                aed.type = detail::get_string(exp, "type");
+                if (aed.id.empty() || aed.path.empty()) {
+                    result.error = "app.exports items require string id and path";
+                    return result;
+                }
                 app.asset_exports.push_back(aed);
             }
         }
 
-        // Permissions
-        if (j.contains("permissions") && j["permissions"].is_object()) {
-            app.permissions_filesystem = detail::get_string_array(j["permissions"], "filesystem");
-            app.permissions_network = detail::get_string_array(j["permissions"], "network");
+        if (j.contains("permissions")) {
+            const auto& permissions = j["permissions"];
+            if (const auto error = detail::validate_keys(permissions, {"filesystem", "network"}, "app.permissions");
+                !error.empty()) { result.error = error; return result; }
+            for (const char* key : {"filesystem", "network"}) {
+                if (permissions.contains(key)) {
+                    if (const auto error = detail::validate_string_array(permissions[key], std::string("app.permissions.") + key);
+                        !error.empty()) { result.error = error; return result; }
+                }
+            }
+            app.permissions_filesystem = detail::get_string_array(permissions, "filesystem");
+            app.permissions_network = detail::get_string_array(permissions, "network");
         }
 
-        // Metadata (can be flat or in metadata object)
-        if (j.contains("metadata") && j["metadata"].is_object()) {
+        if (j.contains("metadata")) {
+            if (!j["metadata"].is_object()) { result.error = "app.metadata must be an object"; return result; }
+            for (const char* key : {"description", "author", "license", "homepage"}) {
+                if (j["metadata"].contains(key) && !j["metadata"][key].is_string()) {
+                    result.error = std::string("app.metadata.") + key + " must be a string";
+                    return result;
+                }
+            }
             app.description = detail::get_string(j["metadata"], "description");
             app.author = detail::get_string(j["metadata"], "author");
             app.license = detail::get_string(j["metadata"], "license");
             app.homepage = detail::get_string(j["metadata"], "homepage");
-        } else {
-            app.description = detail::get_string(j, "description");
-            app.author = detail::get_string(j, "author");
-            app.license = detail::get_string(j, "license");
-            app.homepage = detail::get_string(j, "homepage");
-        }
-
-        // Components (new in component architecture)
-        if (j.contains("components") && j["components"].is_object()) {
-            const auto& comps = j["components"];
-            if (comps.contains("provides") && comps["provides"].is_array()) {
-                for (const auto& comp_json : comps["provides"]) {
-                    app.components.push_back(parse_component(comp_json));
-                }
-            }
         }
 
         result.ok = true;
@@ -367,8 +353,16 @@ inline ParseResult<core::HostEnvironment> parse_host_environment(const json& j,
     ParseResult<core::HostEnvironment> result;
 
     try {
+        if (j.contains("$schema") &&
+            (!j["$schema"].is_string() ||
+             j["$schema"].get<std::string>() != "https://nah.rtorr.com/schemas/nah.v2.json")) {
+            result.error = "unsupported host schema";
+            return result;
+        }
+        if (const auto error = detail::validate_keys(j, {"$schema", "environment", "paths"}, "host configuration");
+            !error.empty()) { result.error = error; return result; }
         auto& host_env = result.value;
-        const json& config = j.contains("host") && j["host"].is_object() ? j["host"] : j;
+        const json& config = j;
 
         host_env.source_path = source_path;
 
@@ -386,16 +380,21 @@ inline ParseResult<core::HostEnvironment> parse_host_environment(const json& j,
         }
 
         // Paths section
-        if (config.contains("paths") && config["paths"].is_object()) {
+        if (config.contains("paths")) {
+            if (const auto error = detail::validate_keys(config["paths"], {"library_prepend", "library_append"},
+                                                           "host paths"); !error.empty()) {
+                result.error = error; return result;
+            }
+            for (const char* key : {"library_prepend", "library_append"}) {
+                if (config["paths"].contains(key)) {
+                    if (const auto error = detail::validate_string_array(config["paths"][key],
+                            std::string("host paths.") + key); !error.empty()) {
+                        result.error = error; return result;
+                    }
+                }
+            }
             host_env.paths.library_prepend = detail::get_string_array(config["paths"], "library_prepend");
             host_env.paths.library_append = detail::get_string_array(config["paths"], "library_append");
-        }
-
-        // Overrides section
-        if (config.contains("overrides") && config["overrides"].is_object()) {
-            const auto& ovr = config["overrides"];
-            host_env.overrides.allow_env_overrides = detail::get_bool(ovr, "allow_env_overrides", false);
-            host_env.overrides.allowed_env_keys = detail::get_string_array(ovr, "allowed_env_keys");
         }
 
         result.ok = true;
@@ -432,6 +431,13 @@ inline ParseResult<core::InstallRecord> parse_install_record(const std::string& 
     try {
         json j = json::parse(json_str);
         auto& ir = result.value;
+
+        if (j.contains("$schema") &&
+            (!j["$schema"].is_string() ||
+             j["$schema"].get<std::string>() != "https://nah.rtorr.com/schemas/app-record.v2.json")) {
+            result.error = "unsupported app record schema";
+            return result;
+        }
 
         ir.source_path = source_path;
 
@@ -532,6 +538,13 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
         json j = json::parse(json_str);
         auto& rd = result.value;
 
+        if (j.contains("$schema") &&
+            (!j["$schema"].is_string() ||
+             j["$schema"].get<std::string>() != "https://nah.rtorr.com/schemas/nak-record.v1.json")) {
+            result.error = "unsupported NAK record schema";
+            return result;
+        }
+
         rd.source_path = source_path;
 
         // NAK section
@@ -599,6 +612,10 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
             rd.provenance.source = detail::get_string(j["provenance"], "source");
         }
 
+        if (j.contains("trust") && j["trust"].is_object()) {
+            rd.trust = parse_trust_info(j["trust"]);
+        }
+
         result.ok = true;
 
     } catch (const json::exception& e) {
@@ -626,12 +643,96 @@ inline ParseResult<core::LaunchContract> parse_launch_contract(const std::string
         json j = json::parse(json_str);
         auto& c = result.value;
 
+        if (const auto error = detail::validate_keys(j,
+                {"schema", "app", "nak", "execution", "environment", "permissions", "trust"},
+                "launch contract"); !error.empty()) { result.error = error; return result; }
+        for (const char* section : {"app", "nak", "execution", "environment", "permissions", "trust"}) {
+            if (!j.contains(section) || !j[section].is_object()) {
+                result.error = std::string("missing required object: ") + section;
+                return result;
+            }
+        }
+        if (!j.contains("schema") || !j["schema"].is_string() ||
+            j["schema"].get<std::string>() != core::NAH_CONTRACT_SCHEMA) {
+            result.error = "unsupported launch contract schema";
+            return result;
+        }
+
+        if (const auto error = detail::validate_keys(j["app"],
+                {"id", "version", "root", "entrypoint", "package_hash"}, "launch app");
+            !error.empty()) { result.error = error; return result; }
+        for (const char* key : {"id", "version", "root", "entrypoint", "package_hash"}) {
+            if (!j["app"].contains(key) || !j["app"][key].is_string()) {
+                result.error = std::string("launch app requires string field: ") + key;
+                return result;
+            }
+        }
+        if (const auto error = detail::validate_keys(j["nak"],
+                {"id", "version", "root", "resource_root", "record_ref", "package_hash"}, "launch NAK");
+            !error.empty()) { result.error = error; return result; }
+        for (const char* key : {"id", "version", "root", "resource_root", "record_ref", "package_hash"}) {
+            if (!j["nak"].contains(key) || !j["nak"][key].is_string()) {
+                result.error = std::string("launch NAK requires string field: ") + key;
+                return result;
+            }
+        }
+        if (const auto error = detail::validate_keys(j["execution"],
+                {"binary", "arguments", "cwd", "library_path_env_key", "library_paths"}, "launch execution");
+            !error.empty()) { result.error = error; return result; }
+        for (const char* key : {"binary", "cwd", "library_path_env_key"}) {
+            if (!j["execution"].contains(key) || !j["execution"][key].is_string()) {
+                result.error = std::string("launch execution requires string field: ") + key;
+                return result;
+            }
+        }
+        for (const char* key : {"arguments", "library_paths"}) {
+            if (!j["execution"].contains(key)) {
+                result.error = std::string("launch execution requires field: ") + key;
+                return result;
+            }
+            if (const auto error = detail::validate_string_array(j["execution"][key],
+                    std::string("launch execution.") + key); !error.empty()) {
+                result.error = error; return result;
+            }
+        }
+        if (const auto error = detail::validate_keys(j["permissions"], {"filesystem", "network"},
+                                                       "launch permissions"); !error.empty()) {
+            result.error = error; return result;
+        }
+        for (const char* key : {"filesystem", "network"}) {
+            if (!j["permissions"].contains(key)) {
+                result.error = std::string("launch permissions requires field: ") + key;
+                return result;
+            }
+            if (const auto error = detail::validate_string_array(j["permissions"][key],
+                    std::string("launch permissions.") + key); !error.empty()) {
+                result.error = error; return result;
+            }
+        }
+        for (const auto& [key, value] : j["environment"].items()) {
+            if (!value.is_string()) { result.error = "launch environment value must be a string: " + key; return result; }
+        }
+        if (const auto error = detail::validate_keys(j["trust"],
+                {"state", "source", "evaluated_at", "expires_at"}, "launch trust");
+            !error.empty()) { result.error = error; return result; }
+        for (const char* key : {"state", "source", "evaluated_at", "expires_at"}) {
+            if (!j["trust"].contains(key) || !j["trust"][key].is_string()) {
+                result.error = std::string("launch trust requires string field: ") + key;
+                return result;
+            }
+        }
+        if (!core::parse_trust_state(j["trust"]["state"].get<std::string>())) {
+            result.error = "launch trust state is invalid";
+            return result;
+        }
+
         // App section
         if (j.contains("app") && j["app"].is_object()) {
             c.app.id = detail::get_string(j["app"], "id");
             c.app.version = detail::get_string(j["app"], "version");
             c.app.root = detail::get_string(j["app"], "root");
             c.app.entrypoint = detail::get_string(j["app"], "entrypoint");
+            c.app.package_hash = detail::get_string(j["app"], "package_hash");
         }
 
         // NAK section
@@ -641,6 +742,7 @@ inline ParseResult<core::LaunchContract> parse_launch_contract(const std::string
             c.nak.root = detail::get_string(j["nak"], "root");
             c.nak.resource_root = detail::get_string(j["nak"], "resource_root");
             c.nak.record_ref = detail::get_string(j["nak"], "record_ref");
+            c.nak.package_hash = detail::get_string(j["nak"], "package_hash");
         }
 
         // Execution section
@@ -661,26 +763,15 @@ inline ParseResult<core::LaunchContract> parse_launch_contract(const std::string
             }
         }
 
-        // Enforcement section
-        if (j.contains("enforcement") && j["enforcement"].is_object()) {
-            c.enforcement.filesystem = detail::get_string_array(j["enforcement"], "filesystem");
-            c.enforcement.network = detail::get_string_array(j["enforcement"], "network");
+        // Permission requests
+        if (j.contains("permissions") && j["permissions"].is_object()) {
+            c.permissions.filesystem = detail::get_string_array(j["permissions"], "filesystem");
+            c.permissions.network = detail::get_string_array(j["permissions"], "network");
         }
 
         // Trust section
         if (j.contains("trust") && j["trust"].is_object()) {
             c.trust = parse_trust_info(j["trust"]);
-        }
-
-        // Capability usage section
-        if (j.contains("capability_usage") && j["capability_usage"].is_object()) {
-            c.capability_usage.present = detail::get_bool(j["capability_usage"], "present");
-            c.capability_usage.required_capabilities =
-                detail::get_string_array(j["capability_usage"], "required_capabilities");
-            c.capability_usage.optional_capabilities =
-                detail::get_string_array(j["capability_usage"], "optional_capabilities");
-            c.capability_usage.critical_capabilities =
-                detail::get_string_array(j["capability_usage"], "critical_capabilities");
         }
 
         result.ok = true;

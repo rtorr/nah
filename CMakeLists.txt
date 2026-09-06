@@ -60,8 +60,16 @@ get_target_property(NAH_NLOHMANN_INCLUDE_DIRS nlohmann_json::nlohmann_json INTER
 target_include_directories(nah_headers INTERFACE
     $<BUILD_INTERFACE:${NAH_NLOHMANN_INCLUDE_DIRS}>
 )
-target_link_libraries(nah_headers INTERFACE
+target_link_libraries(nah_headers INTERFACE nah_core)
+
+# Archive support is separate because it adds a zlib dependency.
+add_library(nah_package INTERFACE)
+add_library(NAH::package ALIAS nah_package)
+set_target_properties(nah_package PROPERTIES EXPORT_NAME package)
+target_link_libraries(nah_package INTERFACE
     nah_core
+    $<BUILD_INTERFACE:ZLIB::ZLIB>
+    $<INSTALL_INTERFACE:ZLIB::ZLIB>
 )
 
 if(NAH_ENABLE_TOOLS)
@@ -91,7 +99,7 @@ if(NAH_INSTALL)
         FILES_MATCHING PATTERN "*.h"
     )
 
-    install(TARGETS nah_core nah_headers
+    install(TARGETS nah_core nah_headers nah_package
         EXPORT NAHTargets
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )

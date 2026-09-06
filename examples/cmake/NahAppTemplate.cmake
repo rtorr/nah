@@ -161,7 +161,7 @@ function(nah_app_manifest TARGET_NAME)
 
     # Build JSON manifest
     set(MANIFEST_JSON "{\n")
-    string(APPEND MANIFEST_JSON "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v1.json\",\n")
+    string(APPEND MANIFEST_JSON "  \"$schema\": \"https://nah.rtorr.com/schemas/nap.v2.json\",\n")
     string(APPEND MANIFEST_JSON "  \"app\": {\n")
     string(APPEND MANIFEST_JSON "    \"identity\": {\n")
     string(APPEND MANIFEST_JSON "      \"id\": \"${ARG_ID}\",\n")

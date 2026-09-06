@@ -17,8 +17,6 @@ namespace nah::cli::commands {
     void setup_show(CLI::App* app, GlobalOptions& opts);
     void setup_which(CLI::App* app, GlobalOptions& opts);
     void setup_pack(CLI::App* app, GlobalOptions& opts);
-    void register_launch_command(CLI::App& app, GlobalOptions& opts);
-    void register_components_command(CLI::App& app, GlobalOptions& opts);
 }
 
 int main(int argc, char** argv) {
@@ -61,10 +59,6 @@ int main(int argc, char** argv) {
 
     auto* pack_cmd = app.add_subcommand("pack", "Create a .nap or .nak package");
     commands::setup_pack(pack_cmd, opts);
-
-    // Component commands
-    commands::register_launch_command(app, opts);
-    commands::register_components_command(app, opts);
 
     CLI11_PARSE(app, argc, argv);
 

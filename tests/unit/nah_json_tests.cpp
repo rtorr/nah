@@ -10,9 +10,10 @@
 TEST_CASE("parse_app_declaration") {
     SUBCASE("valid minimal app declaration") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app"
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"}
+            }
         })";
 
         auto result = nah::json::parse_app_declaration(json);
@@ -24,12 +25,14 @@ TEST_CASE("parse_app_declaration") {
 
     SUBCASE("app with NAK requirement") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app",
-            "nak": {
-                "id": "com.test.runtime",
-                "version_req": ">=1.0.0 <2.0.0"
+            "app": {
+                "identity": {
+                    "id": "com.test.app",
+                    "version": "1.0.0",
+                    "nak_id": "com.test.runtime",
+                    "nak_version_req": ">=1.0.0 <2.0.0"
+                },
+                "execution": {"entrypoint": "bin/app"}
             }
         })";
 
@@ -39,19 +42,19 @@ TEST_CASE("parse_app_declaration") {
         CHECK(result.value.nak_version_req == ">=1.0.0 <2.0.0");
     }
 
-    SUBCASE("app with environment variables") {
+    SUBCASE("app with simple environment values") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app",
-            "env_vars": ["PATH_VAR=/some/path", "CONFIG=value"]
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "environment": {"PATH_VAR": "/some/path", "CONFIG": "value"}
+            }
         })";
 
         auto result = nah::json::parse_app_declaration(json);
         REQUIRE(result.ok);
-        REQUIRE(result.value.env_vars.size() == 2);
-        CHECK(result.value.env_vars[0] == "PATH_VAR=/some/path");
-        CHECK(result.value.env_vars[1] == "CONFIG=value");
+        CHECK(result.value.environment.at("PATH_VAR").value == "/some/path");
+        CHECK(result.value.environment.at("CONFIG").value == "value");
     }
 
     SUBCASE("app with environment operations") {
@@ -89,10 +92,11 @@ TEST_CASE("parse_app_declaration") {
 
     SUBCASE("app with library directories") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app",
-            "lib_dirs": ["lib", "lib64", "vendor/lib"]
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "layout": {"lib_dirs": ["lib", "lib64", "vendor/lib"]}
+            }
         })";
 
         auto result = nah::json::parse_app_declaration(json);
@@ -105,12 +109,13 @@ TEST_CASE("parse_app_declaration") {
 
     SUBCASE("app with permissions") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app",
-            "permissions": {
-                "filesystem": ["read:/data"],
-                "network": ["connect:*"]
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "permissions": {
+                    "filesystem": ["read:/data"],
+                    "network": ["connect:*"]
+                }
             }
         })";
 
@@ -124,14 +129,15 @@ TEST_CASE("parse_app_declaration") {
 
     SUBCASE("app with metadata fields") {
         std::string json = R"({
-            "id": "com.test.app",
-            "version": "1.0.0",
-            "entrypoint": "bin/app",
-            "metadata": {
-                "description": "Test application",
-                "author": "Test Author",
-                "license": "MIT",
-                "homepage": "https://example.com"
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "metadata": {
+                    "description": "Test application",
+                    "author": "Test Author",
+                    "license": "MIT",
+                    "homepage": "https://example.com"
+                }
             }
         })";
 
@@ -179,11 +185,38 @@ TEST_CASE("parse_app_declaration") {
 
     SUBCASE("missing required fields") {
         std::string json = R"({
-            "id": "com.test.app"
+            "app": {"identity": {"id": "com.test.app"}}
         })";
 
         auto result = nah::json::parse_app_declaration(json);
         CHECK(!result.ok);
+    }
+
+    SUBCASE("rejects obsolete and unknown fields") {
+        auto flat = nah::json::parse_app_declaration(
+            R"({"id":"com.test.app","version":"1.0.0","entrypoint":"bin/app"})");
+        CHECK_FALSE(flat.ok);
+
+        auto unknown = nah::json::parse_app_declaration(R"({
+            "app": {
+                "identity": {"id":"com.test.app","version":"1.0.0"},
+                "execution": {"entrypoint":"bin/app"},
+                "policy": {}
+            }
+        })");
+        CHECK_FALSE(unknown.ok);
+        CHECK(unknown.error.find("unknown field") != std::string::npos);
+    }
+
+    SUBCASE("rejects malformed string arrays") {
+        auto result = nah::json::parse_app_declaration(R"({
+            "app": {
+                "identity": {"id":"com.test.app","version":"1.0.0"},
+                "execution": {"entrypoint":"bin/app","args":["ok", 2]}
+            }
+        })");
+        CHECK_FALSE(result.ok);
+        CHECK(result.error.find("only strings") != std::string::npos);
     }
 }
 
@@ -192,14 +225,12 @@ TEST_CASE("parse_host_environment") {
         std::string json = "{}";
         auto result = nah::json::parse_host_environment(json);
         REQUIRE(result.ok);
-        CHECK_FALSE(result.value.overrides.allow_env_overrides);
     }
 
-    SUBCASE("legacy wrapped host environment") {
+    SUBCASE("rejects obsolete wrapped host environment") {
         std::string json = R"({"host":{"environment":{"MODE":"legacy"}}})";
         auto result = nah::json::parse_host_environment(json);
-        REQUIRE(result.ok);
-        CHECK(result.value.vars.at("MODE").value == "legacy");
+        CHECK_FALSE(result.ok);
     }
 
     SUBCASE("host environment with environment variables") {
@@ -232,21 +263,6 @@ TEST_CASE("parse_host_environment") {
         CHECK(result.value.paths.library_append[0] == "/custom/lib2");
     }
 
-    SUBCASE("host environment with override policy") {
-        std::string json = R"({
-            "overrides": {
-                "allow_env_overrides": false,
-                "allowed_env_keys": ["DEBUG", "LOG_LEVEL"]
-            }
-        })";
-
-        auto result = nah::json::parse_host_environment(json);
-        REQUIRE(result.ok);
-        CHECK(result.value.overrides.allow_env_overrides == false);
-        REQUIRE(result.value.overrides.allowed_env_keys.size() == 2);
-        CHECK(result.value.overrides.allowed_env_keys[0] == "DEBUG");
-        CHECK(result.value.overrides.allowed_env_keys[1] == "LOG_LEVEL");
-    }
 }
 
 TEST_CASE("parse_install_record") {
@@ -379,23 +395,32 @@ TEST_CASE("parse_runtime_descriptor") {
 TEST_CASE("parse_launch_contract") {
     SUBCASE("valid launch contract") {
         std::string json = R"({
+            "schema": "nah.launch.contract.v2",
             "app": {
                 "id": "com.test.app",
                 "version": "1.0.0",
                 "root": "/apps/test",
-                "entrypoint": "/apps/test/bin/app"
+                "entrypoint": "/apps/test/bin/app",
+                "package_hash": ""
+            },
+            "nak": {
+                "id": "", "version": "", "root": "", "resource_root": "",
+                "record_ref": "", "package_hash": ""
             },
             "execution": {
                 "binary": "/apps/test/bin/app",
                 "arguments": ["--config", "test"],
-                "cwd": "/apps/test"
+                "cwd": "/apps/test",
+                "library_path_env_key": "DYLD_LIBRARY_PATH",
+                "library_paths": []
             },
             "environment": {
                 "PATH": "/usr/bin:/bin",
                 "APP_HOME": "/apps/test"
             },
+            "permissions": {"filesystem": [], "network": []},
             "trust": {
-                "state": "verified"
+                "state": "verified", "source": "test", "evaluated_at": "", "expires_at": ""
             }
         })";
 
@@ -419,9 +444,10 @@ TEST_CASE("JSON error messages") {
 
     SUBCASE("wrong type for field") {
         std::string json = R"({
-            "id": 123,
-            "version": "1.0.0",
-            "entrypoint": "bin/app"
+            "app": {
+                "identity": {"id": 123, "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"}
+            }
         })";  // id should be a string
 
         auto result = nah::json::parse_app_declaration(json);

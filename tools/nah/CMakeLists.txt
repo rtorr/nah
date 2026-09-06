@@ -10,14 +10,12 @@ add_executable(nah
     commands/show.cpp
     commands/which.cpp
     commands/pack.cpp
-    commands/launch.cpp
-    commands/components.cpp
 )
 
 target_link_libraries(nah PRIVATE
     CLI11::CLI11
     nlohmann_json::nlohmann_json
-    ZLIB::ZLIB
+    NAH::package
 )
 
 target_include_directories(nah PRIVATE

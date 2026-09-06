@@ -1,6 +1,6 @@
 # How NAH works
 
-NAH turns local package and host metadata into one launch contract. That contract contains the executable, argument vector, working directory, environment, library paths, declared capabilities, and trust state.
+NAH turns local package and host metadata into one launch contract. That contract contains the executable, argument vector, working directory, environment, library paths, permission requests, artifact digests, and trust state.
 
 ## Lifecycle
 

@@ -27,12 +27,21 @@ if(UNIX)
     file(CHMOD "${app}/bin/app" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 endif()
 run_nah(pack "${app}" --output "${package}")
-run_nah(--root "${root}" install "${package}")
+file(SHA256 "${package}" package_sha256)
+execute_process(
+    COMMAND "${NAH_EXE}" --root "${work}/mismatch root" install "${package}"
+            --expected-sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    RESULT_VARIABLE mismatch_status OUTPUT_QUIET ERROR_QUIET
+)
+if(mismatch_status EQUAL 0 OR EXISTS "${work}/mismatch root/apps/com.example.lifecycle-0.1.0")
+    message(FATAL_ERROR "install accepted an incorrect expected digest")
+endif()
+run_nah(--root "${root}" install "${package}" --expected-sha256 "${package_sha256}")
 run_nah(--root "${root}" which com.example.lifecycle@0.1.0)
 run_nah(--root "${root}" show com.example.lifecycle)
 if(UNIX)
     execute_process(
-        COMMAND "${NAH_EXE}" --root "${root}" run com.example.lifecycle -- first "two words"
+        COMMAND "${NAH_EXE}" --root "${root}" run com.example.lifecycle --require-verified -- first "two words"
         RESULT_VARIABLE run_status OUTPUT_VARIABLE run_output ERROR_VARIABLE run_error
     )
     if(NOT run_status EQUAL 0 OR NOT run_output MATCHES "first" OR NOT run_output MATCHES "two words")
@@ -41,6 +50,11 @@ if(UNIX)
 endif()
 set(record "${root}/registry/apps/com.example.lifecycle@0.1.0.json")
 file(READ "${record}" valid_record)
+string(JSON recorded_hash GET "${valid_record}" provenance package_hash)
+string(JSON recorded_trust GET "${valid_record}" trust state)
+if(NOT recorded_hash STREQUAL "sha256:${package_sha256}" OR NOT recorded_trust STREQUAL "verified")
+    message(FATAL_ERROR "install did not persist verified package identity")
+endif()
 file(MAKE_DIRECTORY "${work}/outside")
 file(WRITE "${work}/outside/marker" "must survive")
 string(JSON unsafe_record SET "${valid_record}" paths install_root "\"../../outside\"")

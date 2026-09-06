@@ -42,13 +42,15 @@ Run `nah <command> --help` for the CLI contract. Manifest schemas live in [`docs
 
 ## Library
 
-The public headers require C++17. `NAH::core` is dependency-free composition logic; `NAH::nah` exposes the complete API and depends on nlohmann/json.
+The public headers require C++17. `NAH::core` is dependency-free composition
+logic. `NAH::nah` adds JSON, filesystem, store, host, and execution APIs.
+`NAH::package` adds archive support and depends on zlib.
 
 ```cmake
 include(FetchContent)
 FetchContent_Declare(nah
     GIT_REPOSITORY https://github.com/rtorr/nah.git
-    GIT_TAG v2.0.16
+    GIT_TAG v3.0.0
 )
 FetchContent_MakeAvailable(nah)
 target_link_libraries(my_host PRIVATE NAH::nah)
@@ -65,7 +67,7 @@ if (result.ok) {
 }
 ```
 
-Installed CMake packages provide the same `NAH::core` and `NAH::nah` targets.
+Installed CMake packages provide the same three targets.
 
 ## Support
 

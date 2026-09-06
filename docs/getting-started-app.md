@@ -10,7 +10,7 @@ The generated `nap.json` uses the current shape:
 
 ```json
 {
-  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
+  "$schema": "https://nah.rtorr.com/schemas/nap.v2.json",
   "app": {
     "identity": {"id": "com.example.app", "version": "0.1.0"},
     "execution": {"entrypoint": "bin/app"}
@@ -18,7 +18,7 @@ The generated `nap.json` uses the current shape:
 }
 ```
 
-The entrypoint and every component entrypoint must be a regular file inside the package. To request an installed runtime, add `nak_id` and `nak_version_req` under `app.identity`; add an optional loader name under `app.execution.loader`.
+The entrypoint must be a regular file inside the package. To request an installed runtime, add `nak_id` and `nak_version_req` under `app.identity`; add an optional loader name under `app.execution.loader`.
 
 Package and test it in an isolated root:
 
@@ -29,4 +29,4 @@ nah --root ./test-root show com.example.app
 nah --root ./test-root run com.example.app -- arg1
 ```
 
-See the [app schema](schemas/nap.v1.json) for optional environment, layout, component, metadata, and permission declarations.
+See the [app schema](schemas/nap.v2.json) for optional environment, layout, metadata, and permission declarations.

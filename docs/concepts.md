@@ -2,7 +2,7 @@
 
 ## App and NAP
 
-An app is described by `nap.json`. Its identity, entrypoint, optional NAK requirement, paths, environment operations, components, and permission declarations are immutable package metadata.
+An app is described by `nap.json`. Its identity, entrypoint, optional NAK requirement, paths, environment operations, and permission declarations are immutable package metadata.
 
 A `.nap` is the gzip-compressed USTAR archive containing that manifest and its payload.
 
@@ -18,17 +18,13 @@ The host owns the NAH root, policy, and process execution. Its optional mutable 
 
 ```json
 {
-  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "$schema": "https://nah.rtorr.com/schemas/nah.v2.json",
   "environment": {
     "LOG_LEVEL": "info"
   },
   "paths": {
     "library_prepend": [],
     "library_append": []
-  },
-  "overrides": {
-    "allow_env_overrides": false,
-    "allowed_env_keys": []
   }
 }
 ```

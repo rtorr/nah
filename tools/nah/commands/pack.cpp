@@ -5,7 +5,7 @@
  */
 
 #include "../common.hpp"
-#include "../package_archive.hpp"
+#include <nah/nah_archive.h>
 #include <CLI/CLI.hpp>
 
 namespace nah::cli::commands {
@@ -93,7 +93,7 @@ int cmd_pack(const GlobalOptions& opts, const PackOptions& pack_opts) {
         output_path = id + "-" + version + ext;
     }
 
-    const auto result = package_archive::create(source_dir, output_path);
+    const auto result = nah::archive::create(source_dir, output_path);
     if (result.ok) {
         if (opts.json) {
             nlohmann::json j;

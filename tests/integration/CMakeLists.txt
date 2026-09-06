@@ -5,13 +5,12 @@ add_executable(integration_tests
 
 target_include_directories(integration_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/tools/nah
 )
 
 target_link_libraries(integration_tests PRIVATE
     doctest::doctest
     nlohmann_json::nlohmann_json
-    ZLIB::ZLIB
+    NAH::package
 )
 target_compile_options(integration_tests PRIVATE ${NAH_WARNING_FLAGS})
 

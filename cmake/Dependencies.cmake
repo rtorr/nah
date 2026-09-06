@@ -9,8 +9,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# CLI11 for command-line parsing (only needed for tools)
-if(NAH_ENABLE_TOOLS)
+# zlib backs the package archive API.
+find_package(ZLIB QUIET)
+if(NOT ZLIB_FOUND)
     FetchContent_Declare(
         zlib
         URL https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz
@@ -18,22 +19,14 @@ if(NAH_ENABLE_TOOLS)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "")
-    FetchContent_GetProperties(zlib)
-    if(NOT zlib_POPULATED)
-        if(POLICY CMP0169)
-            cmake_policy(PUSH)
-            cmake_policy(SET CMP0169 OLD)
-        endif()
-        FetchContent_Populate(zlib)
-        if(POLICY CMP0169)
-            cmake_policy(POP)
-        endif()
-        add_subdirectory(${zlib_SOURCE_DIR} ${zlib_BINARY_DIR} EXCLUDE_FROM_ALL)
-    endif()
+    FetchContent_MakeAvailable(zlib)
     if(NOT TARGET ZLIB::ZLIB)
         add_library(ZLIB::ZLIB ALIAS zlibstatic)
     endif()
+endif()
 
+# CLI11 is only needed by the CLI.
+if(NAH_ENABLE_TOOLS)
     FetchContent_Declare(
         cli11
         URL https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.4.2.tar.gz

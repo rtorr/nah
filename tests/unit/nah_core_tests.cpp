@@ -325,24 +325,6 @@ TEST_CASE("Validation: RelativeRuntimeLibDir") {
 // HOST ENVIRONMENT
 // ============================================================================
 
-TEST_CASE("HostEnvironment: OverridePolicy_AllowAll") {
-    HostEnvironment host_env;
-    CHECK_FALSE(host_env.overrides.allow_env_overrides);
-    CHECK(host_env.overrides.allowed_env_keys.empty());
-}
-
-TEST_CASE("HostEnvironment: OverridePolicy_Disabled") {
-    HostEnvironment host_env;
-    host_env.overrides.allow_env_overrides = false;
-    CHECK_FALSE(host_env.overrides.allow_env_overrides);
-}
-
-TEST_CASE("HostEnvironment: OverridePolicy_Allowlist") {
-    HostEnvironment host_env;
-    host_env.overrides.allowed_env_keys = {"DEBUG", "LOG_LEVEL"};
-    CHECK(host_env.overrides.allowed_env_keys.size() == 2);
-}
-
 TEST_CASE("HostEnvironment: LibraryPaths") {
     HostEnvironment host_env;
     host_env.paths.library_prepend = {"/opt/libs"};
@@ -532,7 +514,8 @@ TEST_CASE("Composition: EnvironmentPrecedence") {
     app.entrypoint_path = "bin/run";
     app.nak_id = "com.example.runtime";
     app.nak_version_req = "1.0.0";
-    app.env_vars = {"SHARED=from_manifest", "MANIFEST_ONLY=yes"};
+    app.environment["SHARED"] = "from_manifest";
+    app.environment["MANIFEST_ONLY"] = "yes";
 
     HostEnvironment profile;
     profile.vars["SHARED"] = EnvValue(EnvOp::Set, "from_profile");
@@ -785,7 +768,7 @@ TEST_CASE("Composition: Tracing") {
     app.id = "com.example.app";
     app.version = "1.0.0";
     app.entrypoint_path = "bin/run";
-    app.env_vars = {"APP_VAR=from_app"};
+    app.environment["APP_VAR"] = "from_app";
 
     HostEnvironment profile;
     profile.vars["PROFILE_VAR"] = EnvValue(EnvOp::Set, "from_profile");
@@ -841,7 +824,7 @@ TEST_CASE("JsonSerialization: SerializeContract") {
     std::string json_str = serialize_contract(contract);
 
     // Basic checks
-    CHECK(json_str.find("\"schema\": \"nah.launch.contract.v1\"") != std::string::npos);
+    CHECK(json_str.find("\"schema\": \"nah.launch.contract.v2\"") != std::string::npos);
     CHECK(json_str.find("\"id\": \"com.example.app\"") != std::string::npos);
     CHECK(json_str.find("\"state\": \"verified\"") != std::string::npos);
 }
@@ -888,7 +871,8 @@ TEST_CASE("Determinism: SameInputsSameOutput") {
     app.id = "com.example.determinism";
     app.version = "1.0.0";
     app.entrypoint_path = "bin/run";
-    app.env_vars = {"A=1", "B=2"};
+    app.environment["A"] = "1";
+    app.environment["B"] = "2";
 
     HostEnvironment profile;
     profile.vars["C"] = EnvValue(EnvOp::Set, "3");
@@ -1063,14 +1047,8 @@ TEST_CASE("Composition: Permissions remain host-owned declarations") {
 
     auto result = nah_compose(app, HostEnvironment{}, install, RuntimeInventory{});
     REQUIRE(result.ok);
-    CHECK(result.contract.enforcement.filesystem.empty());
-    CHECK(result.contract.enforcement.network.empty());
-    CHECK(result.contract.capability_usage.present);
-    CHECK(result.contract.capability_usage.required_capabilities == std::vector<std::string>{
-        "filesystem.read:host://documents/*", "custom:value", "network.connect:https://example.com"});
-    CHECK(std::any_of(result.warnings.begin(), result.warnings.end(), [](const auto& warning) {
-        return warning.key == "capability_unknown";
-    }));
+    CHECK(result.contract.permissions.filesystem == app.permissions_filesystem);
+    CHECK(result.contract.permissions.network == app.permissions_network);
 }
 
 // ============================================================================
@@ -1078,9 +1056,9 @@ TEST_CASE("Composition: Permissions remain host-owned declarations") {
 // ============================================================================
 
 TEST_CASE("Version: Constants") {
-    CHECK(std::string(NAH_CORE_VERSION) == "1.0.0");
-    CHECK(NAH_CORE_VERSION_MAJOR == 1);
+    CHECK(std::string(NAH_CORE_VERSION) == "2.0.0");
+    CHECK(NAH_CORE_VERSION_MAJOR == 2);
     CHECK(NAH_CORE_VERSION_MINOR == 0);
     CHECK(NAH_CORE_VERSION_PATCH == 0);
-    CHECK(std::string(NAH_CONTRACT_SCHEMA) == "nah.launch.contract.v1");
+    CHECK(std::string(NAH_CONTRACT_SCHEMA) == "nah.launch.contract.v2");
 }

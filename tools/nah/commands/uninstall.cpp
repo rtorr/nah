@@ -68,10 +68,11 @@ int cmd_uninstall(const GlobalOptions& opts, const UninstallOptions& options) {
         print_error("registry path escapes its managed installation directory", opts.json); return 1;
     }
 
+    const nah::store::Store store(root);
+    const auto removed = store.remove(fs::path(*installed_path).lexically_relative(root),
+                                      record_path->lexically_relative(root));
+    if (!removed.ok) { print_error(removed.message, opts.json); return 1; }
     std::error_code ec;
-    fs::remove_all(*installed_path, ec);
-    if (ec) { print_error("cannot remove installation: " + ec.message(), opts.json); return 1; }
-    if (!fs::remove(*record_path, ec) || ec) { print_error("cannot remove registry record", opts.json); return 1; }
     if (!is_app) {
         const auto parent = fs::path(*installed_path).parent_path();
         if (is_path_within(paths.naks, parent) && fs::is_empty(parent, ec)) fs::remove(parent, ec);

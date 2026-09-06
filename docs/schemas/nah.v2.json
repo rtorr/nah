@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "$id": "https://nah.rtorr.com/schemas/nah.v2.json",
   "title": "NAH host environment",
   "description": "Mutable host-owned configuration stored at <root>/host/host.json",
   "type": "object",
@@ -37,7 +37,7 @@
   },
   "properties": {
     "$schema": {
-      "type": "string"
+      "const": "https://nah.rtorr.com/schemas/nah.v2.json"
     },
     "environment": {
       "type": "object",
@@ -59,24 +59,6 @@
           "default": []
         },
         "library_append": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "default": []
-        }
-      }
-    },
-    "overrides": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "allow_env_overrides": {
-          "type": "boolean",
-          "default": false
-        },
-        "allowed_env_keys": {
           "type": "array",
           "items": {
             "type": "string",

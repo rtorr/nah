@@ -52,8 +52,8 @@ class NahConan(ConanFile):
         return "17"
 
     def requirements(self):
-        # Required for the header-only library
         self.requires("nlohmann_json/3.11.3", transitive_headers=True)
+        self.requires("zlib/1.3.1", transitive_headers=True, transitive_libs=True)
 
         # Required for tools (CLI)
         if self.options.build_tools:
@@ -132,16 +132,19 @@ class NahConan(ConanFile):
         self.cpp_info.bindirs = []
         self.cpp_info.libdirs = []
 
-        # Headers
-        self.cpp_info.includedirs = ["include"]
-        self.cpp_info.requires = ["nlohmann_json::nlohmann_json"]
+        core = self.cpp_info.components["core"]
+        core.includedirs = ["include"]
+        core.set_property("cmake_target_name", "NAH::core")
 
-        # Requires C++17
-        self.cpp_info.cxxflags = []
-        self.cpp_info.set_property("cmake_target_name", "NAH::nah")
+        library = self.cpp_info.components["nah"]
+        library.includedirs = ["include"]
+        library.requires = ["core", "nlohmann_json::nlohmann_json"]
+        library.set_property("cmake_target_name", "NAH::nah")
 
-        # Define NAH_CORE for consuming packages
-        self.cpp_info.defines = []
+        package = self.cpp_info.components["package"]
+        package.includedirs = ["include"]
+        package.requires = ["core", "zlib::zlib"]
+        package.set_property("cmake_target_name", "NAH::package")
 
         # If tools were built, add bin directory
         if self.options.build_tools:

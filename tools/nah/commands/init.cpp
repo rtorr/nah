@@ -97,7 +97,7 @@ namespace nah::cli::commands
 
             if (type == "app")
             {
-                manifest["$schema"] = "https://nah.rtorr.com/schemas/nap.v1.json";
+                manifest["$schema"] = "https://nah.rtorr.com/schemas/nap.v2.json";
                 manifest["app"]["identity"]["id"] = id;
                 manifest["app"]["identity"]["version"] = "0.1.0";
                 manifest["app"]["execution"]["entrypoint"] = "bin/app";
@@ -131,12 +131,10 @@ namespace nah::cli::commands
             }
             else if (type == "host")
             {
-                manifest["$schema"] = "https://nah.rtorr.com/schemas/nah.v1.json";
+                manifest["$schema"] = "https://nah.rtorr.com/schemas/nah.v2.json";
                 manifest["environment"] = nlohmann::json::object();
                 manifest["paths"]["library_prepend"] = nlohmann::json::array();
                 manifest["paths"]["library_append"] = nlohmann::json::array();
-                manifest["overrides"]["allow_env_overrides"] = false;
-                manifest["overrides"]["allowed_env_keys"] = nlohmann::json::array();
 
                 std::filesystem::create_directories(target_dir + "/apps");
                 std::filesystem::create_directories(target_dir + "/naks");

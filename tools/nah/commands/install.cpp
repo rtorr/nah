@@ -1,10 +1,9 @@
 /** Install a local app or NAK package into an isolated NAH root. */
 
 #include "../common.hpp"
-#include "../package_archive.hpp"
+#include <nah/nah_archive.h>
 #include <CLI/CLI.hpp>
 #include <filesystem>
-#include <fstream>
 #include <random>
 
 namespace nah::cli::commands {
@@ -18,6 +17,7 @@ struct InstallOptions {
     bool as_nak = false;
     bool dry_run = false;
     std::string loader;
+    std::string expected_sha256;
 };
 
 std::string unique_id() {
@@ -55,58 +55,65 @@ std::optional<std::string> validate_source_tree(const fs::path& source) {
     return std::nullopt;
 }
 
-bool write_json(const fs::path& path, const nlohmann::json& value, std::string& error) {
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    if (!output) { error = "cannot write registry record"; return false; }
-    output << value.dump(2) << '\n';
-    if (!output) { error = "cannot finish registry record"; return false; }
-    return true;
+std::optional<std::string> validate_keys(const nlohmann::json& value,
+                                         std::initializer_list<const char*> allowed,
+                                         const std::string& context) {
+    if (!value.is_object()) return context + " must be an object";
+    for (auto item = value.begin(); item != value.end(); ++item) {
+        bool known = false;
+        for (const char* key : allowed) if (item.key() == key) known = true;
+        if (!known) return "unknown field in " + context + ": " + item.key();
+    }
+    return std::nullopt;
 }
 
-bool commit_install(const fs::path& source, const fs::path& final_path,
-                    const fs::path& record_path, const nlohmann::json& record,
-                    bool force, const NahPaths& paths, std::string& error) {
-    if (!is_path_within(paths.root, final_path) || !is_path_within(paths.registry, record_path)) {
-        error = "refusing to install outside the NAH root";
-        return false;
+std::optional<std::string> validate_nak_manifest(const nlohmann::json& manifest) {
+    if (auto error = validate_keys(manifest, {"$schema", "nak"}, "NAK manifest")) return error;
+    if (manifest.contains("$schema") &&
+        (!manifest["$schema"].is_string() ||
+         manifest["$schema"] != "https://nah.rtorr.com/schemas/nak.v1.json")) {
+        return "unsupported NAK manifest schema";
     }
-    std::error_code ec;
-    if ((fs::exists(final_path, ec) || fs::exists(record_path, ec)) && !force) {
-        error = "package is already installed; use --force to replace it";
-        return false;
+    if (!manifest.contains("nak")) return "missing required object: nak";
+    const auto& nak = manifest["nak"];
+    if (auto error = validate_keys(nak, {"identity", "paths", "environment", "loaders", "metadata", "execution"}, "nak")) return error;
+    if (!nak.contains("identity")) return "missing required object: nak.identity";
+    if (auto error = validate_keys(nak["identity"], {"id", "version"}, "nak.identity")) return error;
+    if (!nak["identity"].contains("id") || !nak["identity"]["id"].is_string() ||
+        !nak["identity"].contains("version") || !nak["identity"]["version"].is_string()) {
+        return "nak.identity requires string id and version";
     }
-    const fs::path stage = fs::path(paths.staging) / unique_id();
-    const fs::path record_stage = fs::path(paths.staging) / (unique_id() + ".json");
-    const fs::path backup = fs::path(paths.staging) / (unique_id() + ".backup");
-    fs::create_directories(stage.parent_path(), ec);
-    fs::copy(source, stage, fs::copy_options::recursive, ec);
-    if (ec) { fs::remove_all(stage, ec); error = "cannot stage package: " + ec.message(); return false; }
-    if (!write_json(record_stage, record, error)) { fs::remove_all(stage, ec); fs::remove(record_stage, ec); return false; }
-
-    const bool had_existing = fs::exists(final_path, ec);
-    if (had_existing) {
-        fs::rename(final_path, backup, ec);
-        if (ec) { fs::remove_all(stage, ec); fs::remove(record_stage, ec); error = "cannot stage existing installation: " + ec.message(); return false; }
+    if (!nak.contains("paths")) return "missing required object: nak.paths";
+    if (auto error = validate_keys(nak["paths"], {"resource_root", "lib_dirs"}, "nak.paths")) return error;
+    if (nak["paths"].contains("resource_root") && !nak["paths"]["resource_root"].is_string()) return "nak.paths.resource_root must be a string";
+    if (nak["paths"].contains("lib_dirs")) {
+        if (!nak["paths"]["lib_dirs"].is_array()) return "nak.paths.lib_dirs must be an array";
+        for (const auto& value : nak["paths"]["lib_dirs"]) if (!value.is_string()) return "nak.paths.lib_dirs must contain only strings";
     }
-    fs::create_directories(final_path.parent_path(), ec);
-    fs::rename(stage, final_path, ec);
-    if (ec) {
-        if (had_existing) fs::rename(backup, final_path, ec);
-        fs::remove_all(stage, ec); fs::remove(record_stage, ec);
-        error = "cannot activate installation";
-        return false;
+    if (nak.contains("environment")) {
+        const auto error = nah::json::validate_env_map(nak["environment"]);
+        if (!error.empty()) return error;
     }
-    fs::create_directories(record_path.parent_path(), ec);
-    fs::rename(record_stage, record_path, ec);
-    if (ec) {
-        fs::remove_all(final_path, ec);
-        if (had_existing) fs::rename(backup, final_path, ec);
-        fs::remove(record_stage, ec);
-        error = "cannot activate registry record";
-        return false;
+    if (nak.contains("loaders")) {
+        if (!nak["loaders"].is_object()) return "nak.loaders must be an object";
+        for (const auto& [name, loader] : nak["loaders"].items()) {
+            if (auto error = validate_keys(loader, {"exec_path", "args_template"}, "nak.loaders." + name)) return error;
+            if (!loader.contains("exec_path") || !loader["exec_path"].is_string()) return "NAK loader requires a string exec_path: " + name;
+            if (loader.contains("args_template")) {
+                if (!loader["args_template"].is_array()) return "NAK loader args_template must be an array: " + name;
+                for (const auto& value : loader["args_template"]) if (!value.is_string()) return "NAK loader args_template must contain only strings: " + name;
+            }
+        }
     }
-    fs::remove_all(backup, ec);
-    return true;
+    if (nak.contains("metadata")) {
+        if (!nak["metadata"].is_object()) return "nak.metadata must be an object";
+        for (const auto& [key, value] : nak["metadata"].items()) if (!value.is_string()) return "nak.metadata values must be strings: " + key;
+    }
+    if (nak.contains("execution")) {
+        if (auto error = validate_keys(nak["execution"], {"cwd"}, "nak.execution")) return error;
+        if (nak["execution"].contains("cwd") && !nak["execution"]["cwd"].is_string()) return "nak.execution.cwd must be a string";
+    }
+    return std::nullopt;
 }
 
 std::unordered_map<std::string, nah::core::RuntimeDescriptor> load_runtime_inventory(const NahPaths& paths) {
@@ -122,7 +129,9 @@ std::unordered_map<std::string, nah::core::RuntimeDescriptor> load_runtime_inven
 }
 
 int install_directory(const GlobalOptions& opts, const InstallOptions& options,
-                      const fs::path& source, const std::string& nah_root) {
+                      const fs::path& source, const std::string& nah_root,
+                      const std::string& package_hash = {}, bool digest_verified = false,
+                      const std::string& source_reference = {}) {
     if (const auto error = validate_source_tree(source)) { print_error(*error, opts.json); return 1; }
     const bool has_app = fs::is_regular_file(source / "nap.json");
     const bool has_nak = fs::is_regular_file(source / "nak.json");
@@ -147,12 +156,11 @@ int install_directory(const GlobalOptions& opts, const InstallOptions& options,
         if (!safe_relative(parsed.value.entrypoint_path) || !fs::is_regular_file(source / parsed.value.entrypoint_path)) {
             print_error("app entrypoint must be a packaged regular file", opts.json); return 1;
         }
-        for (const auto& component : parsed.value.components) {
-            if (!is_valid_package_id(component.id) || !safe_relative(component.entrypoint) || !fs::is_regular_file(source / component.entrypoint)) {
-                print_error("component id or entrypoint is invalid: " + component.id, opts.json); return 1;
-            }
-        }
     } else {
+        if (const auto error = validate_nak_manifest(manifest)) {
+            print_error("invalid NAK manifest: " + *error, opts.json);
+            return 1;
+        }
         try {
             const auto& identity = manifest.at("nak").at("identity");
             id = identity.at("id").get<std::string>();
@@ -175,6 +183,7 @@ int install_directory(const GlobalOptions& opts, const InstallOptions& options,
     fs::path record_path;
 
     if (has_nak) {
+        record["$schema"] = "https://nah.rtorr.com/schemas/nak-record.v1.json";
         final_path = fs::path(paths.naks) / id / version;
         record_path = fs::path(paths.registry_naks) / (id + "@" + version + ".json");
         record["nak"] = {{"id", id}, {"version", version}};
@@ -208,8 +217,13 @@ int install_directory(const GlobalOptions& opts, const InstallOptions& options,
                 }
             }
         }
-        record["provenance"] = {{"installed_at", installed_at}, {"installed_by", "nah_cli"}, {"source", source.string()}};
+        record["trust"] = {{"state", digest_verified ? "verified" : "unverified"},
+                           {"source", digest_verified ? "expected_digest" : "local_install"},
+                           {"evaluated_at", installed_at}};
+        record["provenance"] = {{"installed_at", installed_at}, {"installed_by", "nah_cli"},
+                                {"source", source_reference.empty() ? source.string() : source_reference}};
     } else {
+        record["$schema"] = "https://nah.rtorr.com/schemas/app-record.v2.json";
         const auto app = nah::json::parse_app_declaration(*manifest_text).value;
         final_path = fs::path(paths.apps) / (id + "-" + version);
         record_path = fs::path(paths.registry_apps) / (id + "@" + version + ".json");
@@ -237,21 +251,24 @@ int install_directory(const GlobalOptions& opts, const InstallOptions& options,
                 print_warning(selection.error + "; install a matching NAK before running the app", opts.json);
             }
         }
-        if (!app.components.empty()) {
-            record["components"] = nlohmann::json::array();
-            for (const auto& component : app.components) {
-                record["components"].push_back({{"id", component.id}, {"name", component.name}, {"entrypoint", component.entrypoint},
-                                                {"uri_pattern", component.uri_pattern}, {"loader", component.loader},
-                                                {"standalone", component.standalone}, {"hidden", component.hidden}});
-            }
-        }
         record["paths"]["install_root"] = (fs::path("apps") / (id + "-" + version)).generic_string();
-        record["trust"] = {{"state", "unknown"}, {"source", "local_install"}, {"evaluated_at", installed_at}};
-        record["provenance"] = {{"package_hash", ""}, {"installed_at", installed_at}, {"installed_by", "nah_cli"}, {"source", source.string()}};
+        record["trust"] = {{"state", digest_verified ? "verified" : "unverified"},
+                           {"source", digest_verified ? "expected_digest" : "local_install"},
+                           {"evaluated_at", installed_at}};
+        record["provenance"] = {{"installed_at", installed_at}, {"installed_by", "nah_cli"},
+                                {"source", source_reference.empty() ? source.string() : source_reference}};
     }
 
-    std::string error;
-    if (!commit_install(source, final_path, record_path, record, options.force, paths, error)) { print_error(error, opts.json); return 1; }
+    if (!package_hash.empty()) {
+        record["provenance"]["package_hash"] = package_hash;
+        record["trust"]["inputs_hash"] = package_hash;
+    }
+
+    const nah::store::Store store(paths.root);
+    const auto committed = store.install(source,
+        final_path.lexically_relative(paths.root), record_path.lexically_relative(paths.root),
+        record.dump(2) + "\n", options.force);
+    if (!committed.ok) { print_error(committed.message, opts.json); return 1; }
     nlohmann::json result{{"ok", true}, {has_app ? "app" : "nak", {{"id", id}, {"version", version}}},
                           {"paths", {{has_app ? "install_root" : "root", final_path.string()}}}};
     if (opts.json) output_json(result); else std::cout << "Installed " << id << '@' << version << '\n';
@@ -265,14 +282,41 @@ int cmd_install(const GlobalOptions& opts, const InstallOptions& options) {
     }
     const fs::path source = fs::absolute(options.source).lexically_normal();
     const auto root = resolve_nah_root(opts.root.empty() ? std::nullopt : std::optional(opts.root));
-    if (fs::is_directory(source)) return install_directory(opts, options, source, root);
+    if (fs::is_directory(source)) {
+        if (!options.expected_sha256.empty()) {
+            print_error("--expected-sha256 requires a .nap or .nak artifact", opts.json); return 1;
+        }
+        return install_directory(opts, options, source, root);
+    }
     if (!fs::is_regular_file(source) || (source.extension() != ".nap" && source.extension() != ".nak")) {
         print_error("source must be a directory, .nap, or .nak file", opts.json); return 1;
     }
-    const fs::path temporary = fs::temp_directory_path() / ("nah-install-" + unique_id());
-    const auto extracted = package_archive::extract(source, temporary);
+    if (!options.expected_sha256.empty() &&
+        (options.expected_sha256.size() != 64 ||
+         options.expected_sha256.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)) {
+        print_error("--expected-sha256 must be 64 hexadecimal characters", opts.json); return 1;
+    }
+
+    const fs::path workspace = fs::temp_directory_path() / ("nah-install-" + unique_id());
+    std::error_code ec;
+    fs::create_directories(workspace, ec);
+    if (ec) { print_error("cannot create installation workspace", opts.json); return 1; }
+    struct Cleanup { fs::path path; ~Cleanup() { std::error_code error; fs::remove_all(path, error); } } cleanup{workspace};
+    const auto snapshot = workspace / ("artifact" + source.extension().string());
+    fs::copy_file(source, snapshot, fs::copy_options::none, ec);
+    if (ec) { print_error("cannot snapshot package: " + ec.message(), opts.json); return 1; }
+    const auto prepared = nah::digest::sha256_file(snapshot);
+    if (!prepared.ok) { print_error("cannot hash package: " + prepared.error, opts.json); return 1; }
+    std::string expected = options.expected_sha256;
+    std::transform(expected.begin(), expected.end(), expected.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    if (!expected.empty() && prepared.file.value.value != expected) {
+        print_error("package SHA-256 does not match --expected-sha256", opts.json); return 1;
+    }
+
+    const fs::path temporary = workspace / "contents";
+    const auto extracted = nah::archive::extract(snapshot, temporary);
     if (!extracted.ok) { print_error("cannot extract package: " + extracted.error, opts.json); return 1; }
-    struct Cleanup { fs::path path; ~Cleanup() { std::error_code ec; fs::remove_all(path, ec); } } cleanup{temporary};
     if ((source.extension() == ".nap" && options.as_nak) || (source.extension() == ".nak" && options.as_app)) {
         print_error("package extension conflicts with --app/--nak", opts.json); return 1;
     }
@@ -280,7 +324,8 @@ int cmd_install(const GlobalOptions& opts, const InstallOptions& options) {
         (source.extension() == ".nak" && !fs::is_regular_file(temporary / "nak.json"))) {
         print_error("package extension does not match its manifest", opts.json); return 1;
     }
-    return install_directory(opts, options, temporary, root);
+    return install_directory(opts, options, temporary, root,
+                             prepared.file.value.canonical(), !expected.empty(), source.string());
 }
 
 } // namespace
@@ -293,6 +338,8 @@ void setup_install(CLI::App* app, GlobalOptions& opts) {
     app->add_flag("--nak", options.as_nak, "Require a NAK package");
     app->add_flag("--dry-run", options.dry_run, "Validate without installing");
     app->add_option("--loader", options.loader, "NAK loader for this app");
+    app->add_option("--expected-sha256", options.expected_sha256,
+                    "Require the package to match this SHA-256 digest");
     app->callback([&opts]() { std::exit(cmd_install(opts, options)); });
 }
 

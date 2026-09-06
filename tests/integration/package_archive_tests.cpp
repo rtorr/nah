@@ -1,5 +1,5 @@
 #include <doctest/doctest.h>
-#include "package_archive.hpp"
+#include <nah/nah_archive.h>
 
 #include <array>
 #include <cstring>
@@ -8,7 +8,7 @@
 namespace fs = std::filesystem;
 
 TEST_CASE("package extraction rejects parent traversal") {
-    using namespace nah::cli::package_archive;
+    using namespace nah::archive;
     const auto base = fs::temp_directory_path() / "nah-archive-traversal-test";
     const auto archive = base / "malicious.nap";
     const auto destination = base / "destination";
@@ -48,7 +48,7 @@ TEST_CASE("package extraction rejects parent traversal") {
 
 #ifndef _WIN32
 TEST_CASE("package creation rejects symbolic links") {
-    using namespace nah::cli::package_archive;
+    using namespace nah::archive;
     const auto base = fs::temp_directory_path() / "nah-archive-symlink-test";
     std::error_code ec;
     fs::remove_all(base, ec);

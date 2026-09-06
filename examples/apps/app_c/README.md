@@ -1,65 +1,13 @@
-# Application C - C++ App Example
+# C++ app example
 
-This is a simple C++ application that demonstrates using the NAH framework with the Framework SDK.
+This is the C++ counterpart to `apps/app`. It links the framework SDK while its `nap.json` requests `com.example.sdk` at runtime.
 
-## Overview
-
-This example shows:
-- Using the new NAH v1.1.0 JSON manifest format (`nap.json`)
-- Depending on a NAK (com.example.sdk)
-- Standard CMake build patterns with `nah_app()` convenience function
-- Simple application structure with assets
-
-## Manifest Format
-
-Uses the modern JSON manifest format packaged at the root of the `.nap` file:
-
-```json
-{
-  "$schema": "https://nah.rtorr.com/schemas/nap.v1.json",
-  "app": {
-    "identity": {
-      "id": "com.example.app_c",
-      "version": "1.0.0",
-      "nak_id": "com.example.sdk",
-      "nak_version_req": ">=1.0.0 <2.0.0"
-    },
-    "execution": {
-      "entrypoint": "bin/app_c"
-    }
-  }
-}
-```
-
-## Building
+From the parent `examples` directory:
 
 ```bash
-mkdir build && cd build
-cmake ..
-make
-make nah_package
+./scripts/build_all.sh
+./scripts/setup_host.sh --clean
+./scripts/run_apps.sh com.example.app_c
 ```
 
-This creates `com.example.app_c-1.0.0.nap` as a standard tar.gz archive.
-
-## Running
-
-```bash
-# Install
-nah install com.example.app_c-1.0.0.nap
-
-# Run
-nah run com.example.app_c
-```
-
-## Structure
-
-```
-app_c/
-├── CMakeLists.txt      # Build configuration
-├── src/
-│   └── main.cpp        # Application entry point
-└── assets/
-    └── config.json     # Application assets
-```
-
+The package is built through `nah pack` as `com.example.app_c-1.0.0.nap`.

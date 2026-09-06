@@ -9,7 +9,7 @@ Global options must precede the command:
 | Option | Meaning |
 | --- | --- |
 | `--root <path>` | Managed root; defaults to `NAH_ROOT`, then `~/.nah` |
-| `--json` | Emit machine-readable output |
+| `--json` | Emit machine-readable output for non-executing commands |
 | `--trace` | Include composition provenance |
 | `-v`, `--verbose` | Include diagnostic detail |
 | `-q`, `--quiet` | Suppress nonessential messages |
@@ -33,7 +33,7 @@ nah --root ./nah-root uninstall com.example.app
 
 ### `init [--app|--nak|--host] [--id <id>] [--name <name>] [dir]`
 
-Creates one current-format manifest and minimal directory structure. App is the default type.
+Creates one current-format manifest and minimal directory structure. App is the default type. `--host` creates a usable NAH root with `host/host.json` and empty managed directories.
 
 ### `pack <dir> [-o|--output <file>]`
 
@@ -62,6 +62,7 @@ With no target, prints root status. With an app target, composes and displays it
 ### `run <id[@version]> [--loader <name>] [-- args...]`
 
 Composes and executes an installed app. Arguments following `--` are appended to the manifest arguments.
+`--json` is rejected because successful execution hands stdout to the child process; use `show` to inspect the contract.
 
 ### `components [--all]`
 
@@ -70,6 +71,7 @@ Lists installed app components.
 ### `launch <component-uri> [--referrer <uri>] [-- args...]`
 
 Resolves and launches a component URI.
+`--json` is rejected for the same reason as `run`.
 
 ## Exit status
 

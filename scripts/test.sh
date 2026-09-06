@@ -1,117 +1,26 @@
-#!/bin/bash
-# Run NAH tests
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_ROOT/build"
-
-usage() {
-    echo "Usage: $0 [OPTIONS] [FILTER]"
-    echo ""
-    echo "Options:"
-    echo "  --unit          Run unit tests only (default)"
-    echo "  --integration   Run integration tests only"
-    echo "  --all           Run all tests"
-    echo "  --verbose       Verbose output"
-    echo "  --list          List available tests"
-    echo "  -h, --help      Show this help"
-    echo ""
-    echo "Filter:"
-    echo "  Test name filter passed to doctest (e.g., 'Manifest*')"
-}
-
-TEST_TYPE="unit"
-VERBOSE=""
-LIST=false
-FILTER=""
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+build_dir="$root_dir/build"
+test_regex=""
+verbose=false
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --unit)
-            TEST_TYPE="unit"
-            shift
-            ;;
-        --integration)
-            TEST_TYPE="integration"
-            shift
-            ;;
-        --all)
-            TEST_TYPE="all"
-            shift
-            ;;
-        --verbose)
-            VERBOSE="-s"
-            shift
-            ;;
-        --list)
-            LIST=true
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -*)
-            echo "Unknown option: $1"
-            usage
-            exit 1
-            ;;
-        *)
-            FILTER="$1"
-            shift
-            ;;
+    case "$1" in
+        --unit) test_regex='^nah-tests$'; shift ;;
+        --integration) test_regex='^(integration_tests|cli_lifecycle)$'; shift ;;
+        --all) test_regex=""; shift ;;
+        --verbose) verbose=true; shift ;;
+        -h|--help) echo "Usage: $0 [--unit|--integration|--all] [--verbose]"; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
 
-if [ ! -d "$BUILD_DIR" ]; then
-    echo "Build directory not found. Run scripts/build.sh first."
-    exit 1
-fi
+cmake -S "$root_dir" -B "$build_dir" -DNAH_ENABLE_TESTS=ON
+cmake --build "$build_dir" --parallel
 
-UNIT_TEST="$BUILD_DIR/tests/unit/nah-tests"
-INTEGRATION_TEST="$BUILD_DIR/tests/integration/nah-integration-tests"
-
-run_unit() {
-    if [ ! -x "$UNIT_TEST" ]; then
-        echo "Unit tests not found. Run scripts/build.sh first."
-        exit 1
-    fi
-    echo "Running unit tests..."
-    if [ "$LIST" = true ]; then
-        "$UNIT_TEST" --list-test-cases
-    elif [ -n "$FILTER" ]; then
-        "$UNIT_TEST" $VERBOSE --test-case="$FILTER"
-    else
-        "$UNIT_TEST" $VERBOSE
-    fi
-}
-
-run_integration() {
-    if [ ! -x "$INTEGRATION_TEST" ]; then
-        echo "Integration tests not found. Run scripts/build.sh first."
-        exit 1
-    fi
-    echo "Running integration tests..."
-    if [ "$LIST" = true ]; then
-        "$INTEGRATION_TEST" --list-test-cases
-    elif [ -n "$FILTER" ]; then
-        "$INTEGRATION_TEST" $VERBOSE --test-case="$FILTER"
-    else
-        "$INTEGRATION_TEST" $VERBOSE
-    fi
-}
-
-case $TEST_TYPE in
-    unit)
-        run_unit
-        ;;
-    integration)
-        run_integration
-        ;;
-    all)
-        run_unit
-        echo ""
-        run_integration
-        ;;
-esac
+ctest_args=(--test-dir "$build_dir" --output-on-failure)
+if [[ -n "$test_regex" ]]; then ctest_args+=(-R "$test_regex"); fi
+if [[ "$verbose" == true ]]; then ctest_args+=(-V); fi
+ctest "${ctest_args[@]}"

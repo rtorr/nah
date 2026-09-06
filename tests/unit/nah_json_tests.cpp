@@ -54,6 +54,39 @@ TEST_CASE("parse_app_declaration") {
         CHECK(result.value.env_vars[1] == "CONFIG=value");
     }
 
+    SUBCASE("app with environment operations") {
+        std::string json = R"({
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "environment": {
+                    "PATH": {"op": "prepend", "value": "/app/bin", "separator": ":"},
+                    "LOG_LEVEL": "info"
+                }
+            }
+        })";
+
+        auto result = nah::json::parse_app_declaration(json);
+        REQUIRE(result.ok);
+        CHECK(result.value.environment.at("PATH").op == nah::core::EnvOp::Prepend);
+        CHECK(result.value.environment.at("PATH").value == "/app/bin");
+        CHECK(result.value.environment.at("LOG_LEVEL").value == "info");
+    }
+
+    SUBCASE("app rejects malformed environment operations") {
+        std::string json = R"({
+            "app": {
+                "identity": {"id": "com.test.app", "version": "1.0.0"},
+                "execution": {"entrypoint": "bin/app"},
+                "environment": {"PATH": {"op": "merge", "value": "/app/bin"}}
+            }
+        })";
+
+        auto result = nah::json::parse_app_declaration(json);
+        CHECK_FALSE(result.ok);
+        CHECK(result.error.find("unknown environment operation") != std::string::npos);
+    }
+
     SUBCASE("app with library directories") {
         std::string json = R"({
             "id": "com.test.app",
@@ -159,6 +192,14 @@ TEST_CASE("parse_host_environment") {
         std::string json = "{}";
         auto result = nah::json::parse_host_environment(json);
         REQUIRE(result.ok);
+        CHECK_FALSE(result.value.overrides.allow_env_overrides);
+    }
+
+    SUBCASE("legacy wrapped host environment") {
+        std::string json = R"({"host":{"environment":{"MODE":"legacy"}}})";
+        auto result = nah::json::parse_host_environment(json);
+        REQUIRE(result.ok);
+        CHECK(result.value.vars.at("MODE").value == "legacy");
     }
 
     SUBCASE("host environment with environment variables") {
@@ -387,8 +428,6 @@ TEST_CASE("JSON error messages") {
         CHECK(!result.ok);
     }
 }
-
-// Helper function test removed - parse_error is not part of public API
 
 TEST_CASE("trust state parsing") {
     SUBCASE("parse valid trust states") {

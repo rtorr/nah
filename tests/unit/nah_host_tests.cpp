@@ -117,7 +117,7 @@ public:
             std::filesystem::perms::owner_read |
             std::filesystem::perms::owner_write);
 
-        // Create app manifest (v1.1.0 JSON format)
+        // Create an app manifest.
         std::string manifest_path = app_dir + "/nap.json";
         std::ofstream manifest(manifest_path);
         manifest << "{\n";
@@ -347,7 +347,7 @@ TEST_CASE("NahHost::getHostEnvironment") {
         CHECK(host_env.vars.empty());
         CHECK(host_env.paths.library_prepend.empty());
         CHECK(host_env.paths.library_append.empty());
-        CHECK(host_env.overrides.allow_env_overrides == true);
+        CHECK_FALSE(host_env.overrides.allow_env_overrides);
     }
 
     SUBCASE("load host config from file") {
@@ -484,7 +484,7 @@ TEST_CASE("NahHost with app requiring NAK") {
     std::string app_dir = env.root + "/apps/com.test.nakapp-1.0.0";
     std::filesystem::create_directories(app_dir);
 
-    // Create app manifest with NAK requirement (v1.1.0 format)
+    // Create an app manifest with a NAK requirement.
     std::string manifest_path = app_dir + "/nap.json";
     std::ofstream manifest(manifest_path);
     manifest << "{\n";

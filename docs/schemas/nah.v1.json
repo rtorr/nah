@@ -1,163 +1,89 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://nah.rtorr.com/schemas/nah.v1.json",
-  "title": "NAH Host Configuration (nah.json)",
-  "description": "Admin-owned, mutable host configuration for NAH system",
+  "title": "NAH host environment",
+  "description": "Mutable host-owned configuration stored at <root>/host/host.json",
   "type": "object",
-  "required": [
-    "host"
-  ],
   "additionalProperties": false,
   "definitions": {
     "envValue": {
       "oneOf": [
         {
-          "type": "string",
-          "description": "Simple string value (set operation)"
+          "type": "string"
         },
         {
           "type": "object",
-          "required": [
-            "op"
-          ],
+          "required": ["op"],
           "additionalProperties": false,
           "properties": {
             "op": {
-              "type": "string",
-              "enum": [
-                "set",
-                "prepend",
-                "append",
-                "unset"
-              ],
-              "description": "Environment variable operation"
+              "enum": ["set", "prepend", "append", "unset"]
             },
             "value": {
-              "type": "string",
-              "description": "Value for the operation (required for set/prepend/append)"
+              "type": "string"
             },
             "separator": {
               "type": "string",
-              "description": "Separator for prepend/append operations (default ':')",
               "default": ":"
             }
-          }
+          },
+          "allOf": [{
+            "if": {"properties": {"op": {"enum": ["set", "prepend", "append"]}}},
+            "then": {"required": ["value"]}
+          }]
         }
       ]
     }
   },
   "properties": {
     "$schema": {
-      "type": "string",
-      "description": "JSON Schema reference"
+      "type": "string"
     },
-    "host": {
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/envValue"
+      },
+      "default": {}
+    },
+    "paths": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "root": {
-          "type": "string",
-          "description": "NAH root directory path (absolute or relative)",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name for this host environment",
-          "minLength": 1
-        },
-        "version": {
-          "type": "string",
-          "description": "Host configuration version",
-          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
-        },
-        "description": {
-          "type": "string",
-          "description": "Human-readable description of this host"
-        },
-        "nah_root": {
-          "type": "string",
-          "description": "Deprecated: use 'root' instead",
-          "minLength": 1
-        },
-        "environment": {
-          "type": "object",
-          "description": "Host-wide environment variables applied to all apps (supports operations: set, prepend, append, unset)",
-          "additionalProperties": {
-            "$ref": "#/definitions/envValue"
+        "library_prepend": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           },
-          "default": {}
+          "default": []
         },
-        "paths": {
-          "type": "object",
-          "description": "Host-wide library path configuration",
-          "additionalProperties": false,
-          "properties": {
-            "library_prepend": {
-              "type": "array",
-              "description": "Library paths prepended to search path for all apps",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "default": []
-            },
-            "library_append": {
-              "type": "array",
-              "description": "Library paths appended to search path for all apps",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "default": []
-            }
-          }
-        },
-        "overrides": {
-          "type": "object",
-          "description": "Host policy for overrides",
-          "additionalProperties": false,
-          "properties": {
-            "allow_env_overrides": {
-              "type": "boolean",
-              "description": "Whether per-app environment overrides are allowed",
-              "default": true
-            },
-            "allowed_env_keys": {
-              "type": "array",
-              "description": "Whitelist of environment variable keys that can be overridden",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "default": []
-            }
-          }
+        "library_append": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
         }
       }
     },
-    "install": {
-      "type": "array",
-      "description": "Bootstrap: packages to install when setting up this host (optional, used with 'nah install ./host-dir/')",
-      "items": {
-        "type": "string",
-        "description": "Path to .nap or .nak package file",
-        "minLength": 1
-      }
-    },
-    "naks": {
-      "type": "array",
-      "description": "Deprecated: NAK packages to install (use 'install' array instead)",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "apps": {
-      "type": "array",
-      "description": "Deprecated: App packages to install (use 'install' array instead)",
-      "items": {
-        "type": "string",
-        "minLength": 1
+    "overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_env_overrides": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowed_env_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
       }
     }
   }

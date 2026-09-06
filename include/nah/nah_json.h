@@ -100,6 +100,27 @@ inline core::EnvMap parse_env_map(const json& j) {
     return result;
 }
 
+inline std::string validate_env_map(const json& values) {
+    if (!values.is_object()) return "environment must be an object";
+    for (const auto& [key, value] : values.items()) {
+        if (key.empty()) return "environment keys must not be empty";
+        if (value.is_string()) continue;
+        if (!value.is_object()) return "environment value for '" + key + "' must be a string or object";
+        if (!value.contains("op") || !value["op"].is_string()) {
+            return "environment operation for '" + key + "' requires a string op";
+        }
+        const auto op = core::parse_env_op(value["op"].get<std::string>());
+        if (!op) return "unknown environment operation for '" + key + "'";
+        if (*op != core::EnvOp::Unset && (!value.contains("value") || !value["value"].is_string())) {
+            return "environment operation for '" + key + "' requires a string value";
+        }
+        if (value.contains("separator") && !value["separator"].is_string()) {
+            return "environment separator for '" + key + "' must be a string";
+        }
+    }
+    return {};
+}
+
 // ============================================================================
 // TRUST INFO PARSING
 // ============================================================================
@@ -195,7 +216,7 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
 
         auto& app = result.value;
 
-        // Identity (nested in v1.1.0 format, flat in older format)
+        // Current manifests nest identity; flat fields remain readable for migration.
         if (j.contains("identity") && j["identity"].is_object()) {
             // New format: app.identity
             auto& identity = j["identity"];
@@ -229,7 +250,7 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
 
-        // Execution (nested in v1.1.0 format)
+        // Execution
         if (j.contains("execution") && j["execution"].is_object()) {
             // New format: app.execution
             auto& execution = j["execution"];
@@ -254,7 +275,7 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
             return result;
         }
 
-        // Layout (nested in v1.1.0 format)
+        // Layout
         if (j.contains("layout") && j["layout"].is_object()) {
             // New format: app.layout
             auto& layout = j["layout"];
@@ -269,12 +290,15 @@ inline ParseResult<core::AppDeclaration> parse_app_declaration(const std::string
         // Environment
         app.env_vars = detail::get_string_array(j, "env_vars");
         if (j.contains("environment") && j["environment"].is_object()) {
-            // Also support environment object (v1.1.0 format)
-            for (auto& [key, value] : j["environment"].items()) {
-                if (value.is_string()) {
-                    app.env_vars.push_back(key + "=" + value.get<std::string>());
-                }
+            const auto error = validate_env_map(j["environment"]);
+            if (!error.empty()) {
+                result.error = error;
+                return result;
             }
+            app.environment = parse_env_map(j["environment"]);
+        } else if (j.contains("environment")) {
+            result.error = "environment must be an object";
+            return result;
         }
 
         // Asset exports
@@ -344,24 +368,33 @@ inline ParseResult<core::HostEnvironment> parse_host_environment(const json& j,
 
     try {
         auto& host_env = result.value;
+        const json& config = j.contains("host") && j["host"].is_object() ? j["host"] : j;
 
         host_env.source_path = source_path;
 
         // Environment section
-        if (j.contains("environment") && j["environment"].is_object()) {
-            host_env.vars = parse_env_map(j["environment"]);
+        if (config.contains("environment") && config["environment"].is_object()) {
+            const auto error = validate_env_map(config["environment"]);
+            if (!error.empty()) {
+                result.error = error;
+                return result;
+            }
+            host_env.vars = parse_env_map(config["environment"]);
+        } else if (config.contains("environment")) {
+            result.error = "environment must be an object";
+            return result;
         }
 
         // Paths section
-        if (j.contains("paths") && j["paths"].is_object()) {
-            host_env.paths.library_prepend = detail::get_string_array(j["paths"], "library_prepend");
-            host_env.paths.library_append = detail::get_string_array(j["paths"], "library_append");
+        if (config.contains("paths") && config["paths"].is_object()) {
+            host_env.paths.library_prepend = detail::get_string_array(config["paths"], "library_prepend");
+            host_env.paths.library_append = detail::get_string_array(config["paths"], "library_append");
         }
 
         // Overrides section
-        if (j.contains("overrides") && j["overrides"].is_object()) {
-            const auto& ovr = j["overrides"];
-            host_env.overrides.allow_env_overrides = detail::get_bool(ovr, "allow_env_overrides", true);
+        if (config.contains("overrides") && config["overrides"].is_object()) {
+            const auto& ovr = config["overrides"];
+            host_env.overrides.allow_env_overrides = detail::get_bool(ovr, "allow_env_overrides", false);
             host_env.overrides.allowed_env_keys = detail::get_string_array(ovr, "allowed_env_keys");
         }
 
@@ -457,7 +490,15 @@ inline ParseResult<core::InstallRecord> parse_install_record(const std::string& 
             const auto& ovr = j["overrides"];
 
             if (ovr.contains("environment") && ovr["environment"].is_object()) {
+                const auto error = validate_env_map(ovr["environment"]);
+                if (!error.empty()) {
+                    result.error = error;
+                    return result;
+                }
                 ir.overrides.environment = parse_env_map(ovr["environment"]);
+            } else if (ovr.contains("environment")) {
+                result.error = "environment must be an object";
+                return result;
             }
 
             if (ovr.contains("arguments") && ovr["arguments"].is_object()) {
@@ -526,7 +567,15 @@ inline ParseResult<core::RuntimeDescriptor> parse_runtime_descriptor(const std::
 
         // Environment section
         if (j.contains("environment") && j["environment"].is_object()) {
+            const auto error = validate_env_map(j["environment"]);
+            if (!error.empty()) {
+                result.error = error;
+                return result;
+            }
             rd.environment = parse_env_map(j["environment"]);
+        } else if (j.contains("environment")) {
+            result.error = "environment must be an object";
+            return result;
         }
 
         // Loaders section

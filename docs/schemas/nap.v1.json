@@ -41,7 +41,11 @@
               "description": "Separator for prepend/append operations (default ':')",
               "default": ":"
             }
-          }
+          },
+          "allOf": [{
+            "if": {"properties": {"op": {"enum": ["set", "prepend", "append"]}}},
+            "then": {"required": ["value"]}
+          }]
         }
       ]
     }

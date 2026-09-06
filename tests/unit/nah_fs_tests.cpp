@@ -236,8 +236,6 @@ TEST_CASE("nah::fs::write_file")
     }
 }
 
-// Note: write_file_atomic not in current nah_fs.h API
-
 TEST_CASE("nah::fs::list_directory")
 {
     TempTestDir temp_dir;
@@ -292,8 +290,6 @@ TEST_CASE("nah::fs::list_directory")
         CHECK(entries.empty());
     }
 }
-
-// Note: make_executable not in current nah_fs.h API
 
 TEST_CASE("nah::fs::current_path")
 {

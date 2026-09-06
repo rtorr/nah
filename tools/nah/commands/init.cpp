@@ -77,10 +77,12 @@ namespace nah::cli::commands
             }
             else
             {
-                manifest_filename = "nah.json"; // Host configuration
+                manifest_filename = "host.json";
             }
 
-            std::string manifest_path = target_dir + "/" + manifest_filename;
+            std::string manifest_path = type == "host"
+                                            ? target_dir + "/host/host.json"
+                                            : target_dir + "/" + manifest_filename;
 
             if (nah::fs::exists(manifest_path))
             {
@@ -130,19 +132,18 @@ namespace nah::cli::commands
             else if (type == "host")
             {
                 manifest["$schema"] = "https://nah.rtorr.com/schemas/nah.v1.json";
-                manifest["host"]["root"] = "./nah_root";
-                manifest["host"]["environment"] = nlohmann::json::object();
-                manifest["install"] = nlohmann::json::array();
+                manifest["environment"] = nlohmann::json::object();
+                manifest["paths"]["library_prepend"] = nlohmann::json::array();
+                manifest["paths"]["library_append"] = nlohmann::json::array();
+                manifest["overrides"]["allow_env_overrides"] = false;
+                manifest["overrides"]["allowed_env_keys"] = nlohmann::json::array();
 
-                // Create host directory with empty host.json
+                std::filesystem::create_directories(target_dir + "/apps");
+                std::filesystem::create_directories(target_dir + "/naks");
                 std::filesystem::create_directories(target_dir + "/host");
-
-                nlohmann::json host_env;
-                host_env["environment"] = nlohmann::json::object();
-
-                std::ofstream host_file(target_dir + "/host/host.json");
-                host_file << host_env.dump(2);
-                host_file.close();
+                std::filesystem::create_directories(target_dir + "/registry/apps");
+                std::filesystem::create_directories(target_dir + "/registry/naks");
+                std::filesystem::create_directories(target_dir + "/staging");
             }
 
             // Write manifest
@@ -155,13 +156,13 @@ namespace nah::cli::commands
                 nlohmann::json j;
                 j["ok"] = true;
                 j["type"] = type;
-                j["id"] = id;
+                if (type != "host") j["id"] = id;
                 j["path"] = manifest_path;
                 output_json(j);
             }
             else
             {
-                std::cout << "Created " << manifest_filename << " for " << type << ": " << id << std::endl;
+                std::cout << "Created " << manifest_path << std::endl;
                 std::cout << std::endl;
                 std::cout << "Next steps:" << std::endl;
                 if (type == "app")
@@ -176,7 +177,7 @@ namespace nah::cli::commands
                 }
                 else
                 {
-                    std::cout << "  Copy host/host.json into an existing NAH root." << std::endl;
+                    std::cout << "  nah --root <this-directory> list" << std::endl;
                 }
             }
 

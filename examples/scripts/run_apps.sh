@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         com.*) SPECIFIC_APP="$1"; shift ;;
-        *) shift ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
@@ -69,10 +69,10 @@ if [ ! -d "$NAH_ROOT" ]; then
 fi
 
 # Get list of installed apps
-APPS=$($NAH_CLI --root "$NAH_ROOT" list --apps | grep -v "^Apps:" | grep -v "^No apps" | sed 's/^  //' | cut -d' ' -f1 || true)
+APPS=$("$NAH_CLI" --root "$NAH_ROOT" list --apps | grep -v "^Apps:" | grep -v "^No apps" | sed 's/^  //' | cut -d' ' -f1 || true)
 
 if [ -z "$APPS" ]; then
-    log_warning "No apps installed"
+    log_warn "No apps installed"
     exit 0
 fi
 
@@ -89,7 +89,7 @@ run_app() {
     echo ""
 
     # Simply use nah run to execute the app
-    $NAH_CLI --root "$NAH_ROOT" run "$app_id"
+    "$NAH_CLI" --root "$NAH_ROOT" run "$app_id"
     local exit_code=$?
 
     if [ $exit_code -eq 0 ]; then
@@ -108,7 +108,7 @@ show_contract() {
     echo "=== Contract for: $app_id ==="
     echo ""
 
-    $NAH_CLI --root "$NAH_ROOT" --json show "$app_id" | python3 -m json.tool
+    "$NAH_CLI" --root "$NAH_ROOT" --json show "$app_id" | python3 -m json.tool
 }
 
 # Main execution
@@ -125,7 +125,7 @@ else
         if $SHOW_CONTRACT; then
             show_contract "$app"
         else
-            run_app "$app" || log_warning "Failed to run $app"
+            run_app "$app" || log_warn "Failed to run $app"
         fi
     done
 fi

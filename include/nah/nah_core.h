@@ -374,6 +374,7 @@ enum class CriticalError {
     ENTRYPOINT_NOT_FOUND,    ///< Entrypoint binary doesn't exist
     PATH_TRAVERSAL,          ///< Path escapes allowed root
     INSTALL_RECORD_INVALID,  ///< Install record is malformed
+    NAK_NOT_FOUND,           ///< Required pinned NAK is unavailable or inconsistent
     NAK_LOADER_INVALID,      ///< Requested loader not available
 };
 
@@ -383,6 +384,7 @@ inline const char* critical_error_to_string(CriticalError e) {
         case CriticalError::ENTRYPOINT_NOT_FOUND: return "ENTRYPOINT_NOT_FOUND";
         case CriticalError::PATH_TRAVERSAL: return "PATH_TRAVERSAL";
         case CriticalError::INSTALL_RECORD_INVALID: return "INSTALL_RECORD_INVALID";
+        case CriticalError::NAK_NOT_FOUND: return "NAK_NOT_FOUND";
         case CriticalError::NAK_LOADER_INVALID: return "NAK_LOADER_INVALID";
     }
     return "UNKNOWN";
@@ -393,6 +395,7 @@ inline std::optional<CriticalError> parse_critical_error(const std::string& s) {
     if (s == "ENTRYPOINT_NOT_FOUND") return CriticalError::ENTRYPOINT_NOT_FOUND;
     if (s == "PATH_TRAVERSAL") return CriticalError::PATH_TRAVERSAL;
     if (s == "INSTALL_RECORD_INVALID") return CriticalError::INSTALL_RECORD_INVALID;
+    if (s == "NAK_NOT_FOUND") return CriticalError::NAK_NOT_FOUND;
     if (s == "NAK_LOADER_INVALID") return CriticalError::NAK_LOADER_INVALID;
     return std::nullopt;
 }
@@ -510,7 +513,7 @@ struct AssetExportDecl {
 
 // What the app declares it needs to run.
 //
-// This is typically parsed from a manifest file (nah.json, package.json, etc.)
+// This is typically parsed from nap.json
 // but can be constructed directly. All paths are relative to where the app
 // will be installed.
 //
@@ -549,8 +552,8 @@ struct AppDeclaration {
     // Optional: Arguments passed after the entrypoint
     std::vector<std::string> entrypoint_args;
 
-    // Optional: Environment variables (lowest precedence, fill-only)
-    // Format: "KEY=value" - only set if not already defined by host/runtime
+    // Optional: Environment operations. env_vars is retained for legacy callers.
+    EnvMap environment;
     std::vector<std::string> env_vars;
 
     // Optional: Library search paths (relative to app root)
@@ -602,7 +605,7 @@ struct HostEnvironment {
     } paths;
 
     struct {
-        bool allow_env_overrides = true;  ///< Allow NAH_OVERRIDE_ENVIRONMENT
+        bool allow_env_overrides = false;  ///< Allow NAH_OVERRIDE_ENVIRONMENT
         std::vector<std::string> allowed_env_keys;  ///< If non-empty, only these keys can be overridden
     } overrides;
 
@@ -1465,6 +1468,13 @@ inline RuntimeResolutionResult resolve_runtime(
         return result;
     }
 
+    if (it->second.nak.id != app.nak_id ||
+        (!install.nak.id.empty() && install.nak.id != it->second.nak.id) ||
+        (!install.nak.version.empty() && install.nak.version != it->second.nak.version)) {
+        result.warnings.push_back("pinned NAK identity does not match app or install record");
+        return result;
+    }
+
     result.resolved = true;
     result.record_ref = record_ref;
     result.runtime = it->second;
@@ -1571,12 +1581,8 @@ inline PathBindingResult bind_paths(
 /**
  * Compose environment from all sources.
  *
- * Precedence (highest to lowest):
- * 1. NAH standard variables (NAH_APP_*, NAH_NAK_*)
- * 2. Install record overrides
- * 3. App manifest defaults (fill-only)
- * 4. NAK environment
- * 5. Host environment
+ * Precedence (highest to lowest): standard variables, install overrides,
+ * host environment, NAK environment, then app environment.
  */
 inline std::unordered_map<std::string, std::string> compose_environment(
     const AppDeclaration& decl,
@@ -1603,19 +1609,30 @@ inline std::unordered_map<std::string, std::string> compose_environment(
         }
     };
 
-    // Layer 1: Host environment (rank 5)
-    for (const auto& [key, val] : host_env.vars) {
-        auto result = apply_env_op(key, val, env);
-        if (result.has_value()) {
-            env[key] = *result;
-            record(key, *result, trace_source::HOST, host_env.source_path, 5, val.op, true);
-        } else {
-            env.erase(key);
-            record(key, "", trace_source::HOST, host_env.source_path, 5, val.op, true);
+    // Layer 1: Legacy app KEY=value defaults (rank 5)
+    for (const auto& env_var : decl.env_vars) {
+        auto eq = env_var.find('=');
+        if (eq != std::string::npos) {
+            const std::string key = env_var.substr(0, eq);
+            const std::string value = env_var.substr(eq + 1);
+            env[key] = value;
+            record(key, value, trace_source::MANIFEST, "manifest", 5, EnvOp::Set, true);
         }
     }
 
-    // Layer 2: NAK environment (rank 4)
+    // Current app environment operations override legacy values (rank 5).
+    for (const auto& [key, val] : decl.environment) {
+        auto result = apply_env_op(key, val, env);
+        if (result.has_value()) {
+            env[key] = *result;
+            record(key, *result, trace_source::MANIFEST, "manifest", 5, val.op, true);
+        } else {
+            env.erase(key);
+            record(key, "", trace_source::MANIFEST, "manifest", 5, val.op, true);
+        }
+    }
+
+    // Layer 2: NAK environment (rank 4).
     if (runtime) {
         for (const auto& [key, val] : runtime->environment) {
             auto result = apply_env_op(key, val, env);
@@ -1629,17 +1646,15 @@ inline std::unordered_map<std::string, std::string> compose_environment(
         }
     }
 
-    // Layer 3: App manifest defaults (rank 3, fill-only)
-    for (const auto& env_var : decl.env_vars) {
-        auto eq = env_var.find('=');
-        if (eq != std::string::npos) {
-            std::string key = env_var.substr(0, eq);
-            std::string val = env_var.substr(eq + 1);
-            bool accepted = (env.find(key) == env.end());
-            if (accepted) {
-                env[key] = val;
-            }
-            record(key, val, trace_source::MANIFEST, "manifest", 3, EnvOp::Set, accepted);
+    // Layer 3: Host environment (rank 3).
+    for (const auto& [key, val] : host_env.vars) {
+        auto result = apply_env_op(key, val, env);
+        if (result.has_value()) {
+            env[key] = *result;
+            record(key, *result, trace_source::HOST, host_env.source_path, 3, val.op, true);
+        } else {
+            env.erase(key);
+            record(key, "", trace_source::HOST, host_env.source_path, 3, val.op, true);
         }
     }
 
@@ -1813,6 +1828,14 @@ inline CompositionResult nah_compose(
     RuntimeDescriptor* runtime_ptr = runtime_result.resolved && !runtime_result.runtime.nak.id.empty()
         ? &runtime_result.runtime : nullptr;
 
+    if (!app.nak_id.empty() && !runtime_ptr) {
+        result.critical_error = CriticalError::NAK_NOT_FOUND;
+        result.critical_error_context = runtime_result.warnings.empty()
+            ? "required pinned NAK is unavailable"
+            : runtime_result.warnings.front();
+        return result;
+    }
+
     if (trace_ptr) {
         if (runtime_ptr) {
             trace_ptr->decisions.push_back("Runtime resolved: " + runtime_ptr->nak.id + "@" + runtime_ptr->nak.version);
@@ -1889,13 +1912,10 @@ inline CompositionResult nah_compose(
                 effective_loader = runtime_ptr->loaders.begin()->first;
                 if (trace_ptr) trace_ptr->decisions.push_back("Auto-selected single loader: " + effective_loader);
             } else {
-                result.warnings.push_back({
-                    warning_to_string(Warning::nak_loader_required),
-                    "warn",
-                    {{"reason", "multiple loaders but none specified"}}
-                });
-                contract.execution.binary = contract.app.entrypoint;
-                if (trace_ptr) trace_ptr->decisions.push_back("WARNING: Multiple loaders, using entrypoint");
+                result.critical_error = CriticalError::NAK_LOADER_INVALID;
+                result.critical_error_context = "multiple NAK loaders are available but none was selected";
+                if (trace_ptr) trace_ptr->decisions.push_back("FAILED: No NAK loader selected");
+                return result;
             }
         } else {
             if (trace_ptr) trace_ptr->decisions.push_back("Using pinned loader: " + effective_loader);

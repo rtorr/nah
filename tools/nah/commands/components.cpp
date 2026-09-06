@@ -33,7 +33,9 @@ int cmd_components(const GlobalOptions& opts, const ComponentsOptions& comp_opts
     auto all_components = host->listAllComponents();
 
     if (all_components.empty()) {
-        if (!opts.json && !opts.quiet) {
+        if (opts.json) {
+            std::cout << "[]\n";
+        } else if (!opts.quiet) {
             std::cout << "No components found\n";
         }
         return 0;

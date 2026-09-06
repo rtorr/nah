@@ -27,6 +27,11 @@ struct RunOptions {
 int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
     init_warning_collector(opts.json, opts.quiet);
 
+    if (opts.json) {
+        print_error("--json is not supported by run; use show to inspect a contract", true);
+        return 1;
+    }
+
     std::string nah_root = resolve_nah_root(
         opts.root.empty() ? std::nullopt : std::make_optional(opts.root));
 
@@ -118,15 +123,7 @@ int cmd_run(const GlobalOptions& opts, const RunOptions& run_opts) {
 
     // If exec_replace succeeds, we won't get here (process is replaced)
     // If we're here, it means exec failed
-    if (opts.json) {
-        nlohmann::json j;
-        j["ok"] = exec_result.ok;
-        j["exit_code"] = exec_result.exit_code;
-        if (!exec_result.error.empty()) {
-            j["error"] = exec_result.error;
-        }
-        output_json(j);
-    } else if (!exec_result.ok && !opts.quiet) {
+    if (!exec_result.ok && !opts.quiet) {
         print_error("Failed to execute: " + exec_result.error, false);
     }
 

@@ -1,88 +1,36 @@
-#!/bin/bash
-# Build the NAH project
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_ROOT/build"
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+build_dir="$root_dir/build"
+build_type=Debug
+jobs=""
+build_examples=false
 
 usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  --clean       Clean before building"
-    echo "  --release     Build in Release mode (default: Debug)"
-    echo "  --jobs N      Parallel jobs (default: auto)"
-    echo "  --examples    Also build examples"
-    echo "  -h, --help    Show this help"
+    echo "Usage: $0 [--clean] [--release] [--jobs N] [--examples]"
 }
 
-BUILD_TYPE="Debug"
-CLEAN=false
-JOBS=""
-BUILD_EXAMPLES=false
-
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --clean)
-            CLEAN=true
-            shift
-            ;;
-        --release)
-            BUILD_TYPE="Release"
-            shift
-            ;;
-        --jobs)
-            JOBS="-j$2"
-            shift 2
-            ;;
-        --examples)
-            BUILD_EXAMPLES=true
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            usage
-            exit 1
-            ;;
+    case "$1" in
+        --clean) cmake -E remove_directory "$build_dir"; shift ;;
+        --release) build_type=Release; shift ;;
+        --jobs) jobs="$2"; shift 2 ;;
+        --examples) build_examples=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage >&2; exit 2 ;;
     esac
 done
 
-if [ -z "$JOBS" ]; then
-    if command -v nproc &> /dev/null; then
-        JOBS="-j$(nproc)"
-    elif command -v sysctl &> /dev/null; then
-        JOBS="-j$(sysctl -n hw.ncpu)"
-    else
-        JOBS="-j4"
-    fi
-fi
+cmake -S "$root_dir" -B "$build_dir" \
+    -DCMAKE_BUILD_TYPE="$build_type" \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DNAH_ENABLE_TESTS=ON
 
-if [ "$CLEAN" = true ] && [ -d "$BUILD_DIR" ]; then
-    echo "Cleaning build directory..."
-    rm -rf "$BUILD_DIR"
-fi
+build_args=(--build "$build_dir" --parallel)
+if [[ -n "$jobs" ]]; then build_args+=("$jobs"); fi
+cmake "${build_args[@]}"
 
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
-
-echo "Configuring (${BUILD_TYPE})..."
-cmake .. -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
-echo "Building..."
-make $JOBS
-
-echo ""
-echo "Build complete!"
-echo "  Binary: $BUILD_DIR/tools/nah/nah"
-echo "  Tests:  $BUILD_DIR/tests/unit/nah-tests"
-
-if [ "$BUILD_EXAMPLES" = true ]; then
-    echo ""
-    echo "Building examples..."
-    "$PROJECT_ROOT/examples/host/scripts/setup_demo.sh"
+if [[ "$build_examples" == true ]]; then
+    NAH_CLI="$build_dir/tools/nah/nah" "$root_dir/examples/scripts/build_all.sh"
 fi

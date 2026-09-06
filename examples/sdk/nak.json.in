@@ -12,13 +12,14 @@
     "environment": {
       "NAK_FRAMEWORK_VERSION": "1.2.3"
     },
-    "loader": {
-      "exec_path": "bin/framework_loader",
-      "args_template": ["--app", "{NAH_APP_ENTRY}"]
+    "loaders": {
+      "default": {
+        "exec_path": "bin/framework_loader",
+        "args_template": ["--app", "{NAH_APP_ENTRY}"]
+      }
     },
     "execution": {
       "cwd": "{NAH_APP_ROOT}"
     }
   }
 }
-

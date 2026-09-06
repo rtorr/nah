@@ -3,8 +3,6 @@
 # This represents a framework team's SDK deliverable.
 # It builds completely independently and produces a NAK pack.
 #
-# v1.1.0: Updated to use JSON manifest at root (not META/)
-#
 # Build:
 #   mkdir build && cd build
 #   cmake ..
@@ -15,6 +13,11 @@
 
 cmake_minimum_required(VERSION 3.16)
 project(framework_sdk VERSION 1.2.3 LANGUAGES C CXX)
+
+find_program(NAH_CLI nah)
+if(NOT NAH_CLI)
+    message(FATAL_ERROR "Set NAH_CLI to the nah executable")
+endif()
 
 set(CMAKE_C_STANDARD 11)
 
@@ -31,7 +34,6 @@ message(STATUS "Building Framework SDK: ${NAK_ID}@${NAK_VERSION}")
 add_library(framework SHARED
     lib/framework.c
     lib/resources.c
-    lib/lifecycle.c
 )
 
 target_include_directories(framework PUBLIC
@@ -62,7 +64,7 @@ add_executable(framework_loader
 target_link_libraries(framework_loader PRIVATE framework)
 
 # =============================================================================
-# NAK Pack Generation (v1.1.0 format)
+# NAK package generation
 # =============================================================================
 
 set(NAK_STAGING_DIR "${CMAKE_BINARY_DIR}/nak_staging")
@@ -90,7 +92,7 @@ add_custom_target(stage_nak
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${NAK_STAGING_DIR}/resources
 
-    # Copy nak.json to root (NEW: not in META/)
+    # Copy nak.json to the package root.
     COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_BINARY_DIR}/nak.json ${NAK_STAGING_DIR}/nak.json
 
@@ -100,11 +102,8 @@ add_custom_target(stage_nak
 
 add_custom_target(package_nak ALL
     COMMAND ${CMAKE_COMMAND} -E echo "Creating NAK pack: ${NAK_ID}-${NAK_VERSION}.nak"
-    COMMAND ${CMAKE_COMMAND} -E tar czf
-        ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak
-        --format=gnutar
-        .
-    WORKING_DIRECTORY ${NAK_STAGING_DIR}
+    COMMAND "${NAH_CLI}" pack "${NAK_STAGING_DIR}"
+        --output "${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak"
     DEPENDS stage_nak
     COMMENT "Packaging NAK: ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak"
     BYPRODUCTS ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak

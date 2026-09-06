@@ -1,0 +1,14 @@
+{
+  "$schema": "https://nah.rtorr.com/schemas/nah.v1.json",
+  "environment": {
+    "NAH_HOST_NAME": "example-host"
+  },
+  "paths": {
+    "library_prepend": [],
+    "library_append": []
+  },
+  "overrides": {
+    "allow_env_overrides": false,
+    "allowed_env_keys": []
+  }
+}

@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 project(gameengine VERSION 1.0.0 LANGUAGES CXX)
 
+find_program(NAH_CLI nah)
+if(NOT NAH_CLI)
+    message(FATAL_ERROR "Set NAH_CLI to the nah executable")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -61,8 +66,8 @@ set(CONAN_DEPLOY_DIR "${CMAKE_SOURCE_DIR}/build/deploy/full_deploy" CACHE PATH "
 
 # Generate nak.json from template
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/META/nak.json.in
-    ${CMAKE_BINARY_DIR}/META/nak.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/nak.json.in
+    ${CMAKE_BINARY_DIR}/nak.json
     @ONLY
 )
 
@@ -89,7 +94,7 @@ endforeach()
 
 add_custom_target(stage_nak
     # Create directories
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/META
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${NAK_STAGING_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/lib
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/bin
     COMMAND ${CMAKE_COMMAND} -E make_directory ${NAK_STAGING_DIR}/resources
@@ -108,9 +113,9 @@ add_custom_target(stage_nak
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${NAK_STAGING_DIR}/resources
 
-    # Copy metadata
+    # Copy manifest to the package root.
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/META/nak.json ${NAK_STAGING_DIR}/META/
+        ${CMAKE_BINARY_DIR}/nak.json ${NAK_STAGING_DIR}/nak.json
 
     DEPENDS gameengine engine-loader
     COMMENT "Staging NAK pack: ${NAK_ID}@${NAK_VERSION}"
@@ -118,14 +123,13 @@ add_custom_target(stage_nak
 
 add_custom_target(package_nak
     COMMAND ${CMAKE_COMMAND} -E echo "Creating NAK pack: ${NAK_ID}-${NAK_VERSION}.nak"
-    COMMAND ${CMAKE_COMMAND} -E chdir ${NAK_STAGING_DIR}
-        ${CMAKE_COMMAND} -E tar czf
-        ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak
-        --format=gnutar
-        .
+    COMMAND "${NAH_CLI}" pack "${NAK_STAGING_DIR}"
+        --output "${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak"
     DEPENDS stage_nak
     COMMENT "Packaging NAK: ${CMAKE_BINARY_DIR}/${NAK_ID}-${NAK_VERSION}.nak"
 )
+
+add_custom_target(nah_package DEPENDS package_nak)
 
 message(STATUS "NAK packaging configured. After building, run:")
 message(STATUS "  cmake --build . --target package_nak")

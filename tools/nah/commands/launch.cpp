@@ -22,6 +22,11 @@ struct LaunchOptions {
 int cmd_launch(const GlobalOptions& opts, const LaunchOptions& launch_opts) {
     init_warning_collector(opts.json, opts.quiet);
 
+    if (opts.json) {
+        print_error("--json is not supported by launch; compose the component through NahHost to inspect it", true);
+        return 1;
+    }
+
     std::string nah_root = resolve_nah_root(
         opts.root.empty() ? std::nullopt : std::make_optional(opts.root));
 

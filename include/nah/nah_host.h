@@ -1,10 +1,4 @@
-/**
- * NAH Host Library
- * ================
- * Complete host implementation with all dependencies included.
- * This provides a high-level API for hosts to integrate NAH without
- * reimplementing all the boilerplate.
- */
+/** High-level filesystem-backed host API. */
 
 #ifndef NAH_HOST_H
 #define NAH_HOST_H
@@ -837,8 +831,7 @@ inline nah::core::CompositionResult NahHost::composeComponentLaunch(
 
     // Merge component-specific environment
     for (const auto& [key, value] : matched_component->environment) {
-        // Convert to KEY=value format
-        component_app.env_vars.push_back(key + "=" + value.value);
+        component_app.environment[key] = value;
     }
 
     // Merge component-specific permissions

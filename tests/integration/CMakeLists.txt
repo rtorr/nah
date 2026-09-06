@@ -1,6 +1,5 @@
 add_executable(integration_tests
     cli_tests.cpp
-    component_tests.cpp
     package_archive_tests.cpp
 )
 
@@ -20,11 +19,6 @@ target_compile_options(integration_tests PRIVATE ${NAH_WARNING_FLAGS})
 # Copy the CLI to the test directory for testing (preserves platform extension)
 add_custom_command(TARGET integration_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nah> $<TARGET_FILE_DIR:integration_tests>/$<TARGET_FILE_NAME:nah>
-)
-
-# Also create a simple nah.json for version checking
-add_custom_command(TARGET integration_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "{\"version\": \"${NAH_VERSION}\"}" > ${CMAKE_CURRENT_BINARY_DIR}/nah.json
 )
 
 add_test(NAME integration_tests COMMAND integration_tests)

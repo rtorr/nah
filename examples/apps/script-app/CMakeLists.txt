@@ -35,8 +35,11 @@ message(STATUS "  Note: This app has NO compiled binary - just scripts!")
 # Include shared build template (even for script-only apps!)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/NahAppTemplate.cmake)
 
-# Find CLI (optional)
+# Find the packer.
 nah_find_cli()
+if(NOT NAH_CLI)
+    message(FATAL_ERROR "nah CLI is required to create the example package")
+endif()
 
 # =============================================================================
 # NAP Package Generation (No binary compilation!)
@@ -53,8 +56,7 @@ add_custom_target(script_app ALL
     # Copy scripts (and make executable)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_CURRENT_SOURCE_DIR}/scripts/main.sh ${NAP_STAGING_DIR}/scripts/
-    COMMAND chmod +x ${NAP_STAGING_DIR}/scripts/main.sh
-    
+
     # Copy assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets ${NAP_STAGING_DIR}/assets
@@ -105,8 +107,7 @@ set(PACKAGE_FILE "${CMAKE_BINARY_DIR}/${APP_ID}-${APP_VERSION}.nap")
 
 add_custom_target(script_app_package ALL
     COMMAND ${CMAKE_COMMAND} -E echo "Creating NAP package: ${PACKAGE_FILE}"
-    COMMAND ${CMAKE_COMMAND} -E tar czf ${PACKAGE_FILE} --format=gnutar .
-    WORKING_DIRECTORY ${NAP_STAGING_DIR}_final
+    COMMAND "${NAH_CLI}" pack "${NAP_STAGING_DIR}_final" --output "${PACKAGE_FILE}"
     DEPENDS script_app_stage
     COMMENT "Packaging NAP: ${APP_ID}-${APP_VERSION}.nap"
     BYPRODUCTS ${PACKAGE_FILE}

@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     }
     
     printf("\nLaunch editor with:\n");
-    printf("  nah launch com.example.suite://editor?file=document.txt\n");
+    printf("  nah launch 'com.example.suite://editor/open?file=document.txt'\n");
     printf("\n");
     
     return 0;

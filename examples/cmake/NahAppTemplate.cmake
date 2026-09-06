@@ -3,8 +3,6 @@
 # Convenience CMake patterns for the NAH examples.
 # This is NOT part of NAH itself - just shared code to reduce duplication in examples.
 #
-# v1.1.0: Updated for JSON-only manifests (no binary TLV format)
-#
 # Usage:
 #   include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NahAppTemplate.cmake)
 #
@@ -34,7 +32,6 @@
 
 # Find NAH CLI
 # Sets: NAH_CLI
-# Note: CLI is now optional for pure CMake workflows (manifest generation is built-in)
 macro(nah_find_cli)
     if(NOT DEFINED NAH_CLI)
         find_program(NAH_CLI nah
@@ -57,7 +54,7 @@ macro(nah_find_cli)
             set(NAH_CLI "${_nah_root_cli}")
             message(STATUS "Using NAH CLI from project root (development mode)")
         else()
-            message(STATUS "NAH CLI not found (optional for pure CMake builds)")
+            message(STATUS "NAH CLI not found")
         endif()
     else()
         message(STATUS "NAH CLI: ${NAH_CLI}")
@@ -374,6 +371,11 @@ endfunction()
 function(nah_package TARGET_NAME)
     cmake_parse_arguments(ARG "" "ASSETS_DIR" "" ${ARGN})
 
+    nah_find_cli()
+    if(NOT NAH_CLI)
+        message(FATAL_ERROR "nah CLI is required to validate and create packages")
+    endif()
+
     if(NOT DEFINED ${TARGET_NAME}_MANIFEST_FILE)
         message(FATAL_ERROR "No manifest generated for ${TARGET_NAME}. Call nah_app_manifest or nah_nak_manifest first.")
     endif()
@@ -422,11 +424,10 @@ function(nah_package TARGET_NAME)
         )
     endif()
 
-    # Package using tar with deterministic flags
+    # Use the project packer so examples follow the same validation and format.
     add_custom_target(${TARGET_NAME}_package ALL
         COMMAND ${CMAKE_COMMAND} -E echo "Creating ${PACKAGE_TYPE} package: ${PACKAGE_FILE}"
-        COMMAND ${CMAKE_COMMAND} -E tar czf ${PACKAGE_FILE} --format=gnutar .
-        WORKING_DIRECTORY ${STAGING_DIR}
+        COMMAND "${NAH_CLI}" pack "${STAGING_DIR}" --output "${PACKAGE_FILE}"
         DEPENDS ${TARGET_NAME}_stage
         COMMENT "Packaging ${PACKAGE_TYPE}: ${PKG_ID}-${PKG_VERSION}.${PACKAGE_TYPE}"
         BYPRODUCTS ${PACKAGE_FILE}

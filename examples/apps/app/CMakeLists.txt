@@ -1,6 +1,6 @@
 # Example Application - JSON Manifest
 # ====================================
-# Demonstrates a C application using the Framework SDK with NAH v1.1.0.
+# Demonstrates a C application using the Framework SDK with NAH.
 # Uses the shared NahAppTemplate.cmake for common build patterns.
 #
 # Build:
@@ -35,7 +35,7 @@ message(STATUS "  Requires NAK: ${NAK_ID} ${NAK_VERSION_REQ}")
 # Include shared build template
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/NahAppTemplate.cmake)
 
-# Find dependencies (CLI is now optional for pure CMake workflows)
+# Find the CLI and SDK used by this example.
 nah_find_cli()
 nah_find_sdk(framework)
 

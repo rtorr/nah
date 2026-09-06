@@ -16,9 +16,9 @@ int main(int argc, char** argv) {
     printf("  3. Converter - Convert formats (hidden)\n");
     printf("\n");
     printf("Launch components directly:\n");
-    printf("  nah launch com.example.suite://editor\n");
-    printf("  nah launch com.example.suite://viewer\n");
-    printf("  nah launch com.example.suite://converter\n");
+    printf("  nah launch com.example.suite://editor/open\n");
+    printf("  nah launch com.example.suite://viewer/open\n");
+    printf("  nah launch com.example.suite://converter/open\n");
     printf("\n");
     
     return 0;

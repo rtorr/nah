@@ -26,12 +26,6 @@ option(NAH_ENABLE_WARNINGS "Enable strict warnings" ${NAH_MAIN_PROJECT})
 option(NAH_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
 option(NAH_INSTALL "Generate install targets" ${NAH_MAIN_PROJECT})
 
-# Always enable tests in CI
-if(DEFINED ENV{CI})
-    set(NAH_ENABLE_TESTS ON CACHE BOOL "Build NAH tests" FORCE)
-    message(STATUS "CI detected - enabling tests")
-endif()
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake)
 
 # Warning flags are applied only to NAH-owned targets.

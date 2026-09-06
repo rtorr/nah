@@ -1,6 +1,6 @@
 # Host example
 
-This directory contains C++ examples for listing apps, inspecting contracts, and embedding `NahHost`. The adjacent `nah.json` is source material for `scripts/setup_host.sh`; the CLI does not automatically process its `install` array.
+This directory contains C++ examples for inspecting contracts and embedding `NahHost`. The adjacent `host.json` is copied to the example NAH root by `scripts/setup_host.sh`.
 
 From `examples`:
 

@@ -87,7 +87,7 @@ jobs:
           conan profile detect
 
       - name: Create and test package
-        run: conan create . --build=missing -o build_tools=False
+        run: conan create . --build=missing -o '&:build_tools=False'
 
   lint:
     name: Lint

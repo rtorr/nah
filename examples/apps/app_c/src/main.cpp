@@ -2,7 +2,7 @@
  * Application C - C++ App Example
  * ================================
  * 
- * This example demonstrates a C++ application using the NAH framework v1.1.0.
+ * This example demonstrates a C++ application using the NAH framework.
  * The manifest is now a JSON file (nap.json) packaged with the application,
  * rather than embedded in the binary.
  * 

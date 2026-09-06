@@ -250,6 +250,27 @@ TEST_CASE("nah --version")
     CHECK(combined.find(".") != std::string::npos); // Should contain version number with dots
 }
 
+TEST_CASE("executing commands reject JSON mode")
+{
+    auto run = execute_command(get_nah_executable() + " --json run com.test.app");
+    CHECK(run.exit_code != 0);
+    auto run_error = nlohmann::json::parse(run.output);
+    CHECK(run_error["ok"] == false);
+
+    auto launch = execute_command(get_nah_executable() + " --json launch com.test://component");
+    CHECK(launch.exit_code != 0);
+    auto launch_error = nlohmann::json::parse(launch.output);
+    CHECK(launch_error["ok"] == false);
+}
+
+TEST_CASE("empty components JSON is an array")
+{
+    TestNahEnvironment env;
+    auto result = execute_command(get_nah_executable() + " --json components");
+    CHECK(result.exit_code == 0);
+    CHECK(nlohmann::json::parse(result.output) == nlohmann::json::array());
+}
+
 TEST_CASE("nah --help")
 {
     auto result = execute_command(get_nah_executable() + " --help");
@@ -312,8 +333,9 @@ TEST_CASE("nah init")
         auto result = execute_command(get_nah_executable() + " init --host " + host_path);
         CHECK(result.exit_code == 0);
 
-        std::string manifest_path = nah::fs::join_paths(host_path, "nah.json");
+        std::string manifest_path = nah::fs::join_paths(host_path, "host/host.json");
         CHECK(std::filesystem::exists(manifest_path));
+        CHECK(std::filesystem::exists(nah::fs::join_paths(host_path, "registry/apps")));
     }
 
     // Clean up
@@ -353,17 +375,15 @@ TEST_CASE("nah list")
         CHECK(combined.find("2.0.0") != std::string::npos);
     }
 
-    // TODO: Add --json flag support to list command
-    // SUBCASE("list with --json flag") {
-    //     env.createTestApp("com.test.app", "1.0.0");
-    //
-    //     auto result = execute_command("./nah list --json");
-    //     CHECK(result.exit_code == 0);
-    //     std::string combined = result.output + result.error;
-    //     CHECK(combined.find("[") != std::string::npos); // JSON array
-    //     CHECK(combined.find("com.test.app") != std::string::npos);
-    //     CHECK(combined.find("1.0.0") != std::string::npos);
-    // }
+    SUBCASE("list with --json flag")
+    {
+        env.createTestApp("com.test.app", "1.0.0");
+        auto result = execute_command(get_nah_executable() + " --json list");
+        CHECK(result.exit_code == 0);
+        auto output = nlohmann::json::parse(result.output);
+        REQUIRE(output["apps"].size() == 1);
+        CHECK(output["apps"][0]["id"] == "com.test.app");
+    }
 }
 
 // Test the show command
@@ -450,10 +470,8 @@ TEST_CASE("nah show")
         // Use global --json flag before the show subcommand
         auto result = execute_command(get_nah_executable() + " --json show com.test.jsonapp");
         CHECK(result.exit_code == 0);
-        std::string combined = result.output + result.error;
-        // JSON output should contain curly braces
-        CHECK((combined.find("{") != std::string::npos &&
-               combined.find("}") != std::string::npos));
+        auto output = nlohmann::json::parse(result.output);
+        CHECK(output["contract"]["app"]["id"] == "com.test.jsonapp");
     }
 }
 
@@ -463,7 +481,7 @@ TEST_CASE("nah end-to-end workflow")
     TestNahEnvironment env;
     REQUIRE(!env.root.empty());
 
-    SUBCASE("install -> show -> list lifecycle")
+    SUBCASE("show and list installed records")
     {
         // Create a test app
         env.createTestApp("com.test.lifecycle", "1.0.0");
@@ -481,8 +499,6 @@ TEST_CASE("nah end-to-end workflow")
         std::string list_output = list_result.output + list_result.error;
         CHECK(list_output.find("com.test.lifecycle") != std::string::npos);
 
-        // Note: Full uninstall testing requires actual package installation
-        // which is beyond the scope of these basic integration tests
     }
 
     SUBCASE("multiple versions coexist")
@@ -641,7 +657,12 @@ TEST_CASE("nah loader selection")
         record << "{\n";
         record << "  \"install\": { \"instance_id\": \"test-nak-" << id << "\" },\n";
         record << "  \"nak\": { \"id\": \"" << id << "\", \"version\": \"" << version << "\" },\n";
-        record << "  \"paths\": { \"install_root\": \"" << nah::core::normalize_separators(nak_dir) << "\" },\n";
+        record << "  \"paths\": { \"root\": \"" << nah::core::normalize_separators(nak_dir) << "\" },\n";
+        record << "  \"loaders\": {\n";
+        record << "    \"default\": {\"exec_path\": \"bin/default-loader\", \"args_template\": [\"--default-mode\"]},\n";
+        record << "    \"alternate\": {\"exec_path\": \"bin/alternate-loader\", \"args_template\": [\"--alt-mode\"]},\n";
+        record << "    \"debug\": {\"exec_path\": \"bin/debug-loader\", \"args_template\": [\"--debug\", \"--verbose\"]}\n";
+        record << "  },\n";
         record << "  \"trust\": { \"state\": \"unknown\" }\n";
         record << "}\n";
         record.close();
@@ -674,6 +695,8 @@ TEST_CASE("nah loader selection")
         manifest << "{\n";
         manifest << "  \"id\": \"" << app_id << "\",\n";
         manifest << "  \"version\": \"" << app_version << "\",\n";
+        manifest << "  \"nak_id\": \"" << nak_id << "\",\n";
+        manifest << "  \"nak_version_req\": \"" << nak_version << "\",\n";
         manifest << "  \"entrypoint\": \"bin/app\"\n";
         manifest << "}\n";
         manifest.close();
@@ -749,17 +772,24 @@ TEST_CASE("nah loader selection")
         // Create app installed with default loader
         createAppWithNak("com.test.runapp", "1.0.0", "com.test.runtime", "1.0.0", "default");
 
-        // Note: Actually running requires full execution setup, but we can verify
-        // the command accepts the flag without error (will fail at execution stage)
-        // This tests the CLI parsing works correctly
+        auto host = nah::host::NahHost::create(env.root);
+        REQUIRE(host != nullptr);
+        auto inventory = host->getInventory();
+        REQUIRE(inventory.runtimes.count("com.test.runtime@1.0.0.json") == 1);
+        auto contract = host->getLaunchContract("com.test.runapp");
+        REQUIRE(contract.ok);
+        REQUIRE(contract.contract.nak.id == "com.test.runtime");
+        REQUIRE(contract.contract.execution.binary.find("default-loader") != std::string::npos);
+
         auto result = execute_command(get_nah_executable() + " run com.test.runapp --loader alternate");
-        // Command should parse correctly (may fail at execution, but not at parsing)
-        std::string combined = result.output + result.error;
-        // Should NOT have "Unknown option" or similar parsing errors
-        CHECK(combined.find("Unknown option") == std::string::npos);
-        bool no_loader_error = (combined.find("--loader") == std::string::npos) ||
-                               (combined.find("invalid") == std::string::npos);
-        CHECK(no_loader_error);
+#ifdef _WIN32
+        CHECK((result.output + result.error).find("Unknown option") == std::string::npos);
+#else
+        INFO("stdout: " << result.output);
+        INFO("stderr: " << result.error);
+        CHECK(result.exit_code == 0);
+        CHECK(result.output.find("alternate-loader") != std::string::npos);
+#endif
     }
 
     SUBCASE("multiple apps with different loaders from same NAK")
@@ -954,11 +984,8 @@ TEST_CASE("NahHost discovery API")
         auto nah_host = nah::host::NahHost::discover({env.root});
         REQUIRE(nah_host != nullptr);
 
-        // Note: This may fail contract composition (missing NAK),
-        // but it tests that the discovered host is functional
         auto result = nah_host->getLaunchContract("com.test.launchapp");
-        // Just verify the API works, don't check result.ok
-        // (it might fail due to missing NAK dependencies)
+        CHECK(result.ok);
     }
 
     SUBCASE("typical host developer usage pattern")

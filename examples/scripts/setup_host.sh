@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --root <path> NAH root directory (default: demo_nah_root)"
             exit 0
             ;;
-        *) shift ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
@@ -66,8 +66,8 @@ log_info "Creating NAH root structure..."
 mkdir -p "$NAH_ROOT"/{apps,naks,host,registry/{apps,naks}}
 
 # The runtime reads its host environment from host/host.json.
-if [ -f "$EXAMPLES_DIR/host/nah.json" ]; then
-    cp "$EXAMPLES_DIR/host/nah.json" "$NAH_ROOT/host/host.json"
+if [ -f "$EXAMPLES_DIR/host/host.json" ]; then
+    cp "$EXAMPLES_DIR/host/host.json" "$NAH_ROOT/host/host.json"
     log_success "Installed host environment"
 fi
 
@@ -94,9 +94,9 @@ log_success "NAH Host setup complete!"
 echo "=============================================="
 echo ""
 echo "Installed NAKs:"
-$NAH_CLI --root "$NAH_ROOT" list --naks 2>/dev/null || echo "  (use 'nah list --naks' to view)"
+"$NAH_CLI" --root "$NAH_ROOT" list --naks 2>/dev/null || echo "  (use 'nah list --naks' to view)"
 echo ""
 echo "Installed Apps:"
-$NAH_CLI --root "$NAH_ROOT" list --apps 2>/dev/null || echo "  (use 'nah list --apps' to view)"
+"$NAH_CLI" --root "$NAH_ROOT" list --apps 2>/dev/null || echo "  (use 'nah list --apps' to view)"
 echo ""
 echo "Next: ./scripts/run_apps.sh"

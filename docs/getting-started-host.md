@@ -8,7 +8,13 @@ nah --root /opt/my-product/nah install app.nap
 nah --root /opt/my-product/nah show com.example.app
 ```
 
-The CLI creates managed `apps`, `naks`, `registry`, `host`, and `staging` directories on first install. A host environment may be stored at `<root>/host/host.json`:
+Create a root explicitly, or let the first installation create it:
+
+```bash
+nah init --host ./nah-root
+```
+
+The root contains managed `apps`, `naks`, `registry`, `host`, and `staging` directories. Its optional host environment is stored at `<root>/host/host.json`:
 
 ```json
 {
@@ -26,6 +32,6 @@ The CLI creates managed `apps`, `naks`, `registry`, `host`, and `staging` direct
 }
 ```
 
-The `nah init --host <dir>` command is only a configuration scaffold; it does not install a host or fetch packages. Remote acquisition, artifact verification, signature policy, permission enforcement, and sandboxing remain responsibilities of the surrounding host or deployment system.
+The command creates local state only; it does not fetch or install packages. Remote acquisition, artifact verification, signature policy, permission enforcement, and sandboxing remain responsibilities of the surrounding host or deployment system.
 
 Embed [`NahHost`](../include/nah/nah_host.h) when a product needs to inspect contracts, provide UI, or execute apps programmatically.

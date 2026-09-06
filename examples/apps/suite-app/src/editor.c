@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     }
     
     printf("\nLaunch viewer with:\n");
-    printf("  nah launch com.example.suite://viewer\n");
+    printf("  nah launch com.example.suite://viewer/open\n");
     printf("\n");
     
     return 0;

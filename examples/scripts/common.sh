@@ -34,7 +34,7 @@ find_examples_dir() {
 # Set up NAH_ROOT if not already set
 # Default to demo_nah_root in examples directory
 setup_nah_root() {
-    if [ -z "$NAH_ROOT" ]; then
+    if [ -z "${NAH_ROOT:-}" ]; then
         local examples_dir="$(find_examples_dir)"
         NAH_ROOT="$examples_dir/demo_nah_root"
         export NAH_ROOT
@@ -42,7 +42,7 @@ setup_nah_root() {
 }
 
 find_nah_cli() {
-    if [ -n "$NAH_CLI" ] && [ -x "$NAH_CLI" ]; then
+    if [ -n "${NAH_CLI:-}" ] && [ -x "$NAH_CLI" ]; then
         return 0
     fi
 
@@ -91,7 +91,7 @@ build_cmake_project() {
     local dir="$1"
     local name="$2"
     shift 2
-    local extra_args="$*"
+    local extra_args=("$@")
 
     log_info "Building $name..."
 
@@ -110,7 +110,7 @@ build_cmake_project() {
         mkdir -p build
         cd build
 
-        if ! cmake .. -DNAH_CLI="$NAH_CLI" $extra_args; then
+        if ! cmake .. -DNAH_CLI="$NAH_CLI" "${extra_args[@]}"; then
             log_error "CMake configuration failed for $name"
             exit 1
         fi
@@ -181,7 +181,7 @@ install_nak() {
     local name="$2"
 
     if [ -f "$nak_file" ]; then
-        $NAH_CLI --root "$NAH_ROOT" install "$nak_file"
+        "$NAH_CLI" --root "$NAH_ROOT" install "$nak_file"
         log_success "Installed $name NAK"
         return 0
     else
@@ -197,7 +197,7 @@ install_nap() {
     local name="$2"
 
     if [ -f "$nap_file" ]; then
-        $NAH_CLI --root "$NAH_ROOT" install "$nap_file"
+        "$NAH_CLI" --root "$NAH_ROOT" install "$nap_file"
         log_success "Installed $name"
         return 0
     else

@@ -327,8 +327,7 @@ TEST_CASE("Validation: RelativeRuntimeLibDir") {
 
 TEST_CASE("HostEnvironment: OverridePolicy_AllowAll") {
     HostEnvironment host_env;
-    // Default: allow_env_overrides = true, allowed_env_keys empty = all allowed
-    CHECK(host_env.overrides.allow_env_overrides == true);
+    CHECK_FALSE(host_env.overrides.allow_env_overrides);
     CHECK(host_env.overrides.allowed_env_keys.empty());
 }
 
@@ -531,15 +530,28 @@ TEST_CASE("Composition: EnvironmentPrecedence") {
     app.id = "com.example.env";
     app.version = "1.0.0";
     app.entrypoint_path = "bin/run";
+    app.nak_id = "com.example.runtime";
+    app.nak_version_req = "1.0.0";
     app.env_vars = {"SHARED=from_manifest", "MANIFEST_ONLY=yes"};
 
     HostEnvironment profile;
     profile.vars["SHARED"] = EnvValue(EnvOp::Set, "from_profile");
     profile.vars["PROFILE_ONLY"] = EnvValue(EnvOp::Set, "yes");
 
+    RuntimeDescriptor runtime;
+    runtime.nak.id = "com.example.runtime";
+    runtime.nak.version = "1.0.0";
+    runtime.paths.root = "/naks/runtime";
+    runtime.paths.lib_dirs = {"/naks/runtime/lib"};
+    runtime.environment["SHARED"] = EnvValue(EnvOp::Set, "from_nak");
+    runtime.environment["NAK_ONLY"] = EnvValue(EnvOp::Set, "yes");
+
     InstallRecord install;
     install.install.instance_id = "inst-004";
     install.paths.install_root = "/apps/env";
+    install.nak.id = runtime.nak.id;
+    install.nak.version = runtime.nak.version;
+    install.nak.record_ref = "com.example.runtime@1.0.0.json";
     install.overrides.environment["SHARED"] = EnvValue(EnvOp::Set, "from_override");
     install.overrides.environment["OVERRIDE_ONLY"] = EnvValue(EnvOp::Set, "yes");
     install.trust.state = TrustState::Verified;
@@ -547,14 +559,16 @@ TEST_CASE("Composition: EnvironmentPrecedence") {
     install.trust.evaluated_at = "2025-01-18T00:00:00Z";
 
     RuntimeInventory inventory;
+    inventory.runtimes[install.nak.record_ref] = runtime;
 
     auto result = nah_compose(app, profile, install, inventory);
 
     CHECK(result.ok);
 
-    // Override wins over profile wins over manifest
+    // Override wins over host, which wins over NAK and app values.
     CHECK(result.contract.environment.at("SHARED") == "from_override");
     CHECK(result.contract.environment.at("PROFILE_ONLY") == "yes");
+    CHECK(result.contract.environment.at("NAK_ONLY") == "yes");
     CHECK(result.contract.environment.at("MANIFEST_ONLY") == "yes");
     CHECK(result.contract.environment.at("OVERRIDE_ONLY") == "yes");
 
@@ -677,19 +691,9 @@ TEST_CASE("Composition: LoaderMultipleNoDefault") {
 
     auto result = nah_compose(app, profile, install, inventory);
 
-    CHECK(result.ok);
-    // Falls back to entrypoint when no loader can be auto-selected
-    CHECK(result.contract.execution.binary == "/apps/app/main.txt");
-
-    // Should have warning
-    bool found_warning = false;
-    for (const auto& w : result.warnings) {
-        if (w.key == "nak_loader_required") {
-            found_warning = true;
-            break;
-        }
-    }
-    CHECK(found_warning);
+    CHECK_FALSE(result.ok);
+    REQUIRE(result.critical_error.has_value());
+    CHECK(*result.critical_error == CriticalError::NAK_LOADER_INVALID);
 }
 
 // ============================================================================
@@ -937,15 +941,35 @@ TEST_CASE("EdgeCases: EmptyInventory") {
 
     auto result = nah_compose(app, profile, install, inventory);
 
-    CHECK(result.ok);  // Continues without NAK
-    CHECK(result.contract.nak.id == "");
+    CHECK_FALSE(result.ok);
+    REQUIRE(result.critical_error.has_value());
+    CHECK(*result.critical_error == CriticalError::NAK_NOT_FOUND);
+}
 
-    // Should have warning
-    bool found = false;
-    for (const auto& w : result.warnings) {
-        if (w.key == "nak_not_found") found = true;
-    }
-    CHECK(found);
+TEST_CASE("EdgeCases: MismatchedPinnedRuntime") {
+    AppDeclaration app;
+    app.id = "com.example.app";
+    app.version = "1.0.0";
+    app.nak_id = "expected";
+    app.entrypoint_path = "bin/run";
+
+    InstallRecord install;
+    install.install.instance_id = "inst-edge";
+    install.paths.install_root = "/apps/app";
+    install.nak.record_ref = "wrong@1.0.0.json";
+
+    RuntimeDescriptor runtime;
+    runtime.nak.id = "wrong";
+    runtime.nak.version = "1.0.0";
+    runtime.paths.root = "/naks/wrong";
+
+    RuntimeInventory inventory;
+    inventory.runtimes[install.nak.record_ref] = runtime;
+
+    auto result = nah_compose(app, HostEnvironment{}, install, inventory);
+    CHECK_FALSE(result.ok);
+    REQUIRE(result.critical_error.has_value());
+    CHECK(*result.critical_error == CriticalError::NAK_NOT_FOUND);
 }
 
 TEST_CASE("EdgeCases: LibsOnlyNak") {

@@ -27,10 +27,9 @@ add_test(
             -P ${CMAKE_CURRENT_SOURCE_DIR}/lifecycle_test.cmake
 )
 
-# Set working directory to where the nah executable is located
+# The CLI is copied beside the test executable above.
 set_tests_properties(integration_tests PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    ENVIRONMENT "PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{PATH}"
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:integration_tests>
 )
 set_tests_properties(cli_lifecycle PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

@@ -8,6 +8,7 @@ add_executable(nah-tests
     nah_digest_tests.cpp
     nah_exec_tests.cpp
     nah_store_tests.cpp
+    windows_macro_compatibility.cpp
 )
 
 target_link_libraries(nah-tests PRIVATE doctest::doctest NAH::nah NAH::package)

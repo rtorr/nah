@@ -37,7 +37,8 @@ struct Result {
 inline bool write_gzip(gzFile out, const void* data, std::size_t size) {
     const auto* bytes = static_cast<const unsigned char*>(data);
     while (size > 0) {
-        const auto chunk = static_cast<unsigned int>(std::min<std::size_t>(size, std::numeric_limits<unsigned int>::max()));
+        const auto chunk = static_cast<unsigned int>(
+            (std::min<std::size_t>)(size, (std::numeric_limits<unsigned int>::max)()));
         if (gzwrite(out, bytes, chunk) != static_cast<int>(chunk)) return false;
         bytes += chunk;
         size -= chunk;
@@ -48,7 +49,8 @@ inline bool write_gzip(gzFile out, const void* data, std::size_t size) {
 inline bool read_gzip(gzFile in, void* data, std::size_t size) {
     auto* bytes = static_cast<unsigned char*>(data);
     while (size > 0) {
-        const auto chunk = static_cast<unsigned int>(std::min<std::size_t>(size, std::numeric_limits<unsigned int>::max()));
+        const auto chunk = static_cast<unsigned int>(
+            (std::min<std::size_t>)(size, (std::numeric_limits<unsigned int>::max)()));
         const int count = gzread(in, bytes, chunk);
         if (count <= 0) return false;
         bytes += count;
@@ -63,7 +65,7 @@ inline std::optional<std::uint64_t> parse_octal(const unsigned char* value, std:
     while (i < length && (value[i] == ' ' || value[i] == '\0')) ++i;
     for (; i < length && value[i] != '\0' && value[i] != ' '; ++i) {
         if (value[i] < '0' || value[i] > '7') return std::nullopt;
-        if (result > (std::numeric_limits<std::uint64_t>::max() >> 3)) return std::nullopt;
+        if (result > ((std::numeric_limits<std::uint64_t>::max)() >> 3)) return std::nullopt;
         result = (result << 3) + static_cast<std::uint64_t>(value[i] - '0');
     }
     return result;
@@ -169,7 +171,8 @@ inline Result create(const fs::path& source, const fs::path& output) {
             if (!input) return fail("cannot read: " + entry.disk_path.string());
             std::uintmax_t remaining = entry.size;
             while (remaining > 0) {
-                const auto count = static_cast<std::streamsize>(std::min<std::uintmax_t>(remaining, buffer.size()));
+                const auto count = static_cast<std::streamsize>(
+                    (std::min<std::uintmax_t>)(remaining, buffer.size()));
                 input.read(buffer.data(), count);
                 if (input.gcount() != count || !write_gzip(out, buffer.data(), static_cast<std::size_t>(count))) return fail("failed to package file");
                 remaining -= static_cast<std::uintmax_t>(count);
@@ -277,7 +280,8 @@ inline Result extract(const fs::path& archive, const fs::path& destination) {
                 if (!output) return fail("cannot create extracted file");
                 std::uint64_t remaining = *size;
                 while (remaining > 0) {
-                    const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(remaining, buffer.size()));
+                    const auto count = static_cast<std::size_t>(
+                        (std::min<std::uint64_t>)(remaining, buffer.size()));
                     if (!read_gzip(input, buffer.data(), count)) return fail("truncated package entry");
                     output.write(buffer.data(), static_cast<std::streamsize>(count));
                     if (!output) return fail("cannot write extracted file");

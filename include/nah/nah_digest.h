@@ -43,7 +43,7 @@ public:
     void update(const unsigned char* data, std::size_t size) {
         total_size_ += size;
         while (size != 0) {
-            const auto count = std::min(size, block_.size() - block_size_);
+            const auto count = (std::min)(size, block_.size() - block_size_);
             std::copy(data, data + count, block_.begin() + static_cast<std::ptrdiff_t>(block_size_));
             block_size_ += count;
             data += count;
